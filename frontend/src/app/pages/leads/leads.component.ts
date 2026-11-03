@@ -120,12 +120,15 @@ import { WinLoseComponent } from './win-lose.component';
                   @else if (b.decision === 'pending') { <span class="muted small">Awaiting decision</span> }
                   @else { <p-tag [value]="label(b.status)" [severity]="b.status === 'won' ? 'success' : b.status === 'lost' ? 'danger' : b.status === 'submitted' ? 'info' : 'secondary'" />
                     @if (b.status === 'won' && b.project_id) { <a class="small ml" href="" (click)="$event.preventDefault(); router.navigate(['/app/projects', b.project_id])">Project {{ b.project_code }} →</a> }
+                    @if (b.status === 'won' && !b.project_id) { <small class="c-warn ml">no project yet</small> }
                     @if (b.status === 'lost' && b.loss_reason) { <small class="muted ml">{{ b.loss_reason }}</small> } }</td>
                 <td class="right">{{ fmt(b.value) }}</td>
                 <td class="right nowrap">@if (canEdit()) {
                   @if (b.status === 'submitted') {
-                    <p-button label="Won" icon="pi pi-trophy" severity="success" size="small" [text]="true" (onClick)="wl().open('won', b, meta(), true)" />
+                    <p-button label="Won" icon="pi pi-trophy" severity="success" size="small" [text]="true" (onClick)="wl().open('won', b, meta(), true, contacts())" />
                     <p-button label="Lost" icon="pi pi-times" severity="danger" size="small" [text]="true" (onClick)="wl().open('lost', b, meta(), true)" /> }
+                  @if (b.status === 'won' && !b.project_id) {
+                    <p-button label="Start project" icon="pi pi-building" severity="success" size="small" [text]="true" (onClick)="wl().open('won', b, meta(), true, contacts())" /> }
                   @if (b.status !== 'won' && b.status !== 'lost') { <p-button icon="pi pi-pencil" [text]="true" [rounded]="true" (onClick)="openBid(b)" /> }
                   @else if (!(b.status === 'won' && b.project_id)) { <p-button icon="pi pi-trash" [text]="true" [rounded]="true" severity="danger" (onClick)="bf = b; deleteBid()" /> } }</td>
               </tr>

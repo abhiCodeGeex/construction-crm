@@ -14,11 +14,13 @@ import { Api } from '../../core/api.service';
   selector: 'app-win-lose',
   imports: [FormsModule, ButtonModule, DialogModule, InputNumberModule, InputTextModule, SelectModule, TextareaModule],
   template: `
-    <p-dialog [header]="(kind() === 'won' ? 'Mark as won' : 'Record a loss') + (bid ? ' — bid' : '')" [modal]="true" [(visible)]="visible" [style]="{ width: '30rem' }">
+    <p-dialog [header]="bid?.status === 'won' ? 'Start project — won bid' : (kind() === 'won' ? 'Mark as won' : 'Record a loss') + (bid ? ' — bid' : '')" [modal]="true" [(visible)]="visible" [style]="{ width: '30rem' }">
       @if (kind() === 'won') {
         <form class="stack" (ngSubmit)="win()">
           @if (!bid) {
             <p class="muted small">A project is created for <strong>{{ item?.contact_name }}</strong> with this lead's service, type, area, budget and referral. The salesperson joins as Sales.</p>
+          } @else if (bid.status === 'won') {
+            <p class="muted small">This bid was won before projects were created from bids, so it has none yet. A project is created from its service and value, and linked to the bid (and its lead).</p>
           } @else if (bid.lead_status === 'won') {
             <p class="muted small">The linked lead <strong>{{ bid.lead_title }}</strong> is already won, so the bid is linked to its project. No new project is created.</p>
           } @else if (bid.lead_id) {
@@ -26,7 +28,10 @@ import { Api } from '../../core/api.service';
           } @else {
             <p class="muted small">A project is created for <strong>{{ bid.client_name || '—' }}</strong> from this bid's service and value.</p>
           }
-          @if (bid?.lead_status !== 'won') {
+          @if (bid && !bid.client_id) {
+            <label class="field"><span>Client</span><p-select name="cl" [options]="clients" [(ngModel)]="w.client_id" optionLabel="name" optionValue="id" [filter]="true" placeholder="Choose the client" fluid appendTo="body" /></label>
+          }
+          @if (bid?.status === 'won' || bid?.lead_status !== 'won') {
             <label class="field"><span>Project name</span><input pInputText name="n" [(ngModel)]="w.project_name" fluid /></label>
             <label class="field"><span>Project manager</span><p-select name="pm" [options]="pms" [(ngModel)]="w.pm_id" optionLabel="name" optionValue="id" placeholder="Choose" fluid appendTo="body" /></label>
             <div class="grid2">
@@ -34,7 +39,7 @@ import { Api } from '../../core/api.service';
               <label class="field"><span>Project value</span><p-inputnumber name="v" [(ngModel)]="w.value" [min]="0" fluid /></label>
             </div>
           }
-          <div class="row gap right"><p-button type="submit" [label]="bid?.lead_status === 'won' ? 'Record win' : 'Win & create project'" icon="pi pi-trophy" severity="success" [loading]="busy()" /></div>
+          <div class="row gap right"><p-button type="submit" [label]="bid?.status === 'won' ? 'Create project' : bid?.lead_status === 'won' ? 'Record win' : 'Win & create project'" icon="pi pi-trophy" severity="success" [loading]="busy()" /></div>
         </form>
       } @else {
         <form class="stack" (ngSubmit)="lose()">
@@ -59,10 +64,12 @@ export class WinLoseComponent {
   pms: any[] = [];
   reasons: string[] = [];
   w: any = {};
+  clients: any[] = [];
   l: any = {};
 
   /** `bid` holds the bid plus `lead_status` of its linked lead (if any). */
-  open(kind: 'won' | 'lost', item: any, meta: any, bid = false) {
+  open(kind: 'won' | 'lost', item: any, meta: any, bid = false, clients: any[] = []) {
+    this.clients = clients;
     this.kind.set(kind);
     this.item = item;
     this.bid = bid ? item : null;
@@ -80,7 +87,8 @@ export class WinLoseComponent {
   async win() {
     this.busy.set(true);
     try {
-      const r = await this.api.post(`${this.base()}/${this.bid ? 'won' : 'win'}`, this.w, this.bid ? 'Bid won' : 'Won — project created');
+      const path = !this.bid ? 'win' : this.bid.status === 'won' ? 'project' : 'won';
+      const r = await this.api.post(`${this.base()}/${path}`, this.w, path === 'project' ? 'Project created' : this.bid ? 'Bid won' : 'Won — project created');
       this.visible = false;
       this.done.emit();
       if (r.project_id) this.router.navigate(['/app/projects', r.project_id]);

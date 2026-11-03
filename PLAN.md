@@ -186,6 +186,7 @@ Each module now hands its record on to the next, and nothing is left pointing at
 | Project deleted | Its open follow-ups are cancelled; the won lead and bid keep their result but drop the link (lead activity notes the deletion), so the lead can then be deleted. |
 | Lead deleted | Linked bids are unlinked. |
 | Bid deleted | Not while it is won and its project exists. |
+| Won bid without a project | (Won before this rule, or its project was deleted.) **Start project** on the bid creates the project from its service and value with a chosen PM, asking for the client if the bid has none; a won linked lead without a project is re-linked to it. Refused if the bid already has a project. |
 | Contact deleted | Refused while the contact is the enquirer on a lead, the client on a bid, or the referrer of a contact, lead or project (relationship history, §3). Its open follow-ups are cancelled. |
 | Project client | A contact set as a project's client gets the *client* type, so it is listed under Clients. |
 | Lead reassigned | The previous salesperson's open follow-ups on that lead move to the new salesperson. |

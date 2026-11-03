@@ -175,6 +175,24 @@ try:
     allb = {x["id"]: x for x in call("GET", "/bids", token=T["sales"])[1]["bids"]}
     check("bids drop the deleted project", not allb[b4["id"]].get("project_id") and not allb[b4p["id"]].get("project_id"))
 
+    # ---------------- won bid without a project -> Start project ----------------
+    expect("delete the first bid's project", call("DELETE", f"/projects/{w['project_id']}", token=T["owner"]), 200)
+    projects.remove(w["project_id"])
+    expect("only a won bid starts a project", call("POST", f"/bids/{b3b['id']}/project", {"pm_id": staff["pm"]}, T["sales"]), 400)
+    expect("start project needs a PM", call("POST", f"/bids/{b['id']}/project", {}, T["sales"]), 400)
+    sp = expect("start project for a won bid", call("POST", f"/bids/{b['id']}/project", {"pm_id": staff["pm"]}, T["sales"]), 200)
+    projects.append(sp.get("project_id"))
+    p5 = call("GET", f"/projects/{sp.get('project_id')}", token=T["pm"])[1]
+    check("started project keeps bid, client and value", p5.get("bid_id") == b["id"] and p5.get("client_id") == client
+          and p5.get("value") == 2500000 and any(m.get("project_role") == "Sales" for m in p5.get("team", [])), p5.get("bid_id"))
+    expect("no second project for the bid", call("POST", f"/bids/{b['id']}/project", {"pm_id": staff["pm"]}, T["sales"]), 409)
+    # a won bid whose linked lead lost its project re-links the lead too
+    sp4 = expect("start project for the lead's bid", call("POST", f"/bids/{b4['id']}/project", {"pm_id": staff["pm"]}, T["sales"]), 200)
+    projects.append(sp4.get("project_id"))
+    check("won lead re-linked to the new project", call("GET", f"/leads/{L4['id']}", token=T["sales"])[1].get("project_id") == sp4.get("project_id"))
+    expect("owner deletes it again", call("DELETE", f"/projects/{sp4['project_id']}", token=T["owner"]), 200)
+    projects.remove(sp4["project_id"])
+
     # ---------------- lead deleted -> bids unlinked ----------------
     expect("owner deletes the lead", call("DELETE", f"/leads/{L4['id']}", token=T["owner"]), 200)
     leads.remove(L4["id"])

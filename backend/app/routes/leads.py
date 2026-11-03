@@ -516,12 +516,36 @@ def update_bid(_id):
     return jsonify(present_bid(t.update("bids", _id, clean_bid(request.get_json(force=True) or {}, b))))
 
 
+def project_from_bid(b, d):
+    """Project straight from a won bid: its client, service and value; the bid's author joins as Sales (view)."""
+    from .projects import new_project
+    client_id = d.get("client_id") or b.get("client_id")
+    if not client_id:
+        abort(400, "Choose the client for the project")
+    client = t.get("contacts", client_id, required=False) or abort(400, "Client contact not found")
+    if not b.get("service"):
+        abort(400, "Choose the service on the bid before recording the win")
+    pm = project_manager(d.get("pm_id"))
+    extra = []
+    author = db.users.find_one({"_id": oid(b.get("created_by")), "company_id": g.cid, "kind": "staff"})
+    if author and str(author["_id"]) != d["pm_id"]:
+        extra.append({"user_id": str(author["_id"]), "name": author["name"], "project_role": "Sales", "access": "view"})
+    project = new_project({
+        "name": (d.get("project_name") or b["title"]).strip(), "services": [b["service"]],
+        "client_id": client_id, "start": d.get("start"),
+        "value": num(d.get("value"), "Value") if d.get("value") not in (None, "") else (b.get("value") or 0),
+        "description": b.get("notes"),
+    }, str(pm["_id"]), extra, {"bid_id": str(b["_id"])})
+    t.update("bids", str(b["_id"]), {"project_id": str(project["_id"]), "project_code": project["code"],
+                                     "client_id": client_id, "client_name": client["name"]})
+    return project
+
+
 @bp.post("/bids/<_id>/won")
 @api("leads")
 def bid_won(_id):
     """Won bid -> project. With a linked lead the lead is won (same path as Mark as won); otherwise the
     project is created straight from the bid's client, service and value."""
-    from .projects import new_project
     b = submitted_bid(_id)
     d = request.get_json(force=True) or {}
     lead = t.get("leads", b["lead_id"], required=False) if b.get("lead_id") else None
@@ -533,19 +557,25 @@ def bid_won(_id):
     elif lead:
         win_lead(lead, d, b)
     else:
-        if not b.get("client_id"):
-            abort(400, "Choose the client on the bid before recording the win")
-        if not b.get("service"):
-            abort(400, "Choose the service on the bid before recording the win")
-        project_manager(d.get("pm_id"))
-        project = new_project({
-            "name": (d.get("project_name") or b["title"]).strip(), "services": [b["service"]],
-            "client_id": b["client_id"], "start": d.get("start"),
-            "value": num(d.get("value"), "Value") if d.get("value") not in (None, "") else (b.get("value") or 0),
-            "description": b.get("notes"),
-        }, d["pm_id"], [], {"bid_id": _id})
-        t.update("bids", _id, {"status": "won", "result_at": t.now(), "project_id": str(project["_id"]),
-                               "project_code": project["code"]})
+        project_from_bid(b, d)
+        t.update("bids", _id, {"status": "won", "result_at": t.now()})
+    return jsonify(present_bid(t.get("bids", _id)))
+
+
+@bp.post("/bids/<_id>/project")
+@api("leads")
+def bid_project(_id):
+    """A won bid that has no project (won before projects were created from bids, or its project was deleted)."""
+    b = t.get("bids", _id)
+    if b.get("status") != "won":
+        abort(400, "Only a won bid can start a project")
+    if t.get("projects", b.get("project_id"), required=False):
+        abort(409, f"This bid already has project {b.get('project_code')}")
+    project = project_from_bid(b, request.get_json(force=True) or {})
+    lead = t.get("leads", b["lead_id"], required=False) if b.get("lead_id") else None
+    if lead and lead["status"] == "won" and not t.get("projects", lead.get("project_id"), required=False):
+        t.update("leads", b["lead_id"], {"project_id": str(project["_id"]), "project_code": project["code"]},
+                 raw={"$push": {"activities": history_entry("note", f"Project {project['code']} started from bid {b['title']}")}})
     return jsonify(present_bid(t.get("bids", _id)))
 
 
