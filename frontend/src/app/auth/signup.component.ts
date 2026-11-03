@@ -38,7 +38,8 @@ import { AuthLayoutComponent } from './auth-layout.component';
           <label class="field"><span>City</span><input pInputText name="city" [(ngModel)]="f.city" fluid /></label>
         </div>
         <label class="field"><span>Work email</span><input pInputText name="email" type="email" [(ngModel)]="f.email" required fluid /></label>
-        <label class="field"><span>Password</span><p-password name="password" [(ngModel)]="f.password" [toggleMask]="true" fluid /></label>
+        <label class="field"><span>Password</span><p-password name="password" [(ngModel)]="f.password" [feedback]="false" [toggleMask]="true" fluid />
+          <small class="hint" [class.ok]="f.password.length >= 6"><i class="pi" [class.pi-check-circle]="f.password.length >= 6" [class.pi-info-circle]="f.password.length < 6"></i> At least 6 characters</small></label>
         @if (error()) { <p-message severity="error" [text]="error()" /> }
         <p-button type="submit" label="Create account" icon="pi pi-arrow-right" iconPos="right" [loading]="busy()" styleClass="w-full" />
         <div class="small"><a routerLink="/login">Already have an account? Sign in</a></div>

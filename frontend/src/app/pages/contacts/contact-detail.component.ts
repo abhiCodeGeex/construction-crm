@@ -215,7 +215,8 @@ const PORTAL_ROLE: Record<string, string> = { client: 'client', developer: 'clie
         <label class="field"><span>Portal role</span><p-select name="role" [options]="portalRoles" [(ngModel)]="inv.role" fluid appendTo="body" /></label>
         <label class="field"><span>Person's name</span><input pInputText name="n" [(ngModel)]="inv.name" fluid /></label>
         <label class="field"><span>Login email</span><input pInputText name="e" [(ngModel)]="inv.email" fluid /></label>
-        <label class="field"><span>Temporary password</span><p-password name="p" [(ngModel)]="inv.password" [toggleMask]="true" fluid appendTo="body" /></label>
+        <label class="field"><span>Temporary password</span><p-password name="p" [(ngModel)]="inv.password" [toggleMask]="true" [feedback]="false" fluid appendTo="body" />
+          <small class="hint" [class.ok]="(inv.password ?? '').length >= 6"><i class="pi" [class.pi-check-circle]="(inv.password ?? '').length >= 6" [class.pi-info-circle]="(inv.password ?? '').length < 6"></i> At least 6 characters</small></label>
         <div class="row gap right"><p-button type="submit" label="Create login" icon="pi pi-check" /></div>
       </form>
     </p-dialog>

@@ -115,7 +115,8 @@ interface Summary { limits: { plan: string; users: number | null }; usage: { use
             <label class="field"><span>Organisation</span><input pInputText name="org" [(ngModel)]="f.org" placeholder="e.g. client's company" fluid /></label>
           }
           <label class="field"><span>{{ f.id ? 'New password (optional)' : 'Password' }}</span>
-            <p-password name="password" [(ngModel)]="f.password" [toggleMask]="true" [feedback]="!f.id" fluid appendTo="body" /></label>
+            <p-password name="password" [(ngModel)]="f.password" [toggleMask]="true" [feedback]="false" fluid appendTo="body" />
+            @if (!f.id || f.password) { <small class="hint" [class.ok]="(f.password ?? '').length >= 6"><i class="pi" [class.pi-check-circle]="(f.password ?? '').length >= 6" [class.pi-info-circle]="(f.password ?? '').length < 6"></i> At least 6 characters</small> }</label>
           @if (f.role === 'site' && !f.id) {
             <label class="check"><p-checkbox name="wa" [(ngModel)]="f.whatsapp_only" [binary]="true" /> WhatsApp-only site worker (free, not counted)</label>
           }

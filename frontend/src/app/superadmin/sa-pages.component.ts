@@ -184,7 +184,8 @@ export class SaCompaniesComponent implements OnInit {
         <label class="field"><span>Name</span><input pInputText name="name" [(ngModel)]="f.name" fluid /></label>
         <label class="field"><span>Email</span><input pInputText name="email" [(ngModel)]="f.email" fluid /></label>
         <label class="field"><span>Role</span><p-select name="role" [(ngModel)]="f.role" [options]="roles" fluid appendTo="body" /></label>
-        <label class="field"><span>Password (min 8)</span><p-password name="pw" [(ngModel)]="f.password" [toggleMask]="true" fluid appendTo="body" /></label>
+        <label class="field"><span>Password</span><p-password name="pw" [(ngModel)]="f.password" [toggleMask]="true" [feedback]="false" fluid appendTo="body" />
+          <small class="hint" [class.ok]="f.password.length >= 8"><i class="pi" [class.pi-check-circle]="f.password.length >= 8" [class.pi-info-circle]="f.password.length < 8"></i> At least 8 characters</small></label>
         @if (error()) { <p-message severity="error" [text]="error()" /> }
         <div class="row gap right"><p-button type="submit" label="Add" icon="pi pi-check" /></div>
       </form>

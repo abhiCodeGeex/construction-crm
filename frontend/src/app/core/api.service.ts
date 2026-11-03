@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { MessageService } from 'primeng/api';
 import { errorText } from './auth.interceptor';
+import { HANDLED } from './error-handler';
 
 /** Promise-based API helper. Mutations show a toast on failure and re-throw so callers can keep dialogs open. */
 @Injectable({ providedIn: 'root' })
@@ -21,6 +22,7 @@ export class Api {
       return res;
     } catch (e) {
       this.toast.add({ severity: 'error', summary: 'Not saved', detail: errorText(e), life: 5000 });
+      (e as any)[HANDLED] = true;
       throw e;
     }
   }
@@ -44,6 +46,7 @@ export class Api {
       return await firstValueFrom(this.http.post<any>('/api/uploads', form));
     } catch (e) {
       this.toast.add({ severity: 'error', summary: 'Upload failed', detail: errorText(e) });
+      (e as any)[HANDLED] = true;
       throw e;
     }
   }

@@ -211,3 +211,5 @@ button.link { background: none; border: 0; padding: 0 .15rem; color: var(--brand
 .p-tabpanels { padding: 1.25rem 0 0 !important; background: transparent !important; }
 @media (max-width: 900px) { .grid3 { grid-template-columns: 1fr; } }
 .prog p-progressbar { flex: 1; min-width: 4rem; }
+.hint { color: var(--muted); font-weight: 400; font-size: .8rem; display: flex; align-items: center; gap: .3rem; }
+.hint.ok { color: var(--ok); }

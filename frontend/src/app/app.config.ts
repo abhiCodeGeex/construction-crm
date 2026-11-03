@@ -1,4 +1,4 @@
-import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
+import { ApplicationConfig, ErrorHandler, provideZoneChangeDetection } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
@@ -9,6 +9,7 @@ import { providePrimeNG } from 'primeng/config';
 
 import { routes } from './app.routes';
 import { authInterceptor } from './core/auth.interceptor';
+import { AppErrorHandler } from './core/error-handler';
 
 /** Aura with an indigo brand colour; dark mode follows the `.app-dark` class on <html>. */
 const BuildSuite = definePreset(Aura, {
@@ -30,5 +31,6 @@ export const appConfig: ApplicationConfig = {
     providePrimeNG({ theme: { preset: BuildSuite, options: { darkModeSelector: '.app-dark' } }, ripple: true }),
     MessageService,
     ConfirmationService,
+    { provide: ErrorHandler, useClass: AppErrorHandler },
   ],
 };
