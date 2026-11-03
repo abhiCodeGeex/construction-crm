@@ -51,7 +51,7 @@ TENANT_COLLECTIONS = [
     "users", "leads", "bids", "contacts", "projects", "stage_templates", "proposals", "contracts",
     "rate_library", "documents", "design_options", "products", "selections", "purchase_requests",
     "purchase_orders", "change_orders", "costs", "invoices", "site_reports", "snags", "followups",
-    "message_templates", "messages", "notifications", "timesheets", "support_tickets",
+    "message_templates", "messages", "notifications", "timesheets", "support_tickets", "project_issues",
 ]
 
 

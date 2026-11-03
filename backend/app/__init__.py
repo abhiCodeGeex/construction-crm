@@ -27,8 +27,8 @@ def create_app():
     ensure_indexes()
 
     # each feature module is a blueprint; later modules are added to this tuple without touching the others
-    from .routes import auth, users, access, superadmin
-    for module in (auth, users, access, superadmin):
+    from .routes import auth, users, access, superadmin, contacts, projects, admin
+    for module in (auth, users, access, superadmin, contacts, projects, admin):
         app.register_blueprint(module.bp, url_prefix="/api")
 
     @app.get("/api/health")

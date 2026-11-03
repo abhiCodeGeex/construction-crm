@@ -31,9 +31,33 @@ def m002_superadmin_owner():
         "totp_demo": "123456", "active": True, "created_at": now()}}, upsert=True)
 
 
+def m003_stage_template_durations():
+    """Phase B: template stages become {name, duration_days} (Phase A stored plain names)."""
+    from .services.defaults import template_stages
+    for tpl in db.stage_templates.find({"stages.0": {"$type": "string"}}):
+        db.stage_templates.update_one({"_id": tpl["_id"]}, {"$set": {"stages": template_stages(tpl["stages"])}})
+
+
+def m004_project_indexes():
+    db.projects.create_index([("company_id", 1), ("team.user_id", 1)])
+    db.projects.create_index([("company_id", 1), ("team.contact_id", 1)])
+    db.contacts.create_index([("company_id", 1), ("name", 1)])
+    db.project_issues.create_index([("company_id", 1), ("project_id", 1)])
+
+
+def m005_contact_types():
+    """Phase A created portal contacts with the portal role as type; §3 uses 'supplier' for vendors."""
+    db.contacts.update_many({"types": "vendor"}, {"$set": {"types.$": "supplier"}})
+    db.contacts.update_many({"kind": {"$exists": False}}, {"$set": {"kind": "company"}})
+    db.contacts.update_many({"compliance": {"$exists": False}}, {"$set": {"compliance": []}})
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
+    ("003_stage_template_durations", m003_stage_template_durations),
+    ("004_project_indexes", m004_project_indexes),
+    ("005_contact_types", m005_contact_types),
 ]
 
 

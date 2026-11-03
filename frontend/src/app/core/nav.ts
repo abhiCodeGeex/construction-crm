@@ -14,9 +14,9 @@ export interface NavItem {
 
 export const NAV: NavItem[] = [
   { area: 'leads', label: 'Leads & pipeline', icon: 'pi pi-bullseye', section: 'Sales' },
-  { area: 'contacts', label: 'Contacts', icon: 'pi pi-id-card', section: 'Sales' },
+  { area: 'contacts', label: 'Contacts', icon: 'pi pi-id-card', section: 'Sales', ready: true, path: '/app/contacts' },
   { area: 'proposals', label: 'Proposals & estimates', icon: 'pi pi-file-edit', section: 'Sales' },
-  { area: 'projects', label: 'Projects', icon: 'pi pi-building', section: 'Delivery' },
+  { area: 'projects', label: 'Projects', icon: 'pi pi-building', section: 'Delivery', ready: true, path: '/app/projects' },
   { area: 'documents', label: 'Documents & drawings', icon: 'pi pi-folder-open', section: 'Delivery' },
   { area: 'selections', label: 'Selections', icon: 'pi pi-palette', section: 'Delivery' },
   { area: 'site', label: 'Site reports', icon: 'pi pi-camera', section: 'Delivery' },

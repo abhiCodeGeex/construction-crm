@@ -95,8 +95,8 @@ code, pre { font-family: 'JetBrains Mono', ui-monospace, monospace; }
 .otp { justify-content: center; }
 
 /* app layout */
-.layout { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; transition: grid-template-columns .2s; }
-.layout.collapsed { grid-template-columns: 72px 1fr; }
+.layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; transition: grid-template-columns .2s; }
+.layout.collapsed { grid-template-columns: 72px minmax(0, 1fr); }
 .layout.collapsed .txt, .layout.collapsed .soon { display: none; }
 .sidebar { background: var(--sidebar); color: var(--sidebar-text); position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 1.1rem .75rem; }
 .sidebar .logo { color: #fff; padding: .25rem .5rem 1.25rem; }
@@ -169,3 +169,45 @@ td.probe .p-tag { margin-left: .4rem; }
   .grid2, .plans { grid-template-columns: 1fr; }
   .who-text { display: none; }
 }
+
+/* ---------- Phase B ---------- */
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.filters { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+.clickable { cursor: pointer; }
+.mr-xs { margin-right: .25rem; }
+.ml-xs { margin-left: .35rem; }
+.w-3 { width: 3rem; } .w-5 { width: 5rem; } .w-8 { width: 8rem; } .w-12 { width: 12rem; }
+.scroll-x { overflow-x: auto; }
+.svc { display: inline-block; font-size: .75rem; font-weight: 600; padding: .12rem .5rem; margin: 0 .25rem .15rem 0; border-radius: 999px;
+  color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
+.svc-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.prog { display: flex; align-items: center; gap: .5rem; }
+.prog span { font-size: .8rem; min-width: 2.5rem; text-align: right; }
+.alert-strip { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding: .7rem 1rem; margin-bottom: 1rem; border-radius: 12px;
+  background: color-mix(in srgb, #f59e0b 12%, var(--surface)); border: 1px solid color-mix(in srgb, #f59e0b 40%, transparent); }
+.alert-strip > i { color: #d97706; }
+.ms-row, .stage-row { display: flex; align-items: center; gap: .7rem; padding: .5rem 0; border-bottom: 1px solid var(--border); }
+.ms-row:last-child, .stage-row:last-child { border-bottom: 0; }
+.ms-row.sub { padding: .25rem 0 .25rem 1.4rem; border: 0; }
+.link-row { color: inherit; } .link-row:hover { text-decoration: none; background: var(--bg); }
+.link-card { color: inherit; } .link-card:hover { text-decoration: none; border-color: var(--brand); }
+.stage-card { border: 1px solid var(--border); border-left: 4px solid var(--c); border-radius: 12px; background: var(--surface); padding: .8rem 1rem; margin-bottom: .9rem; }
+.stage-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .4rem; flex-wrap: wrap; }
+.stage-card .tasks .p-datatable-thead > tr > th { font-size: .75rem; }
+.ms-list { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .5rem; }
+.ms-chip { display: inline-flex; gap: .35rem; align-items: center; font-size: .8rem; padding: .25rem .6rem; border-radius: 999px; background: #fef3c7; color: #92400e; }
+.ms-chip.done { background: #dcfce7; color: #166534; }
+.app-dark .ms-chip { background: rgba(245, 158, 11, .15); color: #fcd34d; }
+.app-dark .ms-chip.done { background: rgba(22, 163, 74, .18); color: #86efac; }
+button.link { background: none; border: 0; padding: 0 .15rem; color: var(--brand); cursor: pointer; font: inherit; font-size: .75rem; }
+.upload-btn { cursor: pointer; color: var(--brand); padding: .3rem; }
+.person-row { display: flex; flex-direction: column; padding: .4rem 0; border-bottom: 1px solid var(--border); }
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+.tpl-stages { margin: 0 0 .5rem; padding-left: 1.2rem; display: grid; gap: .2rem; }
+.perm { border: 1px solid transparent; background: none; border-radius: 6px; cursor: pointer; padding: .15rem .4rem; font: inherit; }
+.perm:hover { border-color: var(--border); }
+.perm.changed { border-color: #f59e0b; background: color-mix(in srgb, #f59e0b 10%, transparent); }
+.chip.static { cursor: default; }
+.p-tabpanels { padding: 1.25rem 0 0 !important; background: transparent !important; }
+@media (max-width: 900px) { .grid3 { grid-template-columns: 1fr; } }
+.prog p-progressbar { flex: 1; min-width: 4rem; }

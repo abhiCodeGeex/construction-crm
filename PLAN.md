@@ -98,5 +98,45 @@ docker compose exec backend python tests/test_auth.py
 
 ---
 
-## 6. Next phase (proposed, awaiting approval)
-Phase B — Contacts & Leads pipeline on top of this auth layer.
+---
+
+# Phase B — Contacts, Projects & access control
+
+Source: requirements §1 (company setup, per-project permissions, cost hiding, audit), §3 (contacts), §4 (projects), §13 (portal users see only their projects).
+Out of scope (later phases): leads (C), proposals/budgets from estimates (D), costs/invoices/change orders (E), documents/selections/site (F), portal approvals & WhatsApp (G).
+
+## B1. Requirement → implementation → test
+
+| Req | Requirement line | Implementation | Test |
+|---|---|---|---|
+| §3.1 | Types: client, developer, architect, contractor, subcontractor, supplier, consultant, authority/inspector | `contacts.types[]` (multi-select, validated against this list); `kind` = company \| person; people link to their company (`org_id`) | create with invalid type → 400; filter by type |
+| §3.2 | Roles per project — same firm client on one job, partner on another | Role lives on the **project team entry** (`team[].project_role`), never on the contact; contact page lists every project with its role there | same contact = Client on P1 and Architect on P2 |
+| §3.3 | Trade category, rating, notes, past projects together | `trade_category`, `rating` (1–5), `notes`; "Projects together" tab from team membership | rating 6 → 400; history lists both projects |
+| §3.4 | Compliance: insurance, licences, certificates, expiry alerts | `compliance[]` {type, name, number, issuer, issue/expiry date, file}; expiry status *expired / ≤30 days / valid*; alerts list on Home + Contacts | expired & expiring docs returned; valid not |
+| §3.5 | Tax IDs, bank details (vendor payments), trade account numbers, discounts | `gstin`, `pan` (format-validated), `bank{account_name, account_no, ifsc, bank}` (IFSC validated), `trade_account_no`, `discount_pct` 0–100. **Bank details are masked** unless the role can edit finance or procurement | sales sees `••••1234`; accounts sees full |
+| §3.6 | Relationship history: who referred what, what was won | `referred_by` on contacts and projects; history shows contacts & projects this contact referred, with total value of referred projects (won leads join in Phase C) | referral appears on referrer's history |
+| §4.1 | Project → Phases/Stages → Tasks → Milestones | `projects.stages[]` → `tasks[]` and `milestones[]` | create/edit/delete each level |
+| §4.2 | Default stage templates per service (Architecture, Construction, Interior) | Seeded per company exactly as in the doc, each stage with a default duration | new project gets the template stages |
+| §4.3 | Templates editable per company; RIBA or AIA stages can be added | Settings → Stage templates: edit, reorder, add; one-click add *RIBA Plan of Work 2020* and *AIA phases*; choose default per service | edit template → next project uses it |
+| §4.4 | One project can run all three services (design-and-build) | `services[]` limited to the company's enabled modules; stages built per service; adding a service later appends its stages | disabled module → 400 |
+| §4.5 | Project team: internal staff + external parties with roles | `team[]` {user_id \| contact_id, project_role, access: edit\|view} | add staff & external |
+| §4.6 | Gantt timeline with task dependencies and milestones | Gantt view: stage & task bars, milestone diamonds, finish-to-start arrows, today line; dependency cycle → 400; task can't start until predecessors are done → 409; date conflicts flagged | cycle, blocked start, conflict flag |
+| §4.7 | Dashboard: progress %, budget vs actual, open issues, next milestones | Progress = duration-weighted stage progress (stage = % tasks done); budget = sum of stage budgets vs actual (cost entries arrive in Phase E, shown as 0 until then); project issue log; next 5 pending milestones with late flag | progress math; late flag |
+| §4.8 | Site address with map, area, value | Address fields + map pin (OpenStreetMap / Leaflet, click to place); area with sq ft / m²; value | geo validated (lat/lng ranges) |
+| §1 | Branches, currency, tax, numbering formats | Settings: branches list, currency, tax rate, project number format (e.g. `PRJ-{year}-{n:03d}`); project picks a branch | numbering format applied |
+| §1 | Permissions per module and per project | **Module**: services must be enabled modules. **Project**: Owner sees all projects; everyone else sees only projects they are on. Edit needs role `projects:rw` **and** team access *edit*. Assignees may update their own tasks. Architect/Designer may edit **design stages** (Architecture & Interior services) on their projects | 403/404 matrix per role |
+| §1 | Role permission editor | Owner adjusts any role's read/write per area (stored as overrides on top of code defaults); reset to default; owner role locked | override applies immediately; reset |
+| §1 | Hide cost and margin from clients and site staff | Project `budget`/stage `budget`/`spent` stripped for Site Supervisor and portal | site response lacks budget |
+| §1 | Audit log of who changed what | Every write via tenancy layer; project History tab | audit rows on project |
+| §13 | Portal users see their projects | Client = project's client or external team member; read-only progress, stages, milestones; no money | client sees own only |
+
+## B2. Rules fixed in this phase (no guessing later)
+* **Task status**: todo → in_progress → done (or blocked). Moving to in_progress/done requires all predecessor tasks done.
+* **Stage progress** = done tasks ÷ tasks; a stage without tasks uses its manual progress. Stage status follows (0 % not started, 100 % done, else in progress); *on hold* is manual.
+* **Stage window** grows automatically to contain its tasks.
+* **Milestones** auto-created at the end of each template stage ("<Stage> complete"); more can be added; achieved/pending.
+* **Project status**: planning, active, on_hold, completed, cancelled. Active-project count is what the plan limit counts (planning + active).
+* **Visibility**: creator is added to the team as Project Manager with edit access.
+
+## B3. Next phase (proposed, awaiting approval)
+Phase C — Leads & pipeline; a won lead creates a project from Phase B.

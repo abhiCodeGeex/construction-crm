@@ -41,9 +41,17 @@ def create_user():
            "whatsapp_only": bool(d.get("whatsapp_only")) and role == "site"}
     if external:
         # every portal user is linked to a contact record (client, vendor, subcontractor, consultant)
-        contact = t.insert("contacts", {"name": d.get("org") or name, "person": name, "email": email,
-                                        "phone": d.get("phone"), "types": [role]})
-        doc["contact_id"] = str(contact["_id"])
+        if d.get("contact_id"):
+            t.get("contacts", d["contact_id"])
+            if db.users.find_one({"company_id": g.cid, "contact_id": d["contact_id"]}):
+                abort(409, "This contact already has a portal login")
+            doc["contact_id"] = d["contact_id"]
+        else:
+            types = {"client": "client", "vendor": "supplier", "subcontractor": "subcontractor",
+                     "consultant": "consultant"}[role]
+            contact = t.insert("contacts", {"name": d.get("org") or name, "kind": "company", "email": email,
+                                            "phone": d.get("phone"), "types": [types], "compliance": []})
+            doc["contact_id"] = str(contact["_id"])
     return jsonify(t.out(t.insert("users", doc))), 201
 
 

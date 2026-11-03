@@ -1,6 +1,6 @@
 from ..db import db, oid
 from ..tenancy import now
-from .defaults import STAGE_TEMPLATES, MESSAGE_TEMPLATES, PIPELINE, LEAD_SOURCES
+from .defaults import STAGE_TEMPLATES, MESSAGE_TEMPLATES, PIPELINE, LEAD_SOURCES, template_stages
 
 
 def bootstrap_company(company_id, modules):
@@ -10,7 +10,7 @@ def bootstrap_company(company_id, modules):
     for service in ("architecture", "construction", "interior"):
         db.stage_templates.insert_one({
             "company_id": company_id, "service": service, "name": f"Default {service}",
-            "stages": stage_defaults.get(service, STAGE_TEMPLATES[service]), "is_default": True,
+            "stages": template_stages(stage_defaults.get(service, STAGE_TEMPLATES[service])), "is_default": True,
             "created_at": now(),
         })
     for tpl in platform.get("message_templates") or MESSAGE_TEMPLATES:

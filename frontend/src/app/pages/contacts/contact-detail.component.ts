@@ -1,0 +1,309 @@
+import { Component, OnInit, computed, inject, input, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { Router, RouterLink } from '@angular/router';
+import { ConfirmationService } from 'primeng/api';
+import { ButtonModule } from 'primeng/button';
+import { CardModule } from 'primeng/card';
+import { DialogModule } from 'primeng/dialog';
+import { InputNumberModule } from 'primeng/inputnumber';
+import { InputTextModule } from 'primeng/inputtext';
+import { MessageModule } from 'primeng/message';
+import { MultiSelectModule } from 'primeng/multiselect';
+import { PasswordModule } from 'primeng/password';
+import { RatingModule } from 'primeng/rating';
+import { SelectModule } from 'primeng/select';
+import { TableModule } from 'primeng/table';
+import { TabsModule } from 'primeng/tabs';
+import { TagModule } from 'primeng/tag';
+import { TextareaModule } from 'primeng/textarea';
+import { TooltipModule } from 'primeng/tooltip';
+import { Api, STATUS_SEVERITY, label, money } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
+import { TYPE_LABEL } from './contacts.component';
+
+const PORTAL_ROLE: Record<string, string> = { client: 'client', developer: 'client', supplier: 'vendor', subcontractor: 'subcontractor',
+  consultant: 'consultant', architect: 'consultant', contractor: 'subcontractor', authority: 'consultant' };
+
+@Component({
+  selector: 'app-contact-detail',
+  imports: [FormsModule, RouterLink, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, MessageModule,
+    MultiSelectModule, PasswordModule, RatingModule, SelectModule, TableModule, TabsModule, TagModule, TextareaModule, TooltipModule],
+  template: `
+    @if (c(); as c) {
+      <div class="page-head">
+        <div>
+          <a routerLink="/app/contacts" class="small"><i class="pi pi-arrow-left"></i> Contacts</a>
+          <h1><i [class]="c.kind === 'person' ? 'pi pi-user' : 'pi pi-building'" class="mr muted"></i>{{ c.name }}</h1>
+          <div class="row gap">
+            @for (t of c.types; track t) { <p-tag [value]="typeLabel[t]" severity="secondary" /> }
+            @if (c.compliance_alert) { <p-tag [value]="c.compliance_alert === 'expired' ? 'Compliance expired' : 'Compliance expiring'" [severity]="sev[c.compliance_alert]" icon="pi pi-exclamation-triangle" /> }
+            @if (c.org_name) { <span class="muted">{{ c.designation }} at <a [routerLink]="['/app/contacts', c.org_id]">{{ c.org_name }}</a></span> }
+          </div>
+        </div>
+        <div class="row gap">
+          @if (canEdit()) {
+            @if (!h()?.portal_user && auth.can('users', 'rw')) { <p-button label="Portal access" icon="pi pi-globe" [outlined]="true" (onClick)="openInvite()" /> }
+            <p-button label="Delete" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="remove()" />
+            <p-button label="Save" icon="pi pi-check" [loading]="busy()" (onClick)="save()" />
+          }
+        </div>
+      </div>
+      @if (h()?.portal_user; as pu) { <p-message severity="info" icon="pi pi-globe" styleClass="mb" text="Portal login: {{ pu.email }} ({{ pu.role }}){{ pu.active === false ? ' — inactive' : '' }}" /> }
+
+      <p-tabs value="details" [scrollable]="true">
+        <p-tablist>
+          <p-tab value="details"><i class="pi pi-id-card mr"></i>Details</p-tab>
+          <p-tab value="finance"><i class="pi pi-wallet mr"></i>Tax & bank</p-tab>
+          <p-tab value="compliance"><i class="pi pi-verified mr"></i>Compliance ({{ c.compliance?.length || 0 }})</p-tab>
+          <p-tab value="projects"><i class="pi pi-building mr"></i>Projects together ({{ h()?.projects?.length || 0 }})</p-tab>
+          <p-tab value="relations"><i class="pi pi-share-alt mr"></i>Relationships</p-tab>
+        </p-tablist>
+        <p-tabpanels>
+          <p-tabpanel value="details">
+            <div class="grid2 top">
+              <div class="stack">
+                <label class="field"><span>Name</span><input pInputText [(ngModel)]="c.name" [disabled]="!canEdit()" fluid /></label>
+                <label class="field"><span>Types</span>
+                  <p-multiselect [options]="typeOptions" [(ngModel)]="c.types" optionLabel="label" optionValue="value" display="chip" [disabled]="!canEdit()" fluid /></label>
+                @if (c.kind === 'person') {
+                  <div class="grid2">
+                    <label class="field"><span>Company</span><p-select [options]="companies()" [(ngModel)]="c.org_id" optionLabel="name" optionValue="id"
+                                                                    [filter]="true" [showClear]="true" [disabled]="!canEdit()" fluid /></label>
+                    <label class="field"><span>Designation</span><input pInputText [(ngModel)]="c.designation" [disabled]="!canEdit()" fluid /></label>
+                  </div>
+                }
+                <div class="grid2">
+                  <label class="field"><span>Trade category</span><input pInputText [(ngModel)]="c.trade_category" placeholder="e.g. Electrical, Tiles" [disabled]="!canEdit()" fluid /></label>
+                  <div class="field"><span>Rating</span><p-rating [(ngModel)]="c.rating" [readonly]="!canEdit()" /></div>
+                </div>
+                <label class="field"><span>Notes</span><textarea pTextarea rows="4" [(ngModel)]="c.notes" [disabled]="!canEdit()" fluid></textarea></label>
+              </div>
+              <div class="stack">
+                <div class="grid2">
+                  <label class="field"><span>Phone</span><input pInputText [(ngModel)]="c.phone" [disabled]="!canEdit()" fluid /></label>
+                  <label class="field"><span>Alternate phone</span><input pInputText [(ngModel)]="c.alt_phone" [disabled]="!canEdit()" fluid /></label>
+                </div>
+                <div class="grid2">
+                  <label class="field"><span>Email</span><input pInputText [(ngModel)]="c.email" [disabled]="!canEdit()" fluid /></label>
+                  <label class="field"><span>Website</span><input pInputText [(ngModel)]="c.website" [disabled]="!canEdit()" fluid /></label>
+                </div>
+                <label class="field"><span>Address</span><input pInputText [(ngModel)]="c.address" [disabled]="!canEdit()" fluid /></label>
+                <div class="grid3">
+                  <label class="field"><span>City</span><input pInputText [(ngModel)]="c.city" [disabled]="!canEdit()" fluid /></label>
+                  <label class="field"><span>State</span><input pInputText [(ngModel)]="c.state" [disabled]="!canEdit()" fluid /></label>
+                  <label class="field"><span>PIN code</span><input pInputText [(ngModel)]="c.pincode" [disabled]="!canEdit()" fluid /></label>
+                </div>
+                <label class="field"><span>Referred by</span><p-select [options]="others()" [(ngModel)]="c.referred_by" optionLabel="name" optionValue="id"
+                                                                  [filter]="true" [showClear]="true" [disabled]="!canEdit()" fluid /></label>
+              </div>
+            </div>
+          </p-tabpanel>
+
+          <p-tabpanel value="finance">
+            <div class="grid2 top">
+              <p-card>
+                <ng-template #title>Tax & trade account</ng-template>
+                <div class="stack">
+                  <div class="grid2">
+                    <label class="field"><span>GSTIN</span><input pInputText [(ngModel)]="c.gstin" placeholder="29ABCDE1234F1Z5" [disabled]="!canEdit()" fluid /></label>
+                    <label class="field"><span>PAN</span><input pInputText [(ngModel)]="c.pan" placeholder="ABCDE1234F" [disabled]="!canEdit()" fluid /></label>
+                  </div>
+                  <div class="grid2">
+                    <label class="field"><span>Trade account no.</span><input pInputText [(ngModel)]="c.trade_account_no" [disabled]="!canEdit()" fluid /></label>
+                    <label class="field"><span>Trade discount %</span><p-inputnumber [(ngModel)]="c.discount_pct" [min]="0" [max]="100" [maxFractionDigits]="2" suffix="%" [disabled]="!canEdit()" fluid /></label>
+                  </div>
+                </div>
+              </p-card>
+              <p-card>
+                <ng-template #title>Bank details <small class="muted">(for vendor payments)</small></ng-template>
+                @if (c.bank?.masked) {
+                  <p-message severity="secondary" icon="pi pi-lock" text="Bank details are visible only to roles that manage finance or procurement." styleClass="mb" />
+                }
+                <div class="stack">
+                  <label class="field"><span>Account name</span><input pInputText [(ngModel)]="bank().account_name" [disabled]="!canEditBank()" fluid /></label>
+                  <div class="grid2">
+                    <label class="field"><span>Account number</span><input pInputText [(ngModel)]="bank().account_no" [disabled]="!canEditBank()" fluid /></label>
+                    <label class="field"><span>IFSC</span><input pInputText [(ngModel)]="bank().ifsc" [placeholder]="c.bank?.masked ? '' : 'HDFC0001234'" [disabled]="!canEditBank()" fluid /></label>
+                  </div>
+                  <div class="grid2">
+                    <label class="field"><span>Bank</span><input pInputText [(ngModel)]="bank().bank_name" [disabled]="!canEditBank()" fluid /></label>
+                    <label class="field"><span>Branch</span><input pInputText [(ngModel)]="bank().branch" [disabled]="!canEditBank()" fluid /></label>
+                  </div>
+                </div>
+              </p-card>
+            </div>
+          </p-tabpanel>
+
+          <p-tabpanel value="compliance">
+            <div class="row-between mb">
+              <span class="muted">Insurance, licences and certificates. Alerts start {{ warnDays }} days before expiry.</span>
+              @if (canEdit()) { <p-button label="Add document" icon="pi pi-plus" size="small" (onClick)="addDoc()" /> }
+            </div>
+            <p-table [value]="c.compliance" size="small">
+              <ng-template #header><tr><th>Type</th><th>Name</th><th>Number</th><th>Issuer</th><th>Issued</th><th>Expiry</th><th>Status</th><th>File</th><th></th></tr></ng-template>
+              <ng-template #body let-d let-i="rowIndex">
+                <tr>
+                  <td><p-select [options]="complianceTypes" [(ngModel)]="d.type" [disabled]="!canEdit()" appendTo="body" /></td>
+                  <td><input pInputText [(ngModel)]="d.name" [disabled]="!canEdit()" /></td>
+                  <td><input pInputText [(ngModel)]="d.number" [disabled]="!canEdit()" class="w-8" /></td>
+                  <td><input pInputText [(ngModel)]="d.issuer" [disabled]="!canEdit()" class="w-8" /></td>
+                  <td><input pInputText type="date" [(ngModel)]="d.issue_date" [disabled]="!canEdit()" /></td>
+                  <td><input pInputText type="date" [(ngModel)]="d.expiry" [disabled]="!canEdit()" /></td>
+                  <td>@if (d.status) { <p-tag [value]="label(d.status)" [severity]="sev[d.status]" /> }</td>
+                  <td class="nowrap">
+                    @if (d.file) { <p-button icon="pi pi-file" [text]="true" [rounded]="true" (onClick)="api.openFile(d.file.url)" [pTooltip]="d.file.name" /> }
+                    @if (canEdit()) {
+                      <label class="upload-btn"><i class="pi pi-upload"></i><input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx" (change)="attach(d, $event)" hidden /></label>
+                    }
+                  </td>
+                  <td>@if (canEdit()) { <p-button icon="pi pi-trash" severity="danger" [text]="true" [rounded]="true" (onClick)="c.compliance.splice(i, 1)" /> }</td>
+                </tr>
+              </ng-template>
+              <ng-template #emptymessage><tr><td colspan="9" class="center muted">No compliance documents</td></tr></ng-template>
+            </p-table>
+            @if (canEdit()) { <p class="muted small">Remember to Save after editing documents.</p> }
+          </p-tabpanel>
+
+          <p-tabpanel value="projects">
+            <p-table [value]="h()?.projects ?? []" size="small">
+              <ng-template #header><tr><th>Project</th><th>Role(s) on this project</th><th>Status</th><th>Start</th><th class="right">Value</th></tr></ng-template>
+              <ng-template #body let-p>
+                <tr>
+                  <td><a [routerLink]="['/app/projects', p.id]"><strong>{{ p.name }}</strong></a> <small class="muted">{{ p.code }}</small></td>
+                  <td>@for (r of p.roles; track r) { <p-tag [value]="r" severity="info" styleClass="mr-xs" /> }</td>
+                  <td><p-tag [value]="label(p.status)" [severity]="sev[p.status]" /></td>
+                  <td>{{ p.start }}</td>
+                  <td class="right">{{ fmt(p.value) }}</td>
+                </tr>
+              </ng-template>
+              <ng-template #emptymessage><tr><td colspan="5" class="center muted">Not on any project yet</td></tr></ng-template>
+            </p-table>
+          </p-tabpanel>
+
+          <p-tabpanel value="relations">
+            <div class="grid2 top">
+              <p-card>
+                <ng-template #title>Referral history</ng-template>
+                <p>Referred by: @if (h()?.referred_by; as r) { <a [routerLink]="['/app/contacts', r.id]">{{ r.name }}</a> } @else { <span class="muted">—</span> }</p>
+                <h4>Contacts they referred</h4>
+                @for (r of h()?.referred_contacts ?? []; track r.id) { <div><a [routerLink]="['/app/contacts', r.id]">{{ r.name }}</a></div> }
+                @empty { <p class="muted small">None</p> }
+                <h4>Projects they referred</h4>
+                @for (p of h()?.referred_projects ?? []; track p.id) {
+                  <div class="row-between"><a [routerLink]="['/app/projects', p.id]">{{ p.name }}</a><span>{{ fmt(p.value) }}</span></div>
+                } @empty { <p class="muted small">None</p> }
+                @if (h()?.referred_value) { <p class="mt"><strong>Total value referred: {{ fmt(h().referred_value) }}</strong></p> }
+              </p-card>
+              @if (c.kind === 'company') {
+                <p-card>
+                  <ng-template #title>People at {{ c.name }}</ng-template>
+                  @for (p of h()?.people ?? []; track p.id) {
+                    <div class="person-row"><a [routerLink]="['/app/contacts', p.id]"><strong>{{ p.name }}</strong></a>
+                      <small class="muted">{{ p.designation }} {{ p.phone }} {{ p.email }}</small></div>
+                  } @empty { <p class="muted small">No people linked. Create a person contact and choose this company.</p> }
+                </p-card>
+              }
+            </div>
+          </p-tabpanel>
+        </p-tabpanels>
+      </p-tabs>
+    }
+
+    <p-dialog header="Give portal access" [modal]="true" [(visible)]="invite" [style]="{ width: '28rem' }">
+      <form class="stack" (ngSubmit)="sendInvite()">
+        <p class="muted small">Portal users are free and only see projects where this contact is on the team.</p>
+        <label class="field"><span>Portal role</span><p-select name="role" [options]="portalRoles" [(ngModel)]="inv.role" fluid appendTo="body" /></label>
+        <label class="field"><span>Person's name</span><input pInputText name="n" [(ngModel)]="inv.name" fluid /></label>
+        <label class="field"><span>Login email</span><input pInputText name="e" [(ngModel)]="inv.email" fluid /></label>
+        <label class="field"><span>Temporary password</span><p-password name="p" [(ngModel)]="inv.password" [toggleMask]="true" fluid appendTo="body" /></label>
+        <div class="row gap right"><p-button type="submit" label="Create login" icon="pi pi-check" /></div>
+      </form>
+    </p-dialog>
+  `,
+})
+export class ContactDetailComponent implements OnInit {
+  id = input.required<string>();
+  auth = inject(AuthService);
+  api = inject(Api);
+  private router = inject(Router);
+  private confirm = inject(ConfirmationService);
+  c = signal<any>(null);
+  h = signal<any>(null);
+  all = signal<any[]>([]);
+  busy = signal(false);
+  companies = computed(() => this.all().filter((x) => x.kind === 'company' && x.id !== this.id()));
+  others = computed(() => this.all().filter((x) => x.id !== this.id()));
+  bank = computed(() => this.c()?.bank ?? {});
+  canEdit = computed(() => this.auth.can('contacts', 'rw'));
+  canEditBank = computed(() => this.canEdit() && (this.auth.can('finance', 'rw') || this.auth.can('procurement', 'rw')));
+  typeLabel = TYPE_LABEL;
+  typeOptions = Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label }));
+  complianceTypes = ['insurance', 'licence', 'certificate', 'other'];
+  portalRoles = ['client', 'vendor', 'subcontractor', 'consultant'];
+  sev = STATUS_SEVERITY;
+  warnDays = 30;
+  label = label;
+  invite = false;
+  inv: any = {};
+
+  async ngOnInit() {
+    await this.load();
+    this.all.set(await this.api.get('/contacts'));
+  }
+
+  async load() {
+    const c = await this.api.get(`/contacts/${this.id()}`);
+    c.bank = c.bank ?? {};
+    c.compliance = c.compliance ?? [];
+    this.c.set(c);
+    this.h.set(await this.api.get(`/contacts/${this.id()}/history`));
+  }
+
+  fmt(v: number) {
+    return money(v, (this.auth.company() as any)?.currency ?? 'INR');
+  }
+
+  addDoc() {
+    this.c().compliance.push({ type: 'insurance', name: '', number: '', issuer: '', issue_date: null, expiry: null });
+  }
+
+  async attach(d: any, ev: Event) {
+    const file = (ev.target as HTMLInputElement).files?.[0];
+    if (file) d.file = await this.api.upload(file);
+  }
+
+  async save() {
+    const c = { ...this.c() };
+    if (!this.canEditBank()) delete c.bank;
+    this.busy.set(true);
+    try {
+      await this.api.put(`/contacts/${this.id()}`, c, 'Contact saved');
+      await this.load();
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  remove() {
+    this.confirm.confirm({
+      header: 'Delete contact?', message: `${this.c().name} will be removed. Contacts on projects cannot be deleted.`, icon: 'pi pi-trash',
+      acceptButtonProps: { label: 'Delete', severity: 'danger' }, rejectButtonProps: { label: 'Cancel', severity: 'secondary', text: true },
+      accept: async () => {
+        await this.api.del(`/contacts/${this.id()}`, 'Contact deleted');
+        this.router.navigateByUrl('/app/contacts');
+      },
+    });
+  }
+
+  openInvite() {
+    const c = this.c();
+    this.inv = { role: PORTAL_ROLE[c.types?.[0]] ?? 'client', name: c.name, email: c.email ?? '', password: '', contact_id: c.id };
+    this.invite = true;
+  }
+
+  async sendInvite() {
+    await this.api.post('/users', this.inv, 'Portal login created');
+    this.invite = false;
+    await this.load();
+  }
+}

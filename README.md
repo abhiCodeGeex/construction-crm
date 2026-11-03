@@ -2,7 +2,7 @@
 
 Construction & interior CRM — Angular 19 + PrimeNG (Aura) · Flask · MongoDB · Docker.
 
-**Current phase: A — authentication & role-based authorization.** See [PLAN.md](PLAN.md).
+**Current phase: B — contacts, projects & per-project access** (Phase A auth is done). See [PLAN.md](PLAN.md).
 
 ## Run
 
@@ -27,9 +27,10 @@ docker compose up -d --build
 
 ```bash
 docker compose exec backend python tests/test_auth.py
+docker compose exec backend python tests/test_phase_b.py
 ```
 
-Runs every role against every permission area plus isolation, limits, deactivation, suspension and Super Admin checks.
+`test_auth.py` runs every role against every permission area plus isolation, limits, deactivation, suspension and Super Admin checks. `test_phase_b.py` covers every Phase B requirement row in PLAN.md (B1).
 
 ## Layout
 
