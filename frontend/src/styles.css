@@ -239,7 +239,7 @@ button.link { background: none; border: 0; padding: 0 .15rem; color: var(--brand
 .timeline-row:last-child { border-bottom: 0; }
 .timeline-row > i { margin-top: .2rem; color: var(--brand); }
 .strike { text-decoration: line-through; opacity: .7; }
-.today-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.today-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; align-items: start; }
 .bucket.overdue { border-top: 3px solid #dc2626 !important; }
 .bucket.today { border-top: 3px solid #f59e0b !important; }
 .bucket.upcoming { border-top: 3px solid var(--brand) !important; }

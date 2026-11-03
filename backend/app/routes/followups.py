@@ -292,10 +292,19 @@ def render(_id):
 
 
 def money(v):
+    """Same format the app shows: INR in lakh/crore grouping (₹65,00,000), other currencies in thousands."""
     if v in (None, ""):
         return None
     cur = g.company.get("currency", "INR")
-    return f"{'₹' if cur == 'INR' else cur + ' '}{v:,.0f}"
+    n = int(round(v))
+    if cur != "INR":
+        return f"{cur} {n:,}"
+    s = str(abs(n))
+    if len(s) > 3:
+        head, tail = s[:-3], s[-3:]
+        head = ",".join([head[max(i - 2, 0):i] for i in range(len(head), 0, -2)][::-1])
+        s = f"{head},{tail}"
+    return f"{'-' if n < 0 else ''}₹{s}"
 
 
 # ---------------- timelines (§16 "logged on the contact and project timeline") ----------------
