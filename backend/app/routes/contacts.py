@@ -196,7 +196,19 @@ def delete_contact(_id):
         abort(409, "This contact has a portal login. Deactivate the portal user instead.")
     if db.contacts.count_documents({"company_id": g.cid, "org_id": _id}):
         abort(409, "People are linked to this company. Move or delete them first.")
+    # leads, bids and referrals keep the relationship history (§3), so they must not point at a missing contact
+    leads = db.leads.count_documents({"company_id": g.cid, "contact_id": _id})
+    if leads:
+        abort(409, f"This contact is the enquirer on {leads} lead(s). Delete or relink those leads first.")
+    if db.bids.count_documents({"company_id": g.cid, "client_id": _id}):
+        abort(409, "This contact is the client on a bid. Change the bid's client first.")
+    referred = sum(getattr(db, c).count_documents({"company_id": g.cid, "referred_by": _id})
+                   for c in ("contacts", "projects", "leads"))
+    if referred:
+        abort(409, f"This contact referred {referred} contact(s), lead(s) or project(s); deleting it would lose that history.")
     t.delete("contacts", _id)
+    db.followups.update_many({"company_id": g.cid, "related.type": "contact", "related.id": _id, "status": "open"},
+                             {"$set": {"status": "cancelled", "outcome": "Contact deleted"}})
     return jsonify({"ok": True})
 
 

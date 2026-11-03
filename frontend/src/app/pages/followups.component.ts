@@ -58,7 +58,7 @@ import { CHANNEL_ICON, FollowupDialogComponent } from '../shared/followup-dialog
           }
         </p-tabpanel>
         <p-tabpanel value="all">
-          <div class="filters"><p-selectbutton [options]="statuses" [(ngModel)]="status" optionLabel="label" optionValue="value" (onChange)="loadAll()" /></div>
+          <div class="filters"><p-selectbutton [allowEmpty]="false" [options]="statuses" [(ngModel)]="status" optionLabel="label" optionValue="value" (onChange)="loadAll()" /></div>
           <p-table [value]="all()" size="small" [paginator]="all().length > 20" [rows]="20">
             <ng-template #header><tr><th>Follow-up</th><th>Related</th><th>Owner</th><th>Due</th><th>Priority</th><th>Status</th><th></th></tr></ng-template>
             <ng-template #body let-f>

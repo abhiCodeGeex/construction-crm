@@ -43,6 +43,8 @@ const DESIGN = ['architecture', 'interior'];
             <span class="muted">{{ p.code }}</span>
             <p-tag [value]="label(p.status)" [severity]="sev[p.status]" />
             @for (s of p.services; track s) { <span class="svc" [style.--c]="color[s]">{{ svc[s] }}</span> }
+            @if (p.lead_id && auth.can('leads')) { <a class="small" [routerLink]="['/app/leads', p.lead_id]"><i class="pi pi-bullseye"></i> From lead</a> }
+            @else if (p.bid_id && auth.can('leads')) { <a class="small" routerLink="/app/leads"><i class="pi pi-briefcase"></i> From a won bid</a> }
             @if (p.client_name) { <span class="muted"><i class="pi pi-user"></i> {{ p.client_name }}</span> }
             <p-tag [value]="p.my_access === 'edit' ? 'You can edit' : (p.can_edit_design ? 'You can edit design stages' : 'View only')"
                    [severity]="p.my_access === 'edit' ? 'success' : 'secondary'" [icon]="p.my_access === 'edit' ? 'pi pi-pencil' : 'pi pi-eye'" />
@@ -202,7 +204,7 @@ const DESIGN = ['architecture', 'interior'];
                   </td>
                   <td>
                     @if (p.my_access === 'edit' && m.kind === 'staff') {
-                      <p-selectbutton [options]="accessOptions" [ngModel]="m.access" (onChange)="updateMember(m, { access: $event.value })" optionLabel="label" optionValue="value" size="small" />
+                      <p-selectbutton [allowEmpty]="false" [options]="accessOptions" [ngModel]="m.access" (onChange)="updateMember(m, { access: $event.value })" optionLabel="label" optionValue="value" size="small" />
                     } @else { <p-tag [value]="m.access" severity="secondary" /> }
                   </td>
                   <td class="right">@if (p.my_access === 'edit' && m.project_role !== 'Client') {
@@ -216,7 +218,7 @@ const DESIGN = ['architecture', 'interior'];
           <!-- ================= ISSUES ================= -->
           <p-tabpanel value="issues">
             <div class="row-between mb">
-              <p-selectbutton [options]="issueFilter" [(ngModel)]="issueStatus" optionLabel="label" optionValue="value" (onChange)="loadIssues()" />
+              <p-selectbutton [allowEmpty]="false" [options]="issueFilter" [(ngModel)]="issueStatus" optionLabel="label" optionValue="value" (onChange)="loadIssues()" />
               <p-button label="Raise issue" icon="pi pi-plus" size="small" (onClick)="openIssue()" />
             </div>
             <p-table [value]="issues()" size="small">
@@ -261,7 +263,7 @@ const DESIGN = ['architecture', 'interior'];
                   <div class="grid3">
                     @if (!hideMoney()) { <label class="field"><span>Project value</span><p-inputnumber [(ngModel)]="f.value" [min]="0" [disabled]="!canEdit()" fluid /></label> }
                     <label class="field"><span>Area</span><p-inputnumber [(ngModel)]="f.area" [min]="0" [disabled]="!canEdit()" fluid /></label>
-                    <div class="field"><span>Unit</span><p-selectbutton [options]="units" [(ngModel)]="f.area_unit" optionLabel="label" optionValue="value" [disabled]="!canEdit()" /></div>
+                    <div class="field"><span>Unit</span><p-selectbutton [allowEmpty]="false" [options]="units" [(ngModel)]="f.area_unit" optionLabel="label" optionValue="value" [disabled]="!canEdit()" /></div>
                   </div>
                   <label class="field"><span>Description</span><textarea pTextarea rows="3" [(ngModel)]="f.description" [disabled]="!canEdit()" fluid></textarea></label>
                 </div>
@@ -345,10 +347,10 @@ const DESIGN = ['architecture', 'interior'];
 
       <p-dialog header="Add team member" [modal]="true" [(visible)]="memberDlg" [style]="{ width: '30rem' }">
         <form class="stack" (ngSubmit)="addMember()">
-          <p-selectbutton name="k" [options]="memberKinds" [(ngModel)]="nm.kind" optionLabel="label" optionValue="value" />
+          <p-selectbutton [allowEmpty]="false" name="k" [options]="memberKinds" [(ngModel)]="nm.kind" optionLabel="label" optionValue="value" />
           @if (nm.kind === 'staff') {
             <label class="field"><span>Staff member</span><p-select name="u" [options]="staffNotOnTeam()" [(ngModel)]="nm.user_id" optionLabel="label" optionValue="id" [filter]="true" fluid appendTo="body" /></label>
-            <div class="field"><span>Access on this project</span><p-selectbutton name="ac" [options]="accessOptions" [(ngModel)]="nm.access" optionLabel="label" optionValue="value" /></div>
+            <div class="field"><span>Access on this project</span><p-selectbutton [allowEmpty]="false" name="ac" [options]="accessOptions" [(ngModel)]="nm.access" optionLabel="label" optionValue="value" /></div>
           } @else {
             <label class="field"><span>Contact</span><p-select name="c" [options]="contacts()" [(ngModel)]="nm.contact_id" optionLabel="name" optionValue="id" [filter]="true" fluid appendTo="body" /></label>
           }

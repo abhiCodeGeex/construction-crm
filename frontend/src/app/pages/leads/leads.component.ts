@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
+import { CheckboxModule } from 'primeng/checkbox';
 import { CardModule } from 'primeng/card';
 import { DialogModule } from 'primeng/dialog';
 import { DragDropModule } from 'primeng/dragdrop';
@@ -18,13 +19,13 @@ import { TabsModule } from 'primeng/tabs';
 import { TagModule } from 'primeng/tag';
 import { TextareaModule } from 'primeng/textarea';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Api, SERVICE_COLOR, SERVICE_LABEL, money } from '../../core/api.service';
+import { Api, SERVICE_COLOR, SERVICE_LABEL, label, money } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { WinLoseComponent } from './win-lose.component';
 
 @Component({
   selector: 'app-leads',
-  imports: [FormsModule, DatePipe, ButtonModule, CardModule, DialogModule, DragDropModule, IconFieldModule, InputIconModule, InputNumberModule,
+  imports: [FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, DialogModule, DragDropModule, IconFieldModule, InputIconModule, InputNumberModule,
     InputTextModule, MessageModule, SelectButtonModule, SelectModule, TableModule, TabsModule, TagModule, TextareaModule, WinLoseComponent],
   template: `
     <div class="page-head">
@@ -42,7 +43,7 @@ import { WinLoseComponent } from './win-lose.component';
         <!-- ============ BOARD ============ -->
         <p-tabpanel value="board">
           <div class="filters">
-            <p-selectbutton [options]="serviceOptions()" [(ngModel)]="service" optionLabel="label" optionValue="value" (onChange)="load()" />
+            <p-selectbutton [allowEmpty]="false" [options]="serviceOptions()" [(ngModel)]="service" optionLabel="label" optionValue="value" (onChange)="load()" />
             <p-select [options]="ownerOptions()" [(ngModel)]="owner" optionLabel="name" optionValue="id" placeholder="All salespeople" [showClear]="true" (onChange)="load()" />
             <p-select [options]="meta()?.sources ?? []" [(ngModel)]="source" placeholder="All sources" [showClear]="true" (onChange)="load()" />
             <p-iconfield><p-inputicon class="pi pi-search" /><input pInputText placeholder="Search" [(ngModel)]="q" (keyup.enter)="load()" /></p-iconfield>
@@ -82,7 +83,7 @@ import { WinLoseComponent } from './win-lose.component';
         <!-- ============ LIST ============ -->
         <p-tabpanel value="list">
           <div class="filters">
-            <p-selectbutton [options]="statusOptions" [(ngModel)]="status" optionLabel="label" optionValue="value" (onChange)="loadAll()" />
+            <p-selectbutton [allowEmpty]="false" [options]="statusOptions" [(ngModel)]="status" optionLabel="label" optionValue="value" (onChange)="loadAll()" />
           </div>
           <p-table [value]="all()" size="small" [rowHover]="true" selectionMode="single" (onRowSelect)="open($event.data)" [paginator]="all().length > 20" [rows]="20">
             <ng-template #header><tr><th>Lead</th><th>Service</th><th>Stage</th><th>Source</th><th>Salesperson</th><th class="right">Budget</th><th>Created</th></tr></ng-template>
@@ -111,12 +112,22 @@ import { WinLoseComponent } from './win-lose.component';
             <ng-template #header><tr><th>Bid / tender</th><th>Due</th><th>Decision</th><th>Status</th><th class="right">Value</th><th></th></tr></ng-template>
             <ng-template #body let-b>
               <tr>
-                <td><strong>{{ b.title }}</strong><br /><small class="muted">{{ b.reference || '' }} {{ b.client_name || '' }}</small></td>
+                <td><strong>{{ b.title }}</strong><br /><small class="muted">{{ b.reference || '' }} {{ b.client_name || '' }}</small>
+                  @if (b.lead_id) { <br /><a class="small" href="" (click)="$event.preventDefault(); open({ id: b.lead_id })"><i class="pi pi-bullseye"></i> {{ b.lead_title }}</a> }</td>
                 <td [class.c-bad]="b.overdue">{{ b.due_date | date: 'mediumDate' }} @if (b.overdue) { <p-tag value="Overdue" severity="danger" /> }</td>
-                <td>@switch (b.decision) { @case ('bid') { <p-tag value="Bid" severity="info" /> } @case ('no_bid') { <p-tag value="No bid" severity="secondary" [title]="b.decision_reason" /> } @default { <p-tag value="Pending" severity="warn" /> } }</td>
-                <td><p-tag [value]="b.status" [severity]="b.status === 'won' ? 'success' : b.status === 'lost' ? 'danger' : b.status === 'submitted' ? 'info' : 'secondary'" /></td>
+                <td>@switch (b.decision) { @case ('bid') { <p-tag value="Bid" severity="info" /> } @case ('no_bid') { <p-tag value="No bid" severity="secondary" /> } @default { <p-tag value="Pending" severity="warn" /> } }</td>
+                <td>@if (b.decision === 'no_bid') { <span class="muted small">Not bidding — {{ b.decision_reason }}</span> }
+                  @else if (b.decision === 'pending') { <span class="muted small">Awaiting decision</span> }
+                  @else { <p-tag [value]="label(b.status)" [severity]="b.status === 'won' ? 'success' : b.status === 'lost' ? 'danger' : b.status === 'submitted' ? 'info' : 'secondary'" />
+                    @if (b.status === 'won' && b.project_id) { <a class="small ml" href="" (click)="$event.preventDefault(); router.navigate(['/app/projects', b.project_id])">Project {{ b.project_code }} →</a> }
+                    @if (b.status === 'lost' && b.loss_reason) { <small class="muted ml">{{ b.loss_reason }}</small> } }</td>
                 <td class="right">{{ fmt(b.value) }}</td>
-                <td class="right">@if (canEdit()) { <p-button icon="pi pi-pencil" [text]="true" [rounded]="true" (onClick)="openBid(b)" /> }</td>
+                <td class="right nowrap">@if (canEdit()) {
+                  @if (b.status === 'submitted') {
+                    <p-button label="Won" icon="pi pi-trophy" severity="success" size="small" [text]="true" (onClick)="wl().open('won', b, meta(), true)" />
+                    <p-button label="Lost" icon="pi pi-times" severity="danger" size="small" [text]="true" (onClick)="wl().open('lost', b, meta(), true)" /> }
+                  @if (b.status !== 'won' && b.status !== 'lost') { <p-button icon="pi pi-pencil" [text]="true" [rounded]="true" (onClick)="openBid(b)" /> }
+                  @else if (!(b.status === 'won' && b.project_id)) { <p-button icon="pi pi-trash" [text]="true" [rounded]="true" severity="danger" (onClick)="bf = b; deleteBid()" /> } }</td>
               </tr>
             </ng-template>
             <ng-template #emptymessage><tr><td colspan="6" class="center muted">No bids yet</td></tr></ng-template>
@@ -130,13 +141,14 @@ import { WinLoseComponent } from './win-lose.component';
       <form class="stack" (ngSubmit)="create()">
         <label class="field"><span>Lead title</span><input pInputText name="t" [(ngModel)]="f.title" placeholder="e.g. Sharma duplex – new build" fluid /></label>
         <div class="field"><span>Enquirer</span>
-          <p-selectbutton name="ck" [options]="contactModes" [(ngModel)]="contactMode" optionLabel="label" optionValue="value" /></div>
+          <p-selectbutton [allowEmpty]="false" name="ck" [options]="contactModes" [(ngModel)]="contactMode" optionLabel="label" optionValue="value" /></div>
         @if (contactMode === 'new') {
           <div class="grid3">
             <input pInputText name="cn" [(ngModel)]="f.contact_name" placeholder="Name" fluid />
             <input pInputText name="cp" [(ngModel)]="f.contact_phone" placeholder="Phone" fluid />
             <input pInputText name="ce" [(ngModel)]="f.contact_email" placeholder="Email" fluid />
           </div>
+          <label class="check"><p-checkbox name="cc" [(ngModel)]="f.contact_is_company" [binary]="true" /> The enquirer is a company (not a person)</label>
         } @else {
           <p-select name="cid" [options]="contacts()" [(ngModel)]="f.contact_id" optionLabel="name" optionValue="id" [filter]="true" placeholder="Choose contact" fluid appendTo="body" />
         }
@@ -159,7 +171,7 @@ import { WinLoseComponent } from './win-lose.component';
         <div class="grid3">
           <label class="field"><span>Location</span><input pInputText name="loc" [(ngModel)]="f.location" fluid /></label>
           <label class="field"><span>Area</span><p-inputnumber name="a" [(ngModel)]="f.area" [min]="0" fluid /></label>
-          <div class="field"><span>Unit</span><p-selectbutton name="u" [options]="units" [(ngModel)]="f.area_unit" optionLabel="label" optionValue="value" /></div>
+          <div class="field"><span>Unit</span><p-selectbutton [allowEmpty]="false" name="u" [options]="units" [(ngModel)]="f.area_unit" optionLabel="label" optionValue="value" /></div>
         </div>
         <label class="field"><span>Notes</span><textarea pTextarea name="n" rows="2" [(ngModel)]="f.notes" fluid></textarea></label>
         @if (duplicate(); as dup) {
@@ -185,12 +197,16 @@ import { WinLoseComponent } from './win-lose.component';
           <label class="field"><span>Value</span><p-inputnumber name="v" [(ngModel)]="bf.value" [min]="0" fluid /></label>
         </div>
         <div class="grid2">
-          <label class="field"><span>Client</span><p-select name="c" [options]="contacts()" [(ngModel)]="bf.client_id" optionLabel="name" optionValue="id" [filter]="true" [showClear]="true" fluid appendTo="body" /></label>
-          <label class="field"><span>Service</span><p-select name="s" [options]="serviceOptions()" [(ngModel)]="bf.service" optionLabel="label" optionValue="value" [showClear]="true" fluid appendTo="body" /></label>
+          <label class="field"><span>Client</span><p-select name="c" [options]="contacts()" [(ngModel)]="bf.client_id" optionLabel="name" optionValue="id" [filter]="true" [showClear]="true" [disabled]="!!bf.lead_id" [placeholder]="bf.lead_id ? 'From the lead' : ''" fluid appendTo="body" /></label>
+          <label class="field"><span>Service</span><p-select name="s" [options]="serviceOptions()" [(ngModel)]="bf.service" optionLabel="label" optionValue="value" [showClear]="true" [disabled]="!!bf.lead_id" fluid appendTo="body" /></label>
         </div>
-        <div class="field"><span>Bid / no-bid decision</span><p-selectbutton name="dc" [options]="decisions" [(ngModel)]="bf.decision" optionLabel="label" optionValue="value" /></div>
+        <label class="field"><span>Linked lead <small class="muted">(optional — the bid takes its client and service, and the lead is won or lost with the bid)</small></span>
+          <p-select name="ld" [options]="leadOptions()" [(ngModel)]="bf.lead_id" (onChange)="onLead()" optionLabel="title" optionValue="id" [filter]="true" [showClear]="true" placeholder="No lead" fluid appendTo="body" /></label>
+        <div class="field"><span>Bid / no-bid decision</span><p-selectbutton [allowEmpty]="false" name="dc" [options]="decisions" [(ngModel)]="bf.decision" optionLabel="label" optionValue="value" [disabled]="bf.status === 'submitted'" /></div>
         @if (bf.decision === 'no_bid') { <label class="field"><span>Why not bid?</span><input pInputText name="dr" [(ngModel)]="bf.decision_reason" fluid /></label> }
-        @if (bf.decision === 'bid') { <div class="field"><span>Status</span><p-selectbutton name="st" [options]="bidStatuses" [(ngModel)]="bf.status" optionLabel="label" optionValue="value" /></div> }
+        @if (bf.decision === 'bid') { <div class="field"><span>Status</span><p-selectbutton [allowEmpty]="false" name="st" [options]="bidStatuses" [(ngModel)]="bf.status" optionLabel="label" optionValue="value" />
+          <small class="muted">Once submitted, record the result with <strong>Won</strong> or <strong>Lost</strong> in the register.</small></div> }
+        <label class="field"><span>Notes</span><textarea pTextarea name="nt" rows="2" [(ngModel)]="bf.notes" fluid></textarea></label>
         <div class="row gap right">
           @if (bf.id) { <p-button label="Delete" severity="danger" [text]="true" (onClick)="deleteBid()" /> }
           <p-button type="submit" label="Save" icon="pi pi-check" />
@@ -198,7 +214,7 @@ import { WinLoseComponent } from './win-lose.component';
       </form>
     </p-dialog>
 
-    <app-win-lose (done)="load()" />
+    <app-win-lose (done)="load(); tab === 'bids' && loadBids()" />
   `,
 })
 export class LeadsComponent implements OnInit {
@@ -240,7 +256,9 @@ export class LeadsComponent implements OnInit {
   contactModes = [{ label: 'New enquirer', value: 'new' }, { label: 'Existing contact', value: 'existing' }];
   statusOptions = [{ label: 'Open', value: 'open' }, { label: 'Won', value: 'won' }, { label: 'Lost', value: 'lost' }, { label: 'All', value: '' }];
   decisions = [{ label: 'Pending', value: 'pending' }, { label: 'Bid', value: 'bid' }, { label: 'No bid', value: 'no_bid' }];
-  bidStatuses = [{ label: 'Preparing', value: 'preparing' }, { label: 'Submitted', value: 'submitted' }, { label: 'Won', value: 'won' }, { label: 'Lost', value: 'lost' }];
+  bidStatuses = [{ label: 'Preparing', value: 'preparing' }, { label: 'Submitted', value: 'submitted' }];
+  label = label;
+  leadOptions = signal<any[]>([]);
   wl = viewChild.required(WinLoseComponent);
 
   async ngOnInit() {
@@ -327,14 +345,24 @@ export class LeadsComponent implements OnInit {
   async openBid(b?: any) {
     if (!this.contacts().length && this.auth.can('contacts')) this.contacts.set(await this.api.get('/contacts'));
     this.bf = b ? { ...b } : { title: '', reference: '', due_date: new Date().toISOString().slice(0, 10), value: null, client_id: null,
-      service: this.service, decision: 'pending', status: 'preparing', decision_reason: '' };
+      service: this.service, decision: 'pending', status: 'preparing', decision_reason: '', lead_id: null, notes: '' };
+    const open = await this.api.get('/leads?status=open');
+    if (this.bf.lead_id && !open.some((l: any) => l.id === this.bf.lead_id)) open.unshift({ id: this.bf.lead_id, title: this.bf.lead_title });
+    this.leadOptions.set(open);
     this.bidDlg = true;
+  }
+
+  onLead() {
+    const l = this.leadOptions().find((x) => x.id === this.bf.lead_id);
+    if (l?.service) this.bf.service = l.service;
+    this.bf.client_id = null;
   }
 
   async saveBid() {
     const b = this.bf;
     const body = { title: b.title, reference: b.reference, due_date: b.due_date, value: b.value, client_id: b.client_id, service: b.service,
-      decision: b.decision, decision_reason: b.decision_reason, status: b.decision === 'bid' ? b.status : 'preparing' };
+      lead_id: b.lead_id || null, notes: b.notes, decision: b.decision, decision_reason: b.decision_reason,
+      status: b.decision === 'bid' ? b.status : 'preparing' };
     if (b.id) await this.api.put(`/bids/${b.id}`, body, 'Bid saved');
     else await this.api.post('/bids', body, 'Bid added');
     this.bidDlg = false;

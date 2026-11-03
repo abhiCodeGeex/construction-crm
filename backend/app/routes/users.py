@@ -2,11 +2,35 @@
 from flask import Blueprint, request, jsonify, abort, g
 
 from .. import tenancy as t
-from ..db import db
+from ..db import db, oid
 from ..security import api, hash_password, INTERNAL_ROLES, EXTERNAL_ROLES
 from ..services.subscription import check_user_limit, limits, usage
 
 bp = Blueprint("users", __name__)
+
+
+def open_work(uid):
+    """Work that would be orphaned if this user stopped logging in."""
+    tasks = [(p, tk) for p in db.projects.find({"company_id": g.cid, "stages.tasks.assignee_id": uid})
+             for s in p.get("stages", []) for tk in s.get("tasks", []) if tk.get("assignee_id") == uid and tk.get("status") != "done"]
+    return {"leads": db.leads.count_documents({"company_id": g.cid, "owner_id": uid, "status": "open"}),
+            "followups": db.followups.count_documents({"company_id": g.cid, "owner_id": uid, "status": "open"}),
+            "tasks": len(tasks)}
+
+
+def hand_over(uid, to):
+    """Open leads and follow-ups move to `to`; open tasks move where `to` is on the project team, else unassigned."""
+    db.leads.update_many({"company_id": g.cid, "owner_id": uid, "status": "open"},
+                         {"$set": {"owner_id": str(to["_id"]), "owner_name": to["name"]}})
+    db.followups.update_many({"company_id": g.cid, "owner_id": uid, "status": "open"},
+                             {"$set": {"owner_id": str(to["_id"]), "owner_name": to["name"]}})
+    for p in db.projects.find({"company_id": g.cid, "stages.tasks.assignee_id": uid}):
+        on_team = any(m.get("user_id") == str(to["_id"]) for m in p.get("team", []))
+        for s in p.get("stages", []):
+            for tk in s.get("tasks", []):
+                if tk.get("assignee_id") == uid and tk.get("status") != "done":
+                    tk["assignee_id"], tk["assignee_name"] = (str(to["_id"]), to["name"]) if on_team else (None, None)
+        db.projects.update_one({"_id": p["_id"]}, {"$set": {"stages": p["stages"]}})
 
 
 @bp.get("/users")
@@ -61,6 +85,7 @@ def update_user(_id):
     d = request.get_json(force=True) or {}
     user = t.get("users", _id)
     changes = {k: d[k] for k in ("name", "phone") if k in d}
+    handover = None
     if "role" in d and d["role"] != user["role"]:
         allowed = INTERNAL_ROLES if user["kind"] == "staff" else EXTERNAL_ROLES
         if d["role"] not in allowed:
@@ -76,6 +101,17 @@ def update_user(_id):
         if d["active"] and user.get("active") is False and user["kind"] == "staff" and not user.get("whatsapp_only"):
             check_user_limit()
         changes["active"] = bool(d["active"])
+        if not d["active"] and user.get("active") is not False and user["kind"] == "staff":
+            work = open_work(_id)
+            if any(work.values()):
+                if not d.get("handover_to"):
+                    abort(409, f"{user['name']} still has {work['leads']} open lead(s), {work['followups']} open "
+                               f"follow-up(s) and {work['tasks']} open task(s). Choose who takes them over.")
+                if d["handover_to"] == _id:
+                    abort(400, "Hand the work over to someone else")
+                to = db.users.find_one({"_id": oid(d["handover_to"]), "company_id": g.cid, "kind": "staff",
+                                        "active": {"$ne": False}}) or abort(400, "Hand over to an active staff user")
+                handover = (work, to)
     if d.get("password"):
         if len(d["password"]) < 6:
             abort(400, "Password must be at least 6 characters")
@@ -83,7 +119,18 @@ def update_user(_id):
     if user["role"] == "owner" and (changes.get("active") is False or changes.get("role", "owner") != "owner"):
         if db.users.count_documents({"company_id": g.cid, "role": "owner", "active": {"$ne": False}}) <= 1:
             abort(409, "A company needs at least one active owner")
-    return jsonify(t.out(t.update("users", _id, changes)))
+    updated = t.update("users", _id, changes)
+    if handover:
+        hand_over(_id, handover[1])
+        t.audit("update", "users", _id, note=f"Open work handed over to {handover[1]['name']}: {handover[0]}")
+    return jsonify(t.out(updated))
+
+
+@bp.get("/users/<_id>/open-work")
+@api("users", write=False)
+def user_open_work(_id):
+    t.get("users", _id)
+    return jsonify(open_work(_id))
 
 
 @bp.get("/users/summary")

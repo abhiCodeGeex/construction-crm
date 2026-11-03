@@ -29,9 +29,11 @@ docker compose up -d --build
 docker compose exec backend python tests/test_auth.py
 docker compose exec backend python tests/test_phase_b.py
 docker compose exec backend python tests/test_phase_c.py
+docker compose exec backend python tests/test_e2e_flow.py
+docker compose exec backend python tests/test_flow_gaps.py
 ```
 
-`test_auth.py` runs every role against every permission area plus isolation, limits, deactivation, suspension and Super Admin checks. `test_phase_b.py` covers every Phase B requirement row in PLAN.md (B1). `test_phase_c.py` covers every Phase C row (C1).
+`test_auth.py` runs every role against every permission area plus isolation, limits, deactivation, suspension and Super Admin checks. `test_phase_b.py` covers every Phase B requirement row in PLAN.md (B1). `test_phase_c.py` covers every Phase C row (C1). `test_e2e_flow.py` walks one enquiry through to a delivered project. `test_flow_gaps.py` covers the hand-offs between modules (PLAN.md C2b). Every suite removes the records it creates (test logins and signed-up test companies included), so the demo data stays clean between runs.
 
 ## Layout
 

@@ -159,6 +159,18 @@ for x in call("GET", "/users", token=nest)[1]:
     if x["email"] not in ("owner@nest.test", "designer@nest.test") and x.get("active"):
         call("PUT", f"/users/{x['id']}", {"active": False}, token=nest)
 
+# users and companies have no delete endpoint: remove this run's test logins and signed-up test companies directly
+from pymongo import MongoClient
+mdb = MongoClient(os.getenv("MONGO_URI", "mongodb://mongo:27017"))[os.getenv("MONGO_DB", "buildsuite")]
+nest_co = mdb.companies.find_one({"name": "Nest Interiors"})
+mdb.users.delete_many({"company_id": str(nest_co["_id"]), "email": {"$regex": r"^n\d+\.\d+@nest\.test$"}})
+for co in mdb.companies.find({"name": "Test Signup Co"}):
+    for name in mdb.list_collection_names():
+        if name not in ("companies", "plans", "schema_migrations"):
+            mdb[name].delete_many({"company_id": str(co["_id"])})
+    mdb.companies.delete_one({"_id": co["_id"]})
+check("cleanup: no test logins left", not mdb.users.count_documents({"email": {"$regex": r"^(n\d+\.\d+@nest|signup\d+@test)\.test$"}}))
+
 print(f"passed: {passed}  failed: {len(failures)}")
 for f in failures:
     print("  FAIL", f)

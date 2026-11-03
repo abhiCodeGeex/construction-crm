@@ -287,6 +287,8 @@ def sync_client(team, old_client, new_client, name):
     if new_client and not any(m.get("contact_id") == new_client and m.get("project_role") == "Client" for m in team):
         team.append({"id": t.sid(), "contact_id": new_client, "name": name, "project_role": "Client",
                      "access": "view", "kind": "external"})
+    if new_client:  # a contact that becomes a project's client is listed under Clients from then on
+        db.contacts.update_one({"_id": oid(new_client), "company_id": g.cid}, {"$addToSet": {"types": "client"}})
     return team
 
 
@@ -377,9 +379,17 @@ def update_project(_id):
 def delete_project(_id):
     if g.role != "owner":
         abort(403, "Only the owner can delete a project")
-    t.get("projects", _id)
+    p = t.get("projects", _id)
     t.delete("projects", _id)
     db.project_issues.delete_many({"company_id": g.cid, "project_id": _id})
+    # nothing may keep pointing at the deleted project: follow-ups close, the won lead and bid keep their result
+    db.followups.update_many({"company_id": g.cid, "related.type": "project", "related.id": _id, "status": "open"},
+                             {"$set": {"status": "cancelled", "outcome": "Project deleted"}})
+    note = {"id": t.sid(), "type": "note", "text": f"Project {p.get('code')} was deleted", "at": t.now(),
+            "by": g.user.get("name"), "by_id": g.uid}
+    db.leads.update_many({"company_id": g.cid, "project_id": _id},
+                         {"$set": {"project_id": None}, "$push": {"activities": note}})
+    db.bids.update_many({"company_id": g.cid, "project_id": _id}, {"$set": {"project_id": None}})
     return jsonify({"ok": True})
 
 

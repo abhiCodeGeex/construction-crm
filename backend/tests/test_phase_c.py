@@ -267,11 +267,14 @@ b1 = expect("§2.6 create bid", call("POST", "/bids", {"title": f"Tender A {RUN}
 b2 = expect("§2.6 create bid 2", call("POST", "/bids", {"title": f"Tender B {RUN}", "due_date": day(9), "decision": "bid"}, T["sales"]), 201)
 created_bids += [b1["id"], b2["id"]]
 check("§2.6 overdue flag", b1["overdue"] and not b2["overdue"])
-expect("§2.6 result needs submission first", call("PUT", f"/bids/{b1['id']}", {"status": "won"}, T["sales"]), 400)
+expect("§2.6 result is not set by editing", call("PUT", f"/bids/{b1['id']}", {"status": "won"}, T["sales"]), 400)
+expect("§2.6 result needs submission first", call("POST", f"/bids/{b1['id']}/won", {"pm_id": staff["pm"]}, T["sales"]), 400)
 before = call("GET", "/bids", token=T["sales"])[1]
-for b, res in ((b1, "won"), (b2, "lost")):
-    call("PUT", f"/bids/{b['id']}", {"status": "submitted"}, T["sales"])
-    expect(f"§2.6 record {res}", call("PUT", f"/bids/{b['id']}", {"status": res}, T["sales"]), 200)
+call("PUT", f"/bids/{b1['id']}", {"status": "submitted", "client_id": L1["contact_id"]}, T["sales"])
+wb = expect("§2.6 record won", call("POST", f"/bids/{b1['id']}/won", {"pm_id": staff["pm"]}, T["sales"]), 200)
+created_projects.append(wb.get("project_id"))
+call("PUT", f"/bids/{b2['id']}", {"status": "submitted"}, T["sales"])
+expect("§2.6 record lost", call("POST", f"/bids/{b2['id']}/lost", {"reason": "Price too high"}, T["sales"]), 200)
 after = call("GET", "/bids", token=T["sales"])[1]
 check("§2.6 hit rate = won / decided", after["decided"] == before["decided"] + 2 and after["won"] == before["won"] + 1
       and after["hit_rate"] == round(after["won"] / after["decided"] * 100, 1), after)
@@ -317,10 +320,10 @@ check("§16 home shows my follow-ups", "followups" in hm and hm["followups"]["ov
 # ---------------- cleanup ----------------
 for f in created_fu:
     call("DELETE", f"/followups/{f}", token=T["owner"])
-for b in created_bids:
-    call("DELETE", f"/bids/{b}", token=T["sales"])
 for p in created_projects:
     call("DELETE", f"/projects/{p}", token=T["owner"])
+for b in created_bids:
+    call("DELETE", f"/bids/{b}", token=T["sales"])
 for x in created_leads:
     call("PUT", f"/leads/{x}", {}, T["owner"])
     call("DELETE", f"/leads/{x}", token=T["owner"])

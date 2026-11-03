@@ -171,5 +171,29 @@ Out of scope: automatic sequences / automation rules and "proposal viewed" alert
 * **Templates**: managed in Settings (Owner); used by anyone with follow-ups access.
 * **Pipeline edits**: a stage that still has open leads cannot be removed.
 
+## C2b. Flow hand-offs between modules (audit, closes every open end)
+Each module now hands its record on to the next, and nothing is left pointing at a deleted record or an inactive user. Covered by [backend/tests/test_flow_gaps.py](backend/tests/test_flow_gaps.py).
+
+| Flow | Rule |
+|---|---|
+| Bid result | The result is recorded with **Won / Lost** on a *submitted* bid, never by editing (edit only moves *preparing → submitted*). Won and lost bids are read-only. |
+| Bid won, no lead | A project is created straight from the bid: client, service and value, with a chosen PM (same PM rule as a lead win). Client and service are required. The project keeps `bid_id`. |
+| Bid won, linked lead | The lead is won through the same path as *Mark as won* (project valued at the bid). If the lead was already won, the bid links that project and no second project is created. A lost linked lead must be reopened or unlinked first. |
+| Bid lost | Needs a loss reason from the company list. A linked open lead is lost with the same reason (its follow-ups are cancelled). |
+| Lead won / lost directly | Its *submitted* bids take the same result (won → linked to the project). Preparing bids are left alone. |
+| Bid ↔ lead link | Optional, to an open lead only. The bid takes the lead's client and service. The lead page lists its bids; the register links to the lead and to the won project. A no-bid shows *Not bidding — reason*, a pending one *Awaiting decision*. |
+| Project origin | The project page links back to the lead (or notes the won bid) it came from. |
+| Project deleted | Its open follow-ups are cancelled; the won lead and bid keep their result but drop the link (lead activity notes the deletion), so the lead can then be deleted. |
+| Lead deleted | Linked bids are unlinked. |
+| Bid deleted | Not while it is won and its project exists. |
+| Contact deleted | Refused while the contact is the enquirer on a lead, the client on a bid, or the referrer of a contact, lead or project (relationship history, §3). Its open follow-ups are cancelled. |
+| Project client | A contact set as a project's client gets the *client* type, so it is listed under Clients. |
+| Lead reassigned | The previous salesperson's open follow-ups on that lead move to the new salesperson. |
+| New lead refused | Nothing is saved: the enquirer's contact is created only after the whole lead is valid. |
+| New enquirer | Can be marked as a company (not a person) on New lead. |
+| User deactivated | If the user has open leads, follow-ups or tasks, an active colleague must be chosen: leads and follow-ups move to them; tasks move to them where they are on the project team, otherwise the task is unassigned for the PM. Logged in the audit. |
+| Website form | Closed (404) when the company is read-only or cancelled, like every other write. |
+| Choice buttons | Single-choice button groups (decision, status, unit, priority, access…) cannot be clicked back to empty, so a form never sends a blank required value. |
+
 ## C3. Next phase (proposed, awaiting approval)
 Phase D — Proposals & estimates → contract with payment schedule.

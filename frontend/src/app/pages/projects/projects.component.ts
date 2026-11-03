@@ -73,7 +73,7 @@ import { AuthService } from '../../core/auth.service';
         <div class="grid3">
           <label class="field"><span>Project value</span><p-inputnumber name="value" [(ngModel)]="f.value" mode="decimal" [min]="0" fluid /></label>
           <label class="field"><span>Area</span><p-inputnumber name="area" [(ngModel)]="f.area" [min]="0" fluid /></label>
-          <label class="field"><span>Unit</span><p-selectbutton name="unit" [options]="units" [(ngModel)]="f.area_unit" optionLabel="label" optionValue="value" /></label>
+          <label class="field"><span>Unit</span><p-selectbutton [allowEmpty]="false" name="unit" [options]="units" [(ngModel)]="f.area_unit" optionLabel="label" optionValue="value" /></label>
         </div>
         <p class="muted small">Stages, tasks timeline and milestones are created from your company's default template for each service. You are added as Project Manager.</p>
         <div class="row gap right">

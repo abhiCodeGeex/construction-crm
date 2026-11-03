@@ -31,7 +31,7 @@ import { WinLoseComponent } from './win-lose.component';
           <div class="row gap">
             <span class="svc" [style.--c]="color[l.service]">{{ svc[l.service] }}</span>
             @switch (l.status) {
-              @case ('won') { <p-tag value="Won" severity="success" icon="pi pi-trophy" /> <a [routerLink]="['/app/projects', l.project_id]">Project {{ l.project_code }} →</a> }
+              @case ('won') { <p-tag value="Won" severity="success" icon="pi pi-trophy" /> @if (l.project_id) { <a [routerLink]="['/app/projects', l.project_id]">Project {{ l.project_code }} →</a> } @else { <span class="muted">project {{ l.project_code }} was deleted</span> } }
               @case ('lost') { <p-tag value="Lost" severity="danger" /> <span class="muted">{{ l.loss_reason }}{{ l.loss_note ? ' — ' + l.loss_note : '' }}</span> }
               @default { <p-tag [value]="l.stage" severity="info" /> }
             }
@@ -77,11 +77,25 @@ import { WinLoseComponent } from './win-lose.component';
             } @empty { <p class="muted small">No follow-ups yet.</p> }
           </p-card>
 
+          @if (l.bids?.length) {
+            <p-card>
+              <ng-template #title>Bids / tenders</ng-template>
+              @for (b of l.bids; track b.id) {
+                <div class="ms-row">
+                  <i class="pi pi-briefcase"></i>
+                  <div class="grow"><strong>{{ b.title }}</strong><br /><small class="muted">{{ b.reference || '' }} due {{ b.due_date | date: 'd MMM y' }}</small></div>
+                  <p-tag [value]="b.decision === 'no_bid' ? 'Not bidding' : b.decision === 'pending' ? 'Awaiting decision' : b.status" [severity]="b.status === 'won' ? 'success' : b.status === 'lost' ? 'danger' : 'secondary'" />
+                </div>
+              }
+              <small class="muted">Recording a submitted bid as won or lost in the register closes this lead the same way.</small>
+            </p-card>
+          }
+
           <p-card>
             <ng-template #title>Activity log</ng-template>
             @if (l.status === 'open' && canEdit()) {
               <div class="stack mb">
-                <p-selectbutton [options]="activityTypes()" [(ngModel)]="act.type" optionLabel="label" optionValue="value" />
+                <p-selectbutton [allowEmpty]="false" [options]="activityTypes()" [(ngModel)]="act.type" optionLabel="label" optionValue="value" />
                 <textarea pTextarea rows="2" [(ngModel)]="act.text" placeholder="What happened? Call notes, meeting minutes, WhatsApp summary…" fluid></textarea>
                 <div class="row gap">
                   <input pInputText [(ngModel)]="act.outcome" placeholder="Outcome (optional)" class="grow" />
@@ -125,7 +139,7 @@ import { WinLoseComponent } from './win-lose.component';
               <div class="grid3">
                 <label class="field"><span>Budget</span><p-inputnumber [(ngModel)]="f.budget" [min]="0" [disabled]="ro()" fluid /></label>
                 <label class="field"><span>Area</span><p-inputnumber [(ngModel)]="f.area" [min]="0" [disabled]="ro()" fluid /></label>
-                <div class="field"><span>Unit</span><p-selectbutton [options]="units" [(ngModel)]="f.area_unit" optionLabel="label" optionValue="value" [disabled]="ro()" /></div>
+                <div class="field"><span>Unit</span><p-selectbutton [allowEmpty]="false" [options]="units" [(ngModel)]="f.area_unit" optionLabel="label" optionValue="value" [disabled]="ro()" /></div>
               </div>
               <label class="field"><span>Notes</span><textarea pTextarea rows="3" [(ngModel)]="f.notes" [disabled]="ro()" fluid></textarea></label>
               <small class="muted">Created {{ l.created_at | date: 'medium' }}{{ l.first_response_at ? ' · first response ' + (l.first_response_at | date: 'medium') : ' · not yet responded' }}</small>
@@ -197,7 +211,7 @@ export class LeadDetailComponent implements OnInit {
     this.form.set({ title: l.title, service: l.service, owner_id: l.owner_id, source: l.source, source_detail: l.source_detail,
       referred_by: l.referred_by, project_type: l.project_type, timeline: l.timeline, location: l.location, budget: l.budget,
       area: l.area, area_unit: l.area_unit ?? 'sqft', notes: l.notes });
-    const rid = l.status === 'won' ? l.project_id : l.id;
+    const rid = l.status === 'won' && l.project_id ? l.project_id : l.id;
     if (this.auth.can('followups')) this.followups.set(await this.api.get(`/followups?related_id=${rid}`));
   }
 

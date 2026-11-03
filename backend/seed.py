@@ -198,9 +198,10 @@ def demo_leads():
     call(sales, "POST", "/bids", {"title": "Municipal school block – tender", "service": "construction", "due_date": day(12),
                                   "value": 14500000, "decision": "bid", "status": "preparing", "reference": "BBMP/2026/114"})
     b = call(sales, "POST", "/bids", {"title": "Tech park lobby fit-out", "service": "interior", "due_date": day(-20),
-                                      "value": 7800000, "decision": "bid", "status": "preparing"})
+                                      "value": 7800000, "decision": "bid", "status": "preparing",
+                                      "client_id": consultant})
     call(sales, "PUT", f"/bids/{b['id']}", {"status": "submitted"})
-    call(sales, "PUT", f"/bids/{b['id']}", {"status": "won"})
+    call(sales, "POST", f"/bids/{b['id']}/won", {"pm_id": uid["pm"]})
     call(sales, "POST", "/bids", {"title": "Hospital wing – design & build", "service": "construction", "due_date": day(5),
                                   "decision": "no_bid", "decision_reason": "Outside our capacity this quarter"})
 

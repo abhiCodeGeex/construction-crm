@@ -128,6 +128,22 @@ interface Summary { limits: { plan: string; users: number | null }; usage: { use
         </form>
       }
     </p-dialog>
+
+    <p-dialog header="Hand over open work" [modal]="true" [(visible)]="handDlg" [style]="{ width: '30rem' }" [breakpoints]="{ '640px': '95vw' }">
+      @if (hand(); as h) {
+        <div class="stack">
+          <p>{{ h.user.name }} still has <strong>{{ h.work.leads }}</strong> open lead(s), <strong>{{ h.work.followups }}</strong> open follow-up(s)
+            and <strong>{{ h.work.tasks }}</strong> open task(s). Choose who takes them over before deactivating.</p>
+          <label class="field"><span>Hand over to</span>
+            <p-select [options]="handTargets()" [(ngModel)]="h.to" optionLabel="name" optionValue="id" placeholder="Choose a colleague" fluid appendTo="body" /></label>
+          <small class="muted">Leads and follow-ups move to this person. Tasks move to them on projects where they are on the team; elsewhere the task is left unassigned for the PM to reassign.</small>
+          <div class="row gap right">
+            <p-button label="Cancel" severity="secondary" [text]="true" (onClick)="handDlg = false" />
+            <p-button label="Hand over & deactivate" icon="pi pi-ban" severity="danger" [disabled]="!h.to" [loading]="busy()" (onClick)="deactivate(h.user, h.to)" />
+          </div>
+        </div>
+      }
+    </p-dialog>
   `,
 })
 export class UsersComponent implements OnInit {
@@ -142,6 +158,9 @@ export class UsersComponent implements OnInit {
   error = signal('');
   busy = signal(false);
   canEdit = computed(() => this.auth.can('users', 'rw'));
+  hand = signal<any>(null);
+  handDlg = false;
+  handTargets = computed(() => this.users().filter((x) => x.kind === 'staff' && x.active !== false && x.id !== this.hand()?.user.id));
 
   ngOnInit() {
     this.load();
@@ -209,8 +228,21 @@ export class UsersComponent implements OnInit {
     }
   }
 
-  toggle(u: User) {
+  async toggle(u: User) {
     const activate = u.active === false;
+    if (!activate && u.kind === 'staff') {
+      try {
+        const work = await firstValueFrom(this.http.get<any>(`/api/users/${u.id}/open-work`));
+        if (work.leads || work.followups || work.tasks) {
+          this.hand.set({ user: u, work, to: null });
+          this.handDlg = true;
+          return;
+        }
+      } catch (e) {
+        this.toast.add({ severity: 'error', summary: 'Could not check open work', detail: errorText(e) });
+        return;
+      }
+    }
     this.confirm.confirm({
       header: activate ? 'Activate user' : 'Deactivate user',
       message: activate ? `Let ${u.name} sign in again?` : `${u.name} will be signed out immediately and cannot sign in.`,
@@ -227,5 +259,19 @@ export class UsersComponent implements OnInit {
         }
       },
     });
+  }
+
+  async deactivate(u: User, to: string) {
+    this.busy.set(true);
+    try {
+      await firstValueFrom(this.http.put(`/api/users/${u.id}`, { active: false, handover_to: to }));
+      this.handDlg = false;
+      this.toast.add({ severity: 'success', summary: 'User deactivated', detail: `Open work handed over` });
+      await this.load();
+    } catch (e) {
+      this.toast.add({ severity: 'error', summary: 'Not changed', detail: errorText(e) });
+    } finally {
+      this.busy.set(false);
+    }
   }
 }

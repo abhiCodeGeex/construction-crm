@@ -11,6 +11,13 @@ import urllib.request
 from datetime import date, timedelta
 
 BASE = os.getenv("API", "http://localhost:5000/api")
+
+
+def drop_test_logins(emails):
+    """Users have no delete endpoint (deactivation keeps history), so tests remove their own test logins directly."""
+    from pymongo import MongoClient
+    MongoClient(os.getenv("MONGO_URI", "mongodb://mongo:27017"))[os.getenv("MONGO_DB", "buildsuite")].users.delete_many({"email": {"$in": emails}})
+
 PW = "Demo@123"
 RUN = str(int(time.time() * 1000))[-8:]
 failures, passed = [], 0
@@ -371,11 +378,14 @@ for x in [pid, P2["id"], P3["id"], P4["id"], P5["id"]] + [p["id"] for p in call(
 for x in nest_projects + [p["id"] for p in call("GET", "/projects", token=nest)[1] if RUN in p["name"]]:
     call("DELETE", f"/projects/{x}", token=nest)
 check("§1 only owner deletes projects", call("DELETE", f"/projects/{pid}", token=T["pm"])[0] in (403, 404))
+drop_test_logins([f"ref{RUN}@test.test"])
 for c in call("GET", f"/contacts?q={RUN}", token=T["owner"])[1]:
     if c["kind"] == "person":
         call("DELETE", f"/contacts/{c['id']}", token=T["owner"])
-for c in call("GET", f"/contacts?q={RUN}", token=T["owner"])[1]:
-    call("DELETE", f"/contacts/{c['id']}", token=T["owner"])  # portal-linked ones stay (409) by design
+for _ in range(3):  # referrers go after the contacts they referred
+    for c in call("GET", f"/contacts?q={RUN}", token=T["owner"])[1]:
+        call("DELETE", f"/contacts/{c['id']}", token=T["owner"])
+check("cleanup: no test contacts left", not call("GET", f"/contacts?q={RUN}", token=T["owner"])[1])
 
 print(f"passed: {passed}  failed: {len(failures)}")
 for f in failures:

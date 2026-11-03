@@ -39,7 +39,7 @@ export const CHANNEL_ICON: Record<string, string> = { call: 'pi pi-phone', email
             <label class="field"><span>Due date</span><input pInputText type="date" name="due" [(ngModel)]="f.due" fluid /></label>
             <label class="field"><span>Channel</span><p-select name="c" [options]="channels" [(ngModel)]="f.channel" optionLabel="label" optionValue="value" [showClear]="true" fluid appendTo="body" /></label>
           </div>
-          <div class="field"><span>Priority</span><p-selectbutton name="p" [options]="priorities" [(ngModel)]="f.priority" optionLabel="label" optionValue="value" /></div>
+          <div class="field"><span>Priority</span><p-selectbutton [allowEmpty]="false" name="p" [options]="priorities" [(ngModel)]="f.priority" optionLabel="label" optionValue="value" /></div>
           <label class="field"><span>Owner</span><p-select name="o" [options]="staff()" [(ngModel)]="f.owner_id" optionLabel="name" optionValue="id" [filter]="true" fluid appendTo="body" /></label>
           <label class="field"><span>Notes</span><textarea pTextarea name="n" rows="2" [(ngModel)]="f.notes" fluid></textarea></label>
           @if (f.related?.label) { <small class="muted"><i class="pi pi-link"></i> {{ f.related.type }}: {{ f.related.label }}</small> }
