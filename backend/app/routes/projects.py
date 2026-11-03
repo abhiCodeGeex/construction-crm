@@ -317,25 +317,33 @@ def list_projects():
     return jsonify([present(p, full=False) for p in t.find("projects", q, sort=[("created_at", -1)])])
 
 
-@bp.post("/projects")
-@api("projects")
-def create_project():
-    dat = request.get_json(force=True) or {}
+def new_project(dat, pm_uid, extra_team=(), extra_fields=None):
+    """Create a project with `pm_uid` as Project Manager (edit). Used by the projects API and lead conversion."""
     doc = clean_project(dat)
     doc.setdefault("status", "active")
     if doc["status"] in OPEN_STATUSES:
         check_project_limit()
-    me = db.users.find_one({"_id": oid(g.uid)})
+    pm = staff_name(pm_uid)
     doc["code"] = t.next_number("PRJ", "PRJ")
     doc["stages"] = build_stages(doc["services"], doc["start"])
-    doc["team"] = [{"id": t.sid(), "user_id": g.uid, "name": me["name"], "project_role": "Project Manager",
+    doc["team"] = [{"id": t.sid(), "user_id": pm_uid, "name": pm["name"], "project_role": "Project Manager",
                     "access": "edit", "kind": "staff"}]
+    for m in extra_team:
+        if not any(x.get("user_id") == m["user_id"] for x in doc["team"]):
+            doc["team"].append({"id": t.sid(), "kind": "staff", **m})
     doc["team"] = sync_client(doc["team"], None, doc.get("client_id"), doc.get("client_name"))
     doc.setdefault("area_unit", "sqft")
+    doc.update(extra_fields or {})
     normalize(doc)
     ends = [s["end"] for s in doc["stages"] if s.get("end")]
     doc["planned_end"] = max(ends) if ends else None
-    return jsonify(present(t.insert("projects", doc))), 201
+    return t.insert("projects", doc)
+
+
+@bp.post("/projects")
+@api("projects")
+def create_project():
+    return jsonify(present(new_project(request.get_json(force=True) or {}, g.uid))), 201
 
 
 @bp.get("/projects/<_id>")
@@ -837,6 +845,14 @@ def home():
                                          "end": tk.get("end"), "late": bool(tk.get("end") and tk["end"] < today)})
         data.update(projects=counts, my_tasks=sorted(my_tasks, key=lambda r: r["end"] or "9999")[:10],
                     milestones=next_milestones([p for p in projects if p.get("status") in OPEN_STATUSES], 8))
+    if can("followups"):
+        mine = {"company_id": g.cid, "owner_id": g.uid, "status": "open"}
+        data["followups"] = {"overdue": db.followups.count_documents({**mine, "due": {"$lt": today}}),
+                             "today": db.followups.count_documents({**mine, "due": today})}
+    if can("leads"):
+        data["leads"] = {"open": db.leads.count_documents({"company_id": g.cid, "status": "open"}),
+                         "mine": db.leads.count_documents({"company_id": g.cid, "status": "open", "owner_id": g.uid}),
+                         "unassigned": db.leads.count_documents({"company_id": g.cid, "status": "open", "owner_id": None})}
     if can("contacts"):
         from .contacts import compliance_status
         alerts = 0

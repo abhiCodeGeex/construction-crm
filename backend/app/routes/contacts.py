@@ -216,6 +216,8 @@ def history(_id):
                          for c in db.contacts.find({"company_id": g.cid, "referred_by": _id})]
     referred_projects = [{"id": str(p["_id"]), "name": p["name"], "status": p.get("status"), "value": p.get("value")}
                          for p in db.projects.find({"company_id": g.cid, "referred_by": _id})]
+    referred_leads = [{"id": str(x["_id"]), "title": x["title"], "status": x["status"], "budget": x.get("budget"),
+                       "won_value": x.get("won_value")} for x in db.leads.find({"company_id": g.cid, "referred_by": _id})]
     people = [{"id": str(c["_id"]), "name": c["name"], "designation": c.get("designation"), "email": c.get("email"),
                "phone": c.get("phone")} for c in db.contacts.find({"company_id": g.cid, "org_id": _id})]
     referrer = t.get("contacts", contact["referred_by"], required=False) if contact.get("referred_by") else None
@@ -227,6 +229,9 @@ def history(_id):
         "referred_value": None if g.hide_costs else sum(p["value"] or 0 for p in referred_projects
                                                         if p["status"] != "cancelled"),
         "portal_user": t.out(portal) if portal else None,
+        "referred_leads": referred_leads,
+        "referred_leads_won_value": None if g.hide_costs else sum(x["won_value"] or 0 for x in referred_leads
+                                                                  if x["status"] == "won"),
     })
 
 

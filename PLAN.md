@@ -138,5 +138,38 @@ Out of scope (later phases): leads (C), proposals/budgets from estimates (D), co
 * **Project status**: planning, active, on_hold, completed, cancelled. Active-project count is what the plan limit counts (planning + active).
 * **Visibility**: creator is added to the team as Project Manager with edit access.
 
-## B3. Next phase (proposed, awaiting approval)
-Phase C — Leads & pipeline; a won lead creates a project from Phase B.
+---
+
+# Phase C — Leads, pipeline, bids & follow-ups
+
+Source: requirements §2 (leads & sales pipeline) and the MVP line of §16: *"Follow-up tasks, reminders and message templates (automatic sequences in Phase 2)"*.
+Out of scope: automatic sequences / automation rules and "proposal viewed" alerts (§16 Phase 2 and Phase D), sending email/SMS/WhatsApp through a provider (Phase G), approvals/payments waiting longest (Phases D–E).
+
+## C1. Requirement → implementation → test
+
+| Req | Requirement line | Implementation | Test |
+|---|---|---|---|
+| §2.0 | Every enquiry captured **once**, tracked until won project or recorded loss | Lead linked to a contact (existing, or created from the lead's name/phone/email). Creating a lead whose phone/email matches an **open** lead returns 409 with that lead unless "save anyway". Status: open → won (project created) or lost (reason required) | duplicate 409; force; won → project; lost needs reason |
+| §2.1 | Sources: website form, referral, Houzz/portals, ads, walk-in, repeat client | `source` limited to these six (+ `source_detail`, e.g. portal or campaign). Referral requires *referred by* contact. Repeat client requires an existing contact. **Website form**: public, per-company form link + embeddable HTML; honeypot + rate limit | invalid source 400; referral w/o referrer 400; public form creates lead |
+| §2.2 | Details: project type (new build, renovation, fit-out, interior), location, area (sq ft / m²), budget, timeline | `project_type` (4 values), `location`, `area` + `area_unit`, `budget`, `timeline` (Immediately, 1–3, 3–6, 6–12, 12+ months) | validation of each |
+| §2.3 | Separate pipelines per service, e.g. Lead → Site visit → Proposal/Bid → Negotiation → Won / Lost | Each lead has one `service` (enabled modules only). Company keeps a stage list **per service** (default from the doc), editable in Settings; Won/Lost are fixed end states. Kanban board per service with drag-and-drop; every stage change recorded with time and user | board per service; stage not in that pipeline 400; history |
+| §2.4 | Follow-up reminders, call / email / WhatsApp log, meeting notes | Activity log on the lead: call, email, WhatsApp, meeting, site visit, note (with outcome). Follow-ups (below) linked to the lead; next follow-up shown on the card; leads with no open follow-up flagged | log each type; next-follow-up |
+| §2.5 | Win/loss reasons, conversion reports by source, service, salesperson | Win: choose project manager → Phase B project created with client, service, area, value, referral; lead locked. Loss: reason from an editable list + note. Sales report: pipeline value per stage, conversion % (won ÷ closed) by source / service / salesperson, loss reasons, first-response time | conversion math; report numbers |
+| §2.6 | Bid/tender register: due dates, bid/no-bid decision, hit rate | Bids: title, client, lead, service, due date, value, decision (pending / bid / no-bid + reason), status (preparing → submitted → won / lost). Overdue flag. Hit rate = won ÷ (won + lost) of submitted bids | decision rules; hit rate |
+| §16 | Follow-up tasks with owner, due date and priority | Follow-ups: title, notes, due date, priority (low / normal / high), owner (staff), channel, related lead / contact / project; done (with outcome) or cancelled | CRUD + rules |
+| §16 | "Today's follow-ups" for every user; overdue highlighted | Today page: overdue, today, next 7 days; Owner/PM can view everyone's; count on Home | overdue/today buckets |
+| §16 | Templates for email, SMS and WhatsApp with merge fields (client name, project, amount) | Templates per channel with `{{client}}`, `{{project}}`, `{{amount}}`, `{{company}}`, `{{name}}`, `{{date}}`; render against a lead/contact/project, copy, and *log as sent* (activity) — actual sending arrives with Phase G | merge render; unknown field kept visible |
+| §16 | Every follow-up logged on the contact and project timeline | Contact page Activity tab and project page Follow-ups tab list linked follow-ups and lead activities | appears on both |
+| §16 | Reports: overdue follow-ups per user, response time | Follow-up report: open / overdue / done per user; sales report: average first-response time per salesperson | numbers |
+| §2/§3 | Relationship history: who referred what, and what was won | Contact history now also lists leads the contact referred and the won value | referral leads + won value |
+
+## C2. Rules fixed in this phase
+* **Visibility**: the pipeline is shared — every role with leads access sees all company leads. Changing leads needs `leads: rw` (Owner, Sales by default). Leads are assigned to a salesperson (`owner_id`); unassigned web-form leads show in an *Unassigned* filter.
+* **Win**: needs a project manager (a staff user whose role can edit projects). The project is created even when the salesperson's own role cannot create projects; the PM gets edit access and the salesperson is added as *Sales* (view). The active-project plan limit still applies.
+* **Locked**: won and lost leads are read-only except *reopen* (lost only, back to the stage it was lost from). Only the Owner deletes leads; a won lead cannot be deleted while its project exists.
+* **Follow-ups**: everyone sees follow-ups they own or created; Owner and PM see all. Owner / creator / assignee can edit.
+* **Templates**: managed in Settings (Owner); used by anyone with follow-ups access.
+* **Pipeline edits**: a stage that still has open leads cannot be removed.
+
+## C3. Next phase (proposed, awaiting approval)
+Phase D — Proposals & estimates → contract with payment schedule.

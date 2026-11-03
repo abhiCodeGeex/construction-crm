@@ -1,4 +1,6 @@
-import { Component, OnInit, computed, inject, input, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, input, signal, viewChild } from '@angular/core';
+import { DatePipe } from '@angular/common';
+import { CHANNEL_ICON, FollowupDialogComponent } from '../../shared/followup-dialog.component';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { ConfirmationService } from 'primeng/api';
@@ -27,7 +29,7 @@ const PORTAL_ROLE: Record<string, string> = { client: 'client', developer: 'clie
 @Component({
   selector: 'app-contact-detail',
   imports: [FormsModule, RouterLink, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, MessageModule,
-    MultiSelectModule, PasswordModule, RatingModule, SelectModule, TableModule, TabsModule, TagModule, TextareaModule, TooltipModule],
+    MultiSelectModule, PasswordModule, RatingModule, SelectModule, TableModule, TabsModule, TagModule, TextareaModule, TooltipModule, FollowupDialogComponent, DatePipe],
   template: `
     @if (c(); as c) {
       <div class="page-head">
@@ -56,6 +58,7 @@ const PORTAL_ROLE: Record<string, string> = { client: 'client', developer: 'clie
           <p-tab value="finance"><i class="pi pi-wallet mr"></i>Tax & bank</p-tab>
           <p-tab value="compliance"><i class="pi pi-verified mr"></i>Compliance ({{ c.compliance?.length || 0 }})</p-tab>
           <p-tab value="projects"><i class="pi pi-building mr"></i>Projects together ({{ h()?.projects?.length || 0 }})</p-tab>
+          <p-tab value="activity" (click)="loadTimeline()"><i class="pi pi-clock mr"></i>Activity</p-tab>
           <p-tab value="relations"><i class="pi pi-share-alt mr"></i>Relationships</p-tab>
         </p-tablist>
         <p-tabpanels>
@@ -180,6 +183,15 @@ const PORTAL_ROLE: Record<string, string> = { client: 'client', developer: 'clie
             </p-table>
           </p-tabpanel>
 
+          <p-tabpanel value="activity">
+            @if (auth.can('followups', 'rw')) { <div class="row right mb"><p-button label="Add follow-up" icon="pi pi-plus" size="small" (onClick)="fd().open({ type: 'contact', id: c.id, label: c.name })" /></div> }
+            @for (r of timeline(); track $index) {
+              <div class="timeline-row"><i [class]="r.kind === 'followup' ? 'pi pi-bell' : (chIcon[r.type] || 'pi pi-circle')" [class.c-bad]="r.kind === 'followup' && r.status === 'open' && r.due < todayIso"></i>
+                <div class="grow"><div>{{ r.title }} @if (r.kind === 'followup') { <p-tag [value]="r.status" [severity]="r.status === 'done' ? 'success' : r.status === 'open' ? 'warn' : 'secondary'" /> }</div>
+                  <small class="muted">{{ r.kind === 'followup' ? 'Follow-up · due ' + r.due : r.lead }} · {{ r.owner }} · {{ r.at | date: 'd MMM y' }}{{ r.outcome ? ' · ' + r.outcome : '' }}</small></div></div>
+            } @empty { <p class="muted">No follow-ups or activity yet.</p> }
+          </p-tabpanel>
+
           <p-tabpanel value="relations">
             <div class="grid2 top">
               <p-card>
@@ -220,9 +232,19 @@ const PORTAL_ROLE: Record<string, string> = { client: 'client', developer: 'clie
         <div class="row gap right"><p-button type="submit" label="Create login" icon="pi pi-check" /></div>
       </form>
     </p-dialog>
+    <app-followup-dialog (saved)="loadTimeline()" />
   `,
 })
 export class ContactDetailComponent implements OnInit {
+  fd = viewChild.required(FollowupDialogComponent);
+  timeline = signal<any[]>([]);
+  chIcon = CHANNEL_ICON;
+  todayIso = new Date().toISOString().slice(0, 10);
+
+  async loadTimeline() {
+    this.timeline.set(await this.api.get(`/contacts/${this.id()}/timeline`));
+  }
+
   id = input.required<string>();
   auth = inject(AuthService);
   api = inject(Api);
@@ -258,6 +280,7 @@ export class ContactDetailComponent implements OnInit {
     c.compliance = c.compliance ?? [];
     this.c.set(c);
     this.h.set(await this.api.get(`/contacts/${this.id()}/history`));
+    if (this.auth.can('followups')) await this.loadTimeline();
   }
 
   fmt(v: number) {

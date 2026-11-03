@@ -139,10 +139,76 @@ def demo_projects():
                                "area": 450, "area_unit": "sqm", "value": 6200000, "branch": "Head office",
                                "site": {"line1": "Level 6, Orchid Towers", "city": "Bengaluru", "country": "India"}})
 
+
+def demo_leads():
+    """Phase C demo data via the real API."""
+    from datetime import date, timedelta
+    from app import create_app
+
+    cid = str(db.companies.find_one({"name": "Skyline Design & Build"})["_id"])
+    if db.leads.count_documents({"company_id": cid}):
+        return
+    api = create_app().test_client()
+    login = lambda e: {"Authorization": "Bearer " + api.post("/api/auth/login", json={"email": e, "password": DEMO_PASSWORD}).json["token"]}
+    sales, owner = login("sales@skyline.test"), login("owner@skyline.test")
+
+    def call(h, method, path, body=None):
+        r = api.open(f"/api{path}", method=method, json=body, headers=h)
+        assert r.status_code < 300, (path, r.status_code, r.json)
+        return r.json
+
+    day = lambda n: (date.today() + timedelta(days=n)).isoformat()
+    uid = {u["email"].split("@")[0]: str(u["_id"]) for u in db.users.find({"company_id": cid})}
+    consultant = db.users.find_one({"company_id": cid, "role": "consultant"})["contact_id"]
+    rows = [
+        ("Sharma duplex – new build", "construction", "New build", "Referral", "Rohit Sharma", "9845012345", 4200000, "3–6 months", "Site visit"),
+        ("Iyer apartment interiors", "interior", "Interior", "Houzz/portals", "Meera Iyer", "9880011223", 1800000, "1–3 months", "Proposal/Bid"),
+        ("Green Leaf café fit-out", "interior", "Fit-out", "Walk-in", "Green Leaf Foods", "9900022334", 2600000, "Immediately", "Negotiation"),
+        ("Rao farmhouse design", "architecture", "New build", "Ads", "Anil Rao", "9811133445", 3500000, "6–12 months", "Lead"),
+        ("Kulkarni bungalow renovation", "construction", "Renovation", "Website form", "Sneha Kulkarni", "9822244556", 2900000, "1–3 months", "Lead"),
+    ]
+    ids = []
+    for title, svc, ptype, src, name, phone, budget, tl, stage in rows:
+        body = {"title": title, "service": svc, "project_type": ptype, "source": src, "contact_name": name,
+                "contact_phone": phone, "budget": budget, "timeline": tl, "location": "Bengaluru", "area": 2400,
+                "area_unit": "sqft", "owner_id": uid["sales"]}
+        if src == "Referral":
+            body["referred_by"] = consultant
+        lead = call(sales, "POST", "/leads", body)
+        if stage != lead["stage"]:
+            call(sales, "POST", f"/leads/{lead['id']}/stage", {"stage": stage})
+        ids.append(lead["id"])
+    call(sales, "POST", f"/leads/{ids[0]}/activities", {"type": "call", "text": "Discussed G+1 plan and budget", "outcome": "Site visit booked"})
+    call(sales, "POST", f"/leads/{ids[1]}/activities", {"type": "whatsapp", "text": "Shared portfolio of 3BHK interiors"})
+    call(sales, "POST", f"/leads/{ids[2]}/activities", {"type": "meeting", "text": "Menu-board and seating layout discussed; wants quote revision"})
+    call(sales, "POST", "/followups", {"title": "Confirm site visit time", "due": day(0), "priority": "high", "channel": "call",
+                                       "related": {"type": "lead", "id": ids[0]}})
+    call(sales, "POST", "/followups", {"title": "Send revised quote", "due": day(-2), "priority": "high", "channel": "email",
+                                       "related": {"type": "lead", "id": ids[2]}})
+    call(sales, "POST", "/followups", {"title": "Check if portfolio was useful", "due": day(3), "channel": "whatsapp",
+                                       "related": {"type": "lead", "id": ids[1]}})
+    won = call(sales, "POST", "/leads", {"title": "Nair villa interiors", "service": "interior", "project_type": "Interior",
+                                         "source": "Repeat client", "contact_id": consultant, "budget": 2200000, "owner_id": uid["sales"],
+                                         "force": True})
+    call(sales, "POST", f"/leads/{won['id']}/win", {"pm_id": uid["pm"]})
+    lost = call(sales, "POST", "/leads", {"title": "Patel office extension", "service": "construction", "source": "Ads",
+                                          "contact_name": "Patel Logistics", "contact_phone": "9833355667", "budget": 5100000,
+                                          "owner_id": uid["sales"]})
+    call(sales, "POST", f"/leads/{lost['id']}/lose", {"reason": "Price too high", "note": "Went with a cheaper local builder"})
+    call(sales, "POST", "/bids", {"title": "Municipal school block – tender", "service": "construction", "due_date": day(12),
+                                  "value": 14500000, "decision": "bid", "status": "preparing", "reference": "BBMP/2026/114"})
+    b = call(sales, "POST", "/bids", {"title": "Tech park lobby fit-out", "service": "interior", "due_date": day(-20),
+                                      "value": 7800000, "decision": "bid", "status": "preparing"})
+    call(sales, "PUT", f"/bids/{b['id']}", {"status": "submitted"})
+    call(sales, "PUT", f"/bids/{b['id']}", {"status": "won"})
+    call(sales, "POST", "/bids", {"title": "Hospital wing – design & build", "service": "construction", "due_date": day(5),
+                                  "decision": "no_bid", "decision_reason": "Outside our capacity this quarter"})
+
 if __name__ == "__main__":
     ensure_indexes()
     run()
     if os.getenv("SEED_DEMO", "1") == "1":
         demo()
         demo_projects()
+        demo_leads()
         print("demo users ready")

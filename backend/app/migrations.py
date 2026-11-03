@@ -52,12 +52,46 @@ def m005_contact_types():
     db.contacts.update_many({"compliance": {"$exists": False}}, {"$set": {"compliance": []}})
 
 
+def m006_phase_c():
+    """Phase C: loss reasons + website-form key per company, indexes, and default message templates whose
+    merge fields are valid (§16). Templates a company created itself are left untouched."""
+    import secrets
+    from .services.defaults import LOSS_REASONS, MESSAGE_TEMPLATES, PIPELINE
+    old_fields = ("{{worker}}", "{{site}}", "{{room}}", "{{task}}", "{{drawing}}", "{{supervisor}}", "{{number}}",
+                  "{{due_date}}")
+    for c in db.companies.find({}):
+        cid = str(c["_id"])
+        sets = {}
+        if not c.get("loss_reasons"):
+            sets["loss_reasons"] = LOSS_REASONS
+        if not c.get("lead_form_key"):
+            sets["lead_form_key"] = secrets.token_urlsafe(16)
+        if not c.get("pipelines"):
+            sets["pipelines"] = {s: PIPELINE for s in ("architecture", "construction", "interior")}
+        if sets:
+            db.companies.update_one({"_id": c["_id"]}, {"$set": sets})
+        removed = db.message_templates.delete_many({"company_id": cid, "created_by": None, "$or": [
+            {"body": {"$regex": f.replace("{", r"\{").replace("}", r"\}")}} for f in old_fields]}).deleted_count
+        if removed or not db.message_templates.count_documents({"company_id": cid}):
+            for tpl in MESSAGE_TEMPLATES:
+                if not db.message_templates.find_one({"company_id": cid, "name": tpl["name"]}):
+                    db.message_templates.insert_one({**tpl, "company_id": cid, "created_at": now(), "created_by": None})
+    db.leads.create_index([("company_id", 1), ("status", 1), ("service", 1)])
+    db.leads.create_index([("company_id", 1), ("phone_key", 1)])
+    db.leads.create_index([("company_id", 1), ("email_key", 1)])
+    db.followups.create_index([("company_id", 1), ("owner_id", 1), ("status", 1), ("due", 1)])
+    db.followups.create_index([("company_id", 1), ("related.id", 1)])
+    db.companies.create_index("lead_form_key")
+    db.form_hits.create_index("at", expireAfterSeconds=3600)
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
     ("003_stage_template_durations", m003_stage_template_durations),
     ("004_project_indexes", m004_project_indexes),
     ("005_contact_types", m005_contact_types),
+    ("006_phase_c", m006_phase_c),
 ]
 
 

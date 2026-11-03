@@ -18,6 +18,10 @@ export const routes: Routes = [
       { path: '', loadComponent: () => import('./pages/home.component').then((m) => m.HomeComponent) },
       { path: 'access', loadComponent: () => import('./pages/access.component').then((m) => m.AccessComponent) },
       { path: 'users', canActivate: [staffGuard], data: { area: 'users' }, loadComponent: () => import('./pages/users.component').then((m) => m.UsersComponent) },
+      { path: 'leads', canActivate: [staffGuard], data: { area: 'leads' }, loadComponent: () => import('./pages/leads/leads.component').then((m) => m.LeadsComponent) },
+      { path: 'leads/:id', canActivate: [staffGuard], data: { area: 'leads' }, loadComponent: () => import('./pages/leads/lead-detail.component').then((m) => m.LeadDetailComponent) },
+      { path: 'followups', canActivate: [staffGuard], data: { area: 'followups' }, loadComponent: () => import('./pages/followups.component').then((m) => m.FollowupsComponent) },
+      { path: 'reports', canActivate: [staffGuard], data: { area: 'reports' }, loadComponent: () => import('./pages/reports.component').then((m) => m.ReportsComponent) },
       { path: 'contacts', canActivate: [staffGuard], data: { area: 'contacts' }, loadComponent: () => import('./pages/contacts/contacts.component').then((m) => m.ContactsComponent) },
       { path: 'contacts/:id', canActivate: [staffGuard], data: { area: 'contacts' }, loadComponent: () => import('./pages/contacts/contact-detail.component').then((m) => m.ContactDetailComponent) },
       { path: 'projects', canActivate: [staffGuard], data: { area: 'projects' }, loadComponent: () => import('./pages/projects/projects.component').then((m) => m.ProjectsComponent) },
@@ -27,6 +31,7 @@ export const routes: Routes = [
       { path: 'forbidden', loadComponent: () => import('./pages/area.component').then((m) => m.ForbiddenComponent) },
     ],
   },
+  { path: 'f/:key', loadComponent: () => import('./pages/public-form.component').then((m) => m.PublicFormComponent) },
   { path: 'portal', canActivate: [portalGuard], loadComponent: () => import('./pages/portal.component').then((m) => m.PortalComponent) },
   { path: 'sa/login', loadComponent: () => import('./superadmin/sa-login.component').then((m) => m.SaLoginComponent) },
   {

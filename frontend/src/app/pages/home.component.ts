@@ -28,6 +28,14 @@ import { NAV } from '../core/nav';
           <div class="stat-card"><span class="stat-icon amber"><i class="pi pi-flag"></i></span>
             <div><small>Upcoming milestones</small><strong>{{ h.milestones.length }}</strong><small class="muted">{{ lateMs() }} overdue</small></div></div>
         }
+        @if (h.followups) {
+          <a class="stat-card link-card" routerLink="/app/followups"><span class="stat-icon amber"><i class="pi pi-bell"></i></span>
+            <div><small>My follow-ups</small><strong>{{ h.followups.today }} today</strong><small [class.c-bad]="h.followups.overdue">{{ h.followups.overdue }} overdue</small></div></a>
+        }
+        @if (h.leads) {
+          <a class="stat-card link-card" routerLink="/app/leads"><span class="stat-icon indigo"><i class="pi pi-bullseye"></i></span>
+            <div><small>Open leads</small><strong>{{ h.leads.open }}</strong><small class="muted">{{ h.leads.mine }} mine · {{ h.leads.unassigned }} unassigned</small></div></a>
+        }
         @if (h.compliance_alerts !== undefined) {
           <a class="stat-card link-card" routerLink="/app/contacts"><span class="stat-icon pink"><i class="pi pi-verified"></i></span>
             <div><small>Compliance alerts</small><strong>{{ h.compliance_alerts }}</strong><small class="muted">expired or due in 30 days</small></div></a>

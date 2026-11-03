@@ -1,4 +1,5 @@
-import { Component, OnInit, computed, inject, input, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, input, signal, viewChild } from '@angular/core';
+import { CHANNEL_ICON, FollowupDialogComponent } from '../../shared/followup-dialog.component';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -31,7 +32,7 @@ const DESIGN = ['architecture', 'interior'];
   selector: 'app-project-detail',
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, KnobModule,
     MessageModule, MultiSelectModule, ProgressBarModule, SelectButtonModule, SelectModule, SliderModule, TableModule, TabsModule,
-    TagModule, TextareaModule, TooltipModule, GanttComponent, MapPickerComponent],
+    TagModule, TextareaModule, TooltipModule, GanttComponent, MapPickerComponent, FollowupDialogComponent],
   template: `
     @if (p(); as p) {
       <div class="page-head">
@@ -58,6 +59,7 @@ const DESIGN = ['architecture', 'interior'];
           <p-tab value="team"><i class="pi pi-users mr"></i>Team ({{ p.team.length }})</p-tab>
           <p-tab value="issues"><i class="pi pi-exclamation-circle mr"></i>Issues ({{ dash()?.open_issues ?? 0 }})</p-tab>
           <p-tab value="details"><i class="pi pi-map-marker mr"></i>Details & site</p-tab>
+          <p-tab value="followups"><i class="pi pi-bell mr"></i>Follow-ups</p-tab>
           <p-tab value="history"><i class="pi pi-history mr"></i>History</p-tab>
         </p-tablist>
         <p-tabpanels>
@@ -282,6 +284,15 @@ const DESIGN = ['architecture', 'interior'];
             }
           </p-tabpanel>
 
+          <p-tabpanel value="followups">
+            @if (auth.can('followups', 'rw')) { <div class="row right mb"><p-button label="Add follow-up" icon="pi pi-plus" size="small" (onClick)="fd().open({ type: 'project', id: p.id, label: p.name })" /></div> }
+            @for (r of timeline(); track $index) {
+              <div class="timeline-row"><i [class]="r.kind === 'followup' ? 'pi pi-bell' : (chIcon[r.type] || 'pi pi-circle')" [class.c-bad]="r.kind === 'followup' && r.status === 'open' && r.due < todayIso"></i>
+                <div class="grow"><div>{{ r.title }} @if (r.kind === 'followup') { <p-tag [value]="r.status" [severity]="r.status === 'done' ? 'success' : r.status === 'open' ? 'warn' : 'secondary'" /> }</div>
+                  <small class="muted">{{ r.kind === 'followup' ? 'Follow-up · due ' + r.due : r.lead }} · {{ r.owner }} · {{ r.at | date: 'd MMM y' }}{{ r.outcome ? ' · ' + r.outcome : '' }}</small></div></div>
+            } @empty { <p class="muted">No follow-ups or activity yet.</p> }
+          </p-tabpanel>
+
           <!-- ================= HISTORY ================= -->
           <p-tabpanel value="history">
             <p-table [value]="history()" size="small" [paginator]="history().length > 15" [rows]="15">
@@ -359,9 +370,19 @@ const DESIGN = ['architecture', 'interior'];
         </form>
       </p-dialog>
     }
+    <app-followup-dialog (saved)="loadTimeline()" />
   `,
 })
 export class ProjectDetailComponent implements OnInit {
+  fd = viewChild.required(FollowupDialogComponent);
+  timeline = signal<any[]>([]);
+  chIcon = CHANNEL_ICON;
+  todayIso = new Date().toISOString().slice(0, 10);
+
+  async loadTimeline() {
+    this.timeline.set(await this.api.get(`/projects/${this.id()}/followups`));
+  }
+
   id = input.required<string>();
   auth = inject(AuthService);
   private api = inject(Api);
@@ -419,6 +440,7 @@ export class ProjectDetailComponent implements OnInit {
     this.setProject(p ?? (await this.api.get(`/projects/${this.id()}`)));
     this.dash.set(await this.api.get(`/projects/${this.id()}/dashboard`));
     this.history.set(await this.api.get(`/projects/${this.id()}/history`));
+    if (this.auth.can('followups')) await this.loadTimeline();
     await this.loadIssues();
   }
 

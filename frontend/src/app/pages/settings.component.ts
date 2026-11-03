@@ -14,12 +14,13 @@ import { TabsModule } from 'primeng/tabs';
 import { TagModule } from 'primeng/tag';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
 import { Api, SERVICE_LABEL } from '../core/api.service';
+import { SalesSettingsComponent } from './sales-settings.component';
 import { AuthService } from '../core/auth.service';
 
 @Component({
   selector: 'app-settings',
   imports: [FormsModule, DatePipe, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, MessageModule, SelectButtonModule,
-    SelectModule, TableModule, TabsModule, TagModule, ToggleSwitchModule],
+    SelectModule, TableModule, TabsModule, TagModule, ToggleSwitchModule, SalesSettingsComponent],
   template: `
     <div class="page-head"><div><h1>Company settings</h1><p class="muted">Company setup, stage templates, role permissions and the audit log.</p></div></div>
     @if (!canEdit()) { <p-message severity="info" icon="pi pi-eye" text="Read-only: only the owner can change company settings." styleClass="mb" /> }
@@ -29,6 +30,7 @@ import { AuthService } from '../core/auth.service';
         <p-tab value="company"><i class="pi pi-building mr"></i>Company</p-tab>
         <p-tab value="setup"><i class="pi pi-sitemap mr"></i>Branches, tax & numbering</p-tab>
         <p-tab value="templates"><i class="pi pi-list mr"></i>Stage templates</p-tab>
+        <p-tab value="sales"><i class="pi pi-bullseye mr"></i>Sales & templates</p-tab>
         <p-tab value="roles"><i class="pi pi-shield mr"></i>Roles & permissions</p-tab>
         <p-tab value="audit"><i class="pi pi-history mr"></i>Audit log</p-tab>
       </p-tablist>
@@ -119,6 +121,8 @@ import { AuthService } from '../core/auth.service';
             }
           </div>
         </p-tabpanel>
+
+        <p-tabpanel value="sales"><app-sales-settings /></p-tabpanel>
 
         <!-- roles -->
         <p-tabpanel value="roles">

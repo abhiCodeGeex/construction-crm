@@ -12,16 +12,18 @@ PIPELINE = ["Lead", "Site visit", "Proposal/Bid", "Negotiation"]
 LEAD_SOURCES = ["Website form", "Referral", "Houzz/portals", "Ads", "Walk-in", "Repeat client"]
 
 MESSAGE_TEMPLATES = [
-    {"channel": "whatsapp", "name": "Morning work message",
-     "body": "Good morning {{worker}}! Today: {{site}} · {{room}} · {{task}}. Drawing: {{drawing}}. Supervisor: {{supervisor}}."},
-    {"channel": "whatsapp", "name": "Payment approved",
-     "body": "Hi {{name}}, your payment of {{amount}} for {{project}} is approved and paid today."},
-    {"channel": "email", "name": "Proposal follow-up",
-     "body": "Dear {{client}},\n\nJust checking whether you had a chance to review our proposal {{number}} for {{project}}.\n\nRegards,\n{{company}}"},
-    {"channel": "email", "name": "Invoice reminder",
-     "body": "Dear {{client}},\n\nThis is a reminder that invoice {{number}} for {{amount}} is due on {{due_date}}.\n\nRegards,\n{{company}}"},
-    {"channel": "sms", "name": "Site visit confirmation",
-     "body": "Hi {{client}}, confirming our site visit for {{project}} on {{date}}. - {{company}}"},
+    {"channel": "email", "name": "Thank you for your enquiry", "subject": "Your enquiry with {{company}}",
+     "body": "Dear {{client}},\n\nThank you for contacting {{company}} about {{project}}. {{salesperson}} will call you "
+             "within one working day to understand your requirements.\n\nRegards,\n{{salesperson}}\n{{company}}"},
+    {"channel": "whatsapp", "name": "Site visit confirmation",
+     "body": "Hi {{client}}, confirming our site visit for {{project}} on {{date}}. – {{salesperson}}, {{company}}"},
+    {"channel": "sms", "name": "Follow-up after enquiry",
+     "body": "Hi {{client}}, following up on {{project}}. When is a good time to talk? - {{salesperson}}, {{company}}"},
+    {"channel": "email", "name": "Budget discussion", "subject": "{{project}} – budget",
+     "body": "Dear {{client}},\n\nAs discussed, the indicative budget for {{project}} is {{amount}}. We will share a "
+             "detailed proposal next.\n\nRegards,\n{{salesperson}}\n{{company}}"},
+    {"channel": "whatsapp", "name": "Re-engage cold lead",
+     "body": "Hi {{client}}, it has been a while since we spoke about {{project}}. Are you still planning it? We would be glad to help. – {{company}}"},
 ]
 
 # topic -> role the message is routed to (section 17)
@@ -46,7 +48,7 @@ COMPANY_TYPES = {"architect": "architecture", "contractor": "construction", "int
 # ---------------- Phase B ----------------
 DEFAULT_STAGE_DAYS = 14
 
-# optional templates a company can add (§4: "RIBA or AIA stages can be added")
+# optional templates a company can add (Â§4: "RIBA or AIA stages can be added")
 TEMPLATE_PRESETS = {
     "riba": {"name": "RIBA Plan of Work 2020", "service": "architecture", "stages": [
         "0 Strategic Definition", "1 Preparation and Briefing", "2 Concept Design", "3 Spatial Coordination",
@@ -58,11 +60,11 @@ TEMPLATE_PRESETS = {
 
 SERVICES = ("architecture", "construction", "interior")
 
-# §3: contact types
+# Â§3: contact types
 CONTACT_TYPES = ["client", "developer", "architect", "contractor", "subcontractor", "supplier", "consultant",
                  "authority"]
 
-# role a contact or staff member plays on one project (§3 "roles per project", §4 "project team")
+# role a contact or staff member plays on one project (Â§3 "roles per project", Â§4 "project team")
 PROJECT_ROLES = ["Client", "Developer", "Project Manager", "Architect", "Interior Designer", "Structural Consultant",
                  "MEP Consultant", "Consultant", "Main Contractor", "Subcontractor", "Supplier",
                  "Authority / Inspector", "Site Supervisor", "Estimator / QS", "Procurement", "Accounts", "Sales",
@@ -77,3 +79,10 @@ DESIGN_SERVICES = ("architecture", "interior")
 
 def template_stages(names):
     return [{"name": n, "duration_days": DEFAULT_STAGE_DAYS} for n in names]
+
+# ---------------- Phase C ----------------
+LOSS_REASONS = ["Price too high", "Chose a competitor", "Project postponed or cancelled", "No response from client",
+                "Budget not available", "Outside our services or area", "Other"]
+LEAD_TIMELINES = ["Immediately", "1–3 months", "3–6 months", "6–12 months", "12+ months"]
+ACTIVITY_TYPES = ["call", "email", "whatsapp", "meeting", "site_visit", "note"]
+FOLLOWUP_CHANNELS = ["call", "email", "whatsapp", "sms", "meeting", "site_visit", "other"]

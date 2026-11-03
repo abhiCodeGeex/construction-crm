@@ -13,7 +13,7 @@ export interface NavItem {
 }
 
 export const NAV: NavItem[] = [
-  { area: 'leads', label: 'Leads & pipeline', icon: 'pi pi-bullseye', section: 'Sales' },
+  { area: 'leads', label: 'Leads & pipeline', icon: 'pi pi-bullseye', section: 'Sales', ready: true, path: '/app/leads' },
   { area: 'contacts', label: 'Contacts', icon: 'pi pi-id-card', section: 'Sales', ready: true, path: '/app/contacts' },
   { area: 'proposals', label: 'Proposals & estimates', icon: 'pi pi-file-edit', section: 'Sales' },
   { area: 'projects', label: 'Projects', icon: 'pi pi-building', section: 'Delivery', ready: true, path: '/app/projects' },
@@ -23,8 +23,8 @@ export const NAV: NavItem[] = [
   { area: 'change_orders', label: 'Change orders', icon: 'pi pi-sync', section: 'Delivery' },
   { area: 'procurement', label: 'Procurement', icon: 'pi pi-truck', section: 'Money' },
   { area: 'finance', label: 'Finance', icon: 'pi pi-wallet', section: 'Money' },
-  { area: 'reports', label: 'Reports', icon: 'pi pi-chart-bar', section: 'Money' },
-  { area: 'followups', label: 'Follow-ups', icon: 'pi pi-bell', section: 'Team' },
+  { area: 'reports', label: 'Reports', icon: 'pi pi-chart-bar', section: 'Money', ready: true, path: '/app/reports' },
+  { area: 'followups', label: 'Follow-ups', icon: 'pi pi-bell', section: 'Team', ready: true, path: '/app/followups' },
   { area: 'messages', label: 'Inbox', icon: 'pi pi-comments', section: 'Team' },
   { area: 'users', label: 'Users & roles', icon: 'pi pi-users', section: 'Admin', ready: true, path: '/app/users' },
   { area: 'settings', label: 'Company settings', icon: 'pi pi-cog', section: 'Admin', ready: true, path: '/app/settings' },
