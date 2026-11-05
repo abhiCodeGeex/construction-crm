@@ -22,7 +22,7 @@ docker compose up -d --build
 | Staff (Skyline, Pro) | `owner`, `sales`, `pm`, `designer`, `estimator`, `site`, `procurement`, `accounts` `@skyline.test` | `Demo@123` |
 | Portal (Skyline) | `client`, `subcontractor`, `vendor`, `consultant` `@skyline.test` | `Demo@123` |
 | Second tenant (Nest, Basic) | `owner@nest.test`, `designer@nest.test` | `Demo@123` |
-| Super Admin | `superadmin@buildsuite.test`, `sa-billing@…`, `sa-support@…`, `sa-sales@…`, `sa-viewer@…` | `Admin@12345`, 2FA `123456` |
+| Super Admin | `superadmin@buildsuite.test`, `sa-billing@…`, `sa-support@…`, `sa-sales@…`, `sa-viewer@…` | `Admin@12345`, then two-factor with an authenticator app (the first sign-in of each account shows a QR code to scan) |
 
 ## Tests
 
@@ -34,9 +34,10 @@ docker compose exec backend python tests/test_e2e_flow.py
 docker compose exec backend python tests/test_flow_gaps.py
 docker compose exec backend python tests/test_leads_deep.py
 docker compose exec backend python tests/test_phase_d.py
+docker compose exec backend python tests/test_projects_plus.py
 ```
 
-`test_auth.py` runs every role against every permission area plus isolation, limits, deactivation, suspension and Super Admin checks. `test_phase_b.py` covers every Phase B requirement row in PLAN.md (B1). `test_phase_c.py` covers every Phase C row (C1). `test_e2e_flow.py` walks one enquiry through to a delivered project. `test_flow_gaps.py` covers the hand-offs between modules (PLAN.md C2b). `test_leads_deep.py` covers Phase C+ (leads in depth). `test_phase_d.py` covers Phase D (proposal builder, client link with e-signature, contract and payment schedule). Every suite removes the records it creates (test logins and signed-up test companies included), so the demo data stays clean between runs.
+`test_auth.py` runs every role against every permission area plus isolation, limits, deactivation, suspension and Super Admin checks. `test_phase_b.py` covers every Phase B requirement row in PLAN.md (B1). `test_phase_c.py` covers every Phase C row (C1). `test_e2e_flow.py` walks one enquiry through to a delivered project. `test_flow_gaps.py` covers the hand-offs between modules (PLAN.md C2b). `test_leads_deep.py` covers Phase C+ (leads in depth). `test_phase_d.py` covers Phase D (proposal builder, client link with e-signature, contract and payment schedule). `test_projects_plus.py` covers Phase B+ (project notifications, compliance alerts, forgot / change password, Super Admin two-factor). Every suite removes the records it creates (test logins and signed-up test companies included), so the demo data stays clean between runs.
 
 ## Layout
 

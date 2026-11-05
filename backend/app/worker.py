@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from flask import g
 
 from .db import db, oid
-from .services import notify, sales
+from .services import notify, project_events, sales
 
 ACTIVE = {"$nin": ["suspended", "cancelled"]}
 
@@ -168,7 +168,69 @@ def check_bids(now):
                 notify.send("bid_due", who, text, "/app/leads", b.get("lead_id"), key=f"bid{mark}:{b['_id']}:{b['due_date']}")
 
 
-CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids]
+def check_projects(now):
+    """Open projects (planning / active): task due tomorrow -> assignee; task overdue -> assignee, and the
+    project's managers once it is 3 days late; milestone past its date and not achieved -> managers.
+    Keys carry the date, so a task or milestone that is rescheduled is reminded again for its new date."""
+    today = now.date()
+    tomorrow = (today + timedelta(days=1)).isoformat()
+    for p in db.projects.find({"company_id": g.cid, "status": {"$in": ["planning", "active"]}}):
+        pid, url, name = str(p["_id"]), project_events.link(p), p["name"]
+        for s in p.get("stages", []):
+            for tk in s.get("tasks", []):
+                end = tk.get("end")
+                if tk["status"] == "done" or not end:
+                    continue
+                who = [tk.get("assignee_id")]
+                what = f"{tk['title']} ({s['name']}, {name})"
+                if end == tomorrow:
+                    notify.send("task_due", who, f"Due tomorrow: {what}", url, project_id=pid,
+                                key=f"task-due:{tk['id']}:{end}")
+                elif end < today.isoformat():
+                    late = (today - datetime.fromisoformat(end).date()).days
+                    notify.send("task_overdue", who, f"Overdue by {late} day(s): {what}", url, project_id=pid,
+                                key=f"task-late:{tk['id']}:{end}")
+                    if late >= 3:
+                        notify.send("task_overdue", project_events.managers(p),
+                                    f"{tk.get('assignee_name') or 'Unassigned'} — {late} days overdue: {what}", url,
+                                    project_id=pid, key=f"task-esc:{tk['id']}:{end}", level="warn")
+            for ms in s.get("milestones", []):
+                if ms["status"] == "pending" and ms.get("due") and ms["due"] < today.isoformat():
+                    late = (today - datetime.fromisoformat(ms["due"]).date()).days
+                    notify.send("milestone_late", project_events.managers(p),
+                                f"{ms['name']} on {name} is {late} day(s) late (due {ms['due']})", url,
+                                project_id=pid, key=f"ms-late:{ms['id']}:{ms['due']}", level="warn")
+
+
+COMPLIANCE_MARKS = (30, 7)  # days before expiry; plus one alert on the day after it expires
+
+
+def check_compliance(now):
+    """Insurance, licences and certificates on contacts: 30 days and 7 days before expiry, and once expired,
+    to the Owner(s) and Procurement. Keys carry the expiry date, so a renewed document starts again."""
+    today = now.date()
+    who = project_events.owners() + notify.role_users("procurement")
+    for c in db.contacts.find({"company_id": g.cid, "active": {"$ne": False},
+                               "compliance": {"$elemMatch": {"expiry": {"$type": "string"}}}}):
+        for doc in c.get("compliance", []):
+            if not doc.get("expiry"):
+                continue
+            left = (datetime.fromisoformat(doc["expiry"]).date() - today).days
+            label = f"{doc['name']} of {c['name']}"
+            url = f"/app/contacts/{c['_id']}"
+            key = f"comp:{c['_id']}:{doc['id']}:{doc['expiry']}"
+            if left < 0:
+                notify.send("compliance_expired", who, f"{label} expired on {doc['expiry']}", url,
+                            key=f"{key}:expired", level="warn")
+            else:
+                mark = next((m for m in sorted(COMPLIANCE_MARKS) if left <= m), None)
+                if mark is not None:
+                    notify.send("compliance_expiring", who, f"{label} expires on {doc['expiry']} "
+                                f"({'today' if left == 0 else f'in {left} day(s)'})", url, key=f"{key}:{mark}")
+
+
+CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
+          check_compliance]
 
 
 def run_once(now=None):

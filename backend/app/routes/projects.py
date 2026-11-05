@@ -10,6 +10,7 @@ from ..db import db, oid, serialize
 from ..security import api, portal, can
 from ..services.defaults import (SERVICES, PROJECT_ROLES, PROJECT_STATUSES, PROJECT_TYPES, TASK_STATUSES,
                                  DESIGN_SERVICES, DEFAULT_STAGE_DAYS)
+from ..services import project_events
 from ..services.subscription import check_project_limit
 
 bp = Blueprint("projects", __name__)
@@ -156,9 +157,13 @@ def project_progress(p):
 
 
 def save_stages(_id, p):
+    """Every stage / task / milestone write ends here, so the notifications follow every change (B+1)."""
     normalize(p)
+    old = db.projects.find_one({"_id": oid(_id), "company_id": g.cid}) or {}
     ends = [s["end"] for s in p["stages"] if s.get("end")]
-    return t.update("projects", _id, {"stages": p["stages"], "planned_end": max(ends) if ends else None})
+    saved = t.update("projects", _id, {"stages": p["stages"], "planned_end": max(ends) if ends else None})
+    project_events.stage_changes(old, saved)
+    return saved
 
 
 def present(p, full=True):
@@ -382,6 +387,7 @@ def delete_project(_id):
     p = t.get("projects", _id)
     t.delete("projects", _id)
     db.project_issues.delete_many({"company_id": g.cid, "project_id": _id})
+    db.notifications.delete_many({"company_id": g.cid, "project_id": _id})  # no bell entry may point at it
     # nothing may keep pointing at the deleted project: follow-ups close, the won lead and bid keep their result
     db.followups.update_many({"company_id": g.cid, "related.type": "project", "related.id": _id, "status": "open"},
                              {"$set": {"status": "cancelled", "outcome": "Project deleted"}})
@@ -428,7 +434,9 @@ def add_member(_id):
     if dup:
         abort(409, f"{entry['name']} is already on this project" + ("" if dat.get("user_id") else f" as {role}"))
     entry.update(id=t.sid(), project_role=role)
-    return jsonify(present(t.update("projects", _id, {}, raw={"$push": {"team": entry}}))), 201
+    saved = t.update("projects", _id, {}, raw={"$push": {"team": entry}})
+    project_events.added_to_team(saved, entry)
+    return jsonify(present(saved)), 201
 
 
 @bp.put("/projects/<_id>/team/<mid>")
@@ -791,6 +799,7 @@ def add_issue(_id):
         "project_id": _id, "title": dat["title"].strip(), "description": dat.get("description"),
         "severity": dat.get("severity", "medium"), "status": "open", "owner_id": dat.get("owner_id"),
         "owner_name": owner, "due": d(dat.get("due"), "Due date"), "raised_by": g.user.get("name")})
+    project_events.issue_raised(p, doc)
     return jsonify(serialize(doc)), 201
 
 
@@ -873,7 +882,7 @@ def home():
     if can("contacts"):
         from .contacts import compliance_status
         alerts = 0
-        for c in t.find("contacts", {"compliance.expiry": {"$ne": None}}):
+        for c in t.find("contacts", {"compliance": {"$elemMatch": {"expiry": {"$type": "string"}}}}):
             alerts += sum(1 for doc in c.get("compliance", []) if compliance_status(doc) in ("expired", "expiring"))
         data["compliance_alerts"] = alerts
     return jsonify(data)

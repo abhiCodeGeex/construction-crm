@@ -15,7 +15,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     catchError((err: HttpErrorResponse) => {
       if (err.status === 401 && !isLogin) {
         if (isSa) auth.saLogout();
-        else auth.logout();
+        else if (auth.session()) {
+          auth.signedOutReason.set(err.error?.error || 'Your session ended. Sign in again.');
+          auth.logout();
+        }
       }
       return throwError(() => err);
     }),

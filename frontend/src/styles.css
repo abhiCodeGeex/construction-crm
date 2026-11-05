@@ -315,3 +315,4 @@ button.link { background: none; border: 0; padding: 0 .15rem; color: var(--brand
   .content, .main, .layout { padding: 0 !important; margin: 0 !important; display: block !important; }
   body { background: #fff !important; color: #000 !important; }
 }
+.danger { color: var(--p-red-500, #dc2626); }

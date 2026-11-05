@@ -9,6 +9,8 @@ import { guestGuard, portalGuard, saGuard, staffGuard } from './core/guards';
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'login' },
   { path: 'login', canActivate: [guestGuard], loadComponent: () => import('./auth/login.component').then((m) => m.LoginComponent) },
+  { path: 'forgot', canActivate: [guestGuard], loadComponent: () => import('./auth/password-reset.component').then((m) => m.ForgotPasswordComponent) },
+  { path: 'reset/:token', loadComponent: () => import('./auth/password-reset.component').then((m) => m.ResetPasswordComponent) },
   { path: 'signup', canActivate: [guestGuard], loadComponent: () => import('./auth/signup.component').then((m) => m.SignupComponent) },
   {
     path: 'app',

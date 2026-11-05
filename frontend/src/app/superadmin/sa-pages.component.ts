@@ -163,15 +163,19 @@ export class SaCompaniesComponent implements OnInit {
     </div>
     <p-card>
       <p-table [value]="rows()" size="small">
-        <ng-template #header><tr><th>Name</th><th>Role</th><th>Status</th><th>Added</th><th></th></tr></ng-template>
+        <ng-template #header><tr><th>Name</th><th>Role</th><th>Status</th><th>Two-factor</th><th>Added</th><th></th></tr></ng-template>
         <ng-template #body let-u>
           <tr>
             <td><strong>{{ u.name }}</strong><br /><small class="muted">{{ u.email }}</small></td>
             <td class="cap">{{ u.role }}</td>
             <td><p-tag [value]="u.active === false ? 'Inactive' : 'Active'" [severity]="u.active === false ? 'danger' : 'success'" /></td>
+            <td><p-tag [value]="u.two_factor === 'on' ? 'On' : 'Not set up yet'" [severity]="u.two_factor === 'on' ? 'success' : 'warn'" /></td>
             <td><small>{{ u.created_at | date }}</small></td>
             <td class="right">
               @if (u.id !== auth.sa()?.user?.id) {
+                @if (u.two_factor === 'on') {
+                  <p-button label="Reset two-factor" size="small" [text]="true" severity="warn" (onClick)="resetTwoFactor(u)" />
+                }
                 <p-button [label]="u.active === false ? 'Activate' : 'Deactivate'" size="small" [text]="true" (onClick)="toggle(u)" />
               }
             </td>
@@ -196,6 +200,7 @@ export class SaTeamComponent implements OnInit {
   auth = inject(AuthService);
   private http = inject(HttpClient);
   private toast = inject(MessageService);
+  private confirm = inject(ConfirmationService);
   rows = signal<any[]>([]);
   dialog = false;
   error = signal('');
@@ -216,11 +221,28 @@ export class SaTeamComponent implements OnInit {
     try {
       await firstValueFrom(this.http.post('/api/sa/team', this.f));
       this.dialog = false;
-      this.toast.add({ severity: 'success', summary: 'Member added (2FA code 123456)' });
+      this.toast.add({ severity: 'success', summary: 'Member added', detail: 'They set up their authenticator app the first time they sign in.' });
       await this.ngOnInit();
     } catch (e) {
       this.error.set(errorText(e));
     }
+  }
+
+  /** Lost or new phone: their next sign-in asks them to set up the authenticator app again. */
+  resetTwoFactor(u: any) {
+    this.confirm.confirm({
+      header: 'Reset two-factor?', icon: 'pi pi-exclamation-triangle',
+      message: `${u.name}'s current authenticator stops working. At their next sign-in they scan a new QR code.`,
+      accept: async () => {
+        try {
+          await firstValueFrom(this.http.put(`/api/sa/team/${u.id}`, { reset_two_factor: true }));
+          this.toast.add({ severity: 'success', summary: 'Two-factor reset', detail: `${u.name} sets it up again at the next sign-in.` });
+          await this.ngOnInit();
+        } catch (e) {
+          this.toast.add({ severity: 'error', summary: 'Not changed', detail: errorText(e) });
+        }
+      },
+    });
   }
 
   async toggle(u: any) {

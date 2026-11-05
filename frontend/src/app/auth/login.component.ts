@@ -24,6 +24,7 @@ const DEMO = [
     <app-auth-layout>
       <h1 class="title">Welcome back</h1>
       <p class="muted">Staff and portal users (clients, vendors, subcontractors, consultants) sign in here.</p>
+      @if (auth.signedOutReason()) { <p-message severity="info" [text]="auth.signedOutReason()" styleClass="mb" /> }
       <form class="stack" (ngSubmit)="submit()">
         <label class="field">
           <span>Email</span>
@@ -36,6 +37,7 @@ const DEMO = [
           <span>Password</span>
           <p-password name="password" [(ngModel)]="password" [feedback]="false" [toggleMask]="true" fluid autocomplete="current-password" />
         </label>
+        <div class="right small"><a routerLink="/forgot" [queryParams]="email ? { email } : {}">Forgot password?</a></div>
         @if (error()) { <p-message severity="error" [text]="error()" /> }
         <p-button type="submit" label="Sign in" icon="pi pi-sign-in" [loading]="busy()" styleClass="w-full" />
         <div class="row-between small">
@@ -59,7 +61,7 @@ const DEMO = [
   `,
 })
 export class LoginComponent {
-  private auth = inject(AuthService);
+  auth = inject(AuthService);
   private router = inject(Router);
   demo = DEMO;
   email = '';
@@ -75,6 +77,7 @@ export class LoginComponent {
   async submit() {
     this.busy.set(true);
     this.error.set('');
+    this.auth.signedOutReason.set('');
     try {
       const s = await this.auth.login(this.email, this.password);
       this.router.navigateByUrl(this.auth.homeFor(s));

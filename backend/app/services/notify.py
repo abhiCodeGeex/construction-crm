@@ -66,7 +66,8 @@ def role_users(*roles, company=None):
                                                   "active": {"$ne": False}}, {"_id": 1})]
 
 
-def send(event, user_ids, text, link=None, lead_id=None, key=None, level="info", company=None, skip_self=True):
+def send(event, user_ids, text, link=None, lead_id=None, key=None, level="info", company=None, skip_self=True,
+         project_id=None):
     """Notify each user once. `key` makes a reminder idempotent per user (e.g. 'visit-2h:<visit id>')."""
     company = company or g.company
     cid = str(company["_id"])
@@ -85,7 +86,7 @@ def send(event, user_ids, text, link=None, lead_id=None, key=None, level="info",
         if key and db.notifications.find_one({"company_id": cid, "user_id": uid, "key": key}, {"_id": 1}):
             continue
         doc = {"company_id": cid, "user_id": uid, "event": event, "title": label, "text": text, "link": link,
-               "lead_id": lead_id, "key": key, "level": level, "read_at": None, "created_at": _now(),
+               "lead_id": lead_id, "project_id": project_id, "key": key, "level": level, "read_at": None, "created_at": _now(),
                "email": None}
         wants_email = email_ready(company) and user.get("email") and event not in (prefs.get("email_off") or [])
         doc["email"] = "queued" if wants_email else None

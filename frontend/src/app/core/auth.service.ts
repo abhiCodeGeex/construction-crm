@@ -33,6 +33,8 @@ export class AuthService {
 
   readonly session = signal<Session | null>(load<Session>(KEY));
   readonly sa = signal<SaSession | null>(load<SaSession>(SA_KEY));
+  /** Why the last session ended (e.g. the password was changed elsewhere); shown once on the sign-in page. */
+  readonly signedOutReason = signal('');
 
   readonly user = computed(() => this.session()?.user ?? null);
   readonly company = computed(() => this.session()?.company ?? null);
@@ -92,12 +94,15 @@ export class AuthService {
   // ---------- Super Admin ----------
   async saLogin(email: string, password: string, code?: string) {
     const res = await firstValueFrom(
-      this.http.post<SaSession & { two_factor_required?: boolean }>('/api/sa/login', { email, password, code }),
+      this.http.post<SaSession & { two_factor_required?: boolean; two_factor_setup?: boolean; secret?: string; otpauth?: string }>(
+        '/api/sa/login', { email, password, code }),
     );
-    if (res.two_factor_required) return { twoFactor: true };
+    // first sign-in: set up an authenticator app (secret + QR link), then confirm with its code
+    if (res.two_factor_setup) return { twoFactor: true, setup: { secret: res.secret!, otpauth: res.otpauth! } };
+    if (res.two_factor_required) return { twoFactor: true, setup: null };
     this.sa.set(res);
     save(SA_KEY, res);
-    return { twoFactor: false };
+    return { twoFactor: false, setup: null };
   }
 
   saLogout(redirect = true) {

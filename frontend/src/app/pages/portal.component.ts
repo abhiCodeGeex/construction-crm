@@ -8,18 +8,21 @@ import { TagModule } from 'primeng/tag';
 import { Api, SERVICE_COLOR, SERVICE_LABEL, STATUS_SEVERITY, label } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { ThemeService } from '../core/theme.service';
+import { ChangePasswordComponent } from '../shared/change-password.component';
 
 /** Portal for clients, vendors, subcontractors and consultants: only projects where they are on the team (§13). */
 @Component({
   selector: 'app-portal',
-  imports: [DatePipe, AvatarModule, ButtonModule, CardModule, ProgressBarModule, TagModule],
+  imports: [DatePipe, AvatarModule, ButtonModule, CardModule, ProgressBarModule, TagModule, ChangePasswordComponent],
   template: `
     <header class="portal-top">
       <div class="logo"><span class="mark"><i class="pi pi-building"></i></span> {{ me()?.company?.name ?? 'Portal' }}</div>
       <span class="spacer"></span>
       <p-button [icon]="theme.dark() ? 'pi pi-sun' : 'pi pi-moon'" [rounded]="true" [text]="true" severity="secondary" (onClick)="theme.toggle()" />
+      <p-button label="Change password" icon="pi pi-key" [text]="true" severity="secondary" (onClick)="pwd.open()" />
       <p-button label="Sign out" icon="pi pi-sign-out" [text]="true" severity="secondary" (onClick)="auth.logout()" />
     </header>
+    <app-change-password #pwd />
     <main class="portal-body">
       <div class="portal-hero">
         <p-avatar icon="pi pi-user" size="xlarge" shape="circle" styleClass="avatar ext" />

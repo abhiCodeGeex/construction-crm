@@ -1,4 +1,5 @@
 """Authentication, role permissions, module gating and tenant status checks."""
+import time
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -71,6 +72,8 @@ def check_password(pw: str, hashed: str) -> bool:
 def create_token(payload: dict) -> str:
     data = dict(payload)
     data["exp"] = datetime.utcnow() + timedelta(hours=Config.TOKEN_HOURS)
+    data["iat"] = int(time.time())
+    data["iat_ms"] = int(time.time() * 1000)  # sessions started before a password change are refused (_load_tenant)
     return jwt.encode(data, Config.SECRET_KEY, algorithm="HS256")
 
 
@@ -97,6 +100,8 @@ def _load_tenant(payload):
     user = db.users.find_one({"_id": oid(payload.get("uid")), "company_id": payload.get("cid")})
     if not user or user.get("active") is False:
         abort(401, "User is deactivated or no longer exists")
+    if (payload.get("iat_ms") or 0) < (user.get("password_changed_ms") or 0):
+        abort(401, "Your password was changed. Sign in again with the new password.")
     g.user = {**payload, "name": user["name"]}
     g.uid = str(user["_id"])
     g.cid = user["company_id"]

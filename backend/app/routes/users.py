@@ -1,4 +1,5 @@
 """Company users: internal staff (counted against the plan) and external portal users (free)."""
+import time
 from flask import Blueprint, request, jsonify, abort, g
 
 from .. import tenancy as t
@@ -125,6 +126,7 @@ def update_user(_id):
         if len(d["password"]) < 6:
             abort(400, "Password must be at least 6 characters")
         changes["password"] = hash_password(d["password"])
+        changes["password_changed_ms"] = int(time.time() * 1000)  # signs them out everywhere
     if user["role"] == "owner" and (changes.get("active") is False or changes.get("role", "owner") != "owner"):
         if db.users.count_documents({"company_id": g.cid, "role": "owner", "active": {"$ne": False}}) <= 1:
             abort(409, "A company needs at least one active owner")

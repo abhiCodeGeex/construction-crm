@@ -76,9 +76,15 @@ def _diff(before, after):
     if not before or not after:
         return None
     keys = set(before) | set(after)
-    skip = {"updated_at", "_id"}
-    return {k: {"from": serialize(before.get(k)), "to": serialize(after.get(k))}
-            for k in keys if k not in skip and before.get(k) != after.get(k)}
+    skip = {"updated_at", "_id", "password_changed_ms"}
+    out = {k: {"from": serialize(before.get(k)), "to": serialize(after.get(k))}
+           for k in keys if k not in skip and before.get(k) != after.get(k)}
+    for k in SECRET_FIELDS & set(out):  # the log says it changed, never the value (not even a hash)
+        out[k] = {"from": "•••", "to": "••• (changed)"}
+    return out
+
+
+SECRET_FIELDS = {"password", "totp_secret", "token_hash"}
 
 
 def audit(action, collection, doc_id, before=None, after=None, note=None):

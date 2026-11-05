@@ -40,7 +40,8 @@ import { Api } from '../core/api.service';
       @if (!emailReady()) { <p class="muted small">Email copies start once the owner sets up email in Company settings → Sales.</p> }
       <p-table [value]="prefs()" size="small" [scrollable]="true" scrollHeight="55vh">
         <ng-template #header><tr><th>Notify me about</th><th class="center">In app</th><th class="center">Email</th></tr></ng-template>
-        <ng-template #body let-e>
+        <ng-template #body let-e let-i="rowIndex">
+          @if (i === 0 || prefs()[i - 1].group !== e.group) { <tr><td colspan="3"><b>{{ e.group }}</b></td></tr> }
           <tr><td>{{ e.label }} @if (e.critical) { <small class="muted">(always on)</small> }</td>
             <td class="center"><p-checkbox [(ngModel)]="e.in_app" [binary]="true" [disabled]="e.critical" /></td>
             <td class="center"><p-checkbox [(ngModel)]="e.email" [binary]="true" /></td></tr>

@@ -206,6 +206,19 @@ NOTIFY_EVENTS = {
     "lead_merged": ("Lead merged", False),
     "proposal_viewed": ("Client opened a proposal", False),
     "contract_signed": ("Contract signed", True),
+    # projects (B+1)
+    "project_added": ("Added to a project", True),
+    "task_assigned": ("Task assigned to you", True),
+    "task_due": ("Task due tomorrow", False),
+    "task_overdue": ("Task overdue", False),
+    "task_blocked": ("Task blocked", False),
+    "stage_done": ("Stage complete", False),
+    "milestone_achieved": ("Milestone achieved", False),
+    "milestone_late": ("Milestone late", False),
+    "issue_raised": ("Issue raised on a project", False),
+    # contacts (B+1)
+    "compliance_expiring": ("Compliance document expiring", False),
+    "compliance_expired": ("Compliance document expired", True),
 }
 
 # ---------------- Phase D ----------------

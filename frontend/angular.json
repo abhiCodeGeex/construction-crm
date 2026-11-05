@@ -57,7 +57,8 @@
             ],
             "scripts": [],
             "allowedCommonJsDependencies": [
-              "leaflet"
+              "leaflet",
+              "qrcode"
             ]
           },
           "configurations": {

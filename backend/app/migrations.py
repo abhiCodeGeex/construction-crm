@@ -116,6 +116,18 @@ def m008_phase_d():
     db.contracts.create_index([("company_id", 1), ("project_id", 1)])
 
 
+def m009_projects_plus():
+    """B+1: Super Admin two-factor uses a real authenticator app, so the fixed demo code goes; everyone sets up
+    their app at the next sign-in. Indexes for project notifications and password-reset links."""
+    db.superadmin_users.update_many({}, {"$unset": {"totp_demo": ""}})
+    # audit rows written before B+1 kept the password hash of a reset; keep only "changed"
+    db.audit_logs.update_many({"changes.password": {"$exists": True}},
+                              {"$set": {"changes.password": {"from": "•••", "to": "••• (changed)"}}})
+    db.notifications.create_index([("company_id", 1), ("project_id", 1)], sparse=True)
+    db.password_resets.create_index("token_hash", unique=True)
+    db.password_resets.create_index("expires_at", expireAfterSeconds=0)  # Mongo removes used-up links itself
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -125,6 +137,7 @@ MIGRATIONS = [
     ("006_phase_c", m006_phase_c),
     ("007_leads_deep", m007_leads_deep),
     ("008_phase_d", m008_phase_d),
+    ("009_projects_plus", m009_projects_plus),
 ]
 
 

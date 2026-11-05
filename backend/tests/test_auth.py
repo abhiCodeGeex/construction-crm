@@ -125,14 +125,34 @@ s, d = call("POST", "/auth/signup", {"company_name": "Test Signup Co", "name": "
 check("signup", s == 201 and d["user"]["role"] == "owner" and d["company"]["modules"] == ["architecture"], s)
 
 # 8. super admin: 2FA, roles, separation
+from app.services import totp
+from pymongo import MongoClient as _MC
+mongo = _MC(os.getenv("MONGO_URI", "mongodb://mongo:27017"))[os.getenv("MONGO_DB", "buildsuite")]
+SA_KEEP = ("totp_secret", "totp_pending", "totp_last_step", "login_fails", "locked_until", "totp_enrolled_at")
+_sa_saved = {u["email"]: {k: u.get(k) for k in SA_KEEP} for u in mongo.superadmin_users.find({})}
+mongo.superadmin_users.update_many({}, {"$set": {k: None for k in SA_KEEP}})  # every account starts un-enrolled
+_secrets = {}
+
+
+def sa_login(email):
+    """Password, then (first time) set up the authenticator, then a fresh code from it."""
+    s, d = call("POST", "/sa/login", {"email": email, "password": SA_PW})
+    if d.get("two_factor_setup"):
+        _secrets[email] = d["secret"]
+    step = totp.current_step() + (1 if email in _used else 0)
+    _used.add(email)
+    return call("POST", "/sa/login", {"email": email, "password": SA_PW, "code": totp.code_at(_secrets[email], step)})
+
+
+_used = set()
 s, d = call("POST", "/sa/login", {"email": "superadmin@buildsuite.test", "password": SA_PW})
-check("sa needs 2fa", s == 200 and d.get("two_factor_required"), d)
+check("sa needs 2fa (first time: set up an authenticator)", s == 200 and d.get("two_factor_setup") and d.get("secret"), d)
 check("sa wrong 2fa", call("POST", "/sa/login", {"email": "superadmin@buildsuite.test", "password": SA_PW,
                                                   "code": "000000"})[0] == 401)
 sa_tokens = {}
 for role in SA_ROLES:
     email = "superadmin@buildsuite.test" if role == "owner" else f"sa-{role}@buildsuite.test"
-    s, d = call("POST", "/sa/login", {"email": email, "password": SA_PW, "code": "123456"})
+    s, d = sa_login(email)
     check(f"sa login {role}", s == 200, s)
     sa_tokens[role] = d.get("token")
     from app.routes.superadmin import SA_AREAS, _sa_perms
@@ -171,6 +191,8 @@ for co in mdb.companies.find({"name": "Test Signup Co"}):
     mdb.companies.delete_one({"_id": co["_id"]})
 check("cleanup: no test logins left", not mdb.users.count_documents({"email": {"$regex": r"^(n\d+\.\d+@nest|signup\d+@test)\.test$"}}))
 
+for _e, _v in _sa_saved.items():  # put the Super Admin accounts back as they were
+    mongo.superadmin_users.update_one({"email": _e}, {"$set": _v})
 print(f"passed: {passed}  failed: {len(failures)}")
 for f in failures:
     print("  FAIL", f)

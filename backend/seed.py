@@ -42,7 +42,7 @@ def user(cid, role, email, name, kind="staff", contact_name=None):
 def demo():
     for role, name in SA_TEAM:
         db.superadmin_users.update_one({"email": f"sa-{role}@buildsuite.test"}, {"$setOnInsert": {
-            "name": name, "role": role, "password": hash_password("Admin@12345"), "totp_demo": "123456",
+            "name": name, "role": role, "password": hash_password("Admin@12345"),
             "active": True, "created_at": now()}}, upsert=True)
 
     cid, _ = company("Skyline Design & Build", "skyline.test", "pro", ["architect", "contractor", "interior"],

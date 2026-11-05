@@ -22,7 +22,7 @@ Scope is deliberately limited to this phase. Later phases (leads, projects, fina
 | A9 | Super Admin login with two-factor + 5 platform roles | Owner / Billing / Support / Sales / Viewer gated per area |
 | A10 | Audit log (company + Super Admin) | Every write records who / what / when / diff |
 
-Out of scope now: real TOTP app pairing (demo code `123456`), password-reset email, SSO, business modules.
+Out of scope at the time: real TOTP app pairing, password-reset email, SSO, business modules. **The first two are done in Phase B+ block 1** (see the end of this file).
 
 ---
 
@@ -85,7 +85,7 @@ docker compose exec backend python tests/test_auth.py
 
 * App: http://localhost:8080 · Super Admin: http://localhost:8080/sa/login
 * Demo staff/portal password `Demo@123` (e.g. `owner@skyline.test`, `site@skyline.test`, `client@skyline.test`, `owner@nest.test`)
-* Super Admin `superadmin@buildsuite.test` / `Admin@12345`, 2FA `123456` (also `sa-billing@…`, `sa-support@…`, `sa-sales@…`, `sa-viewer@…`)
+* Super Admin `superadmin@buildsuite.test` / `Admin@12345`, then a code from an authenticator app set up at the first sign-in (also `sa-billing@…`, `sa-support@…`, `sa-sales@…`, `sa-viewer@…`)
 
 ### Manual test checklist
 - [ ] Sign in as each staff role → menu shows only readable areas; **My access → Test all areas** reports 0 mismatches
@@ -294,3 +294,31 @@ Source: requirements §5 (proposal types, templates, versions, optional items, d
 * One accepted proposal per lead; accepting supersedes the other open versions.
 * The client link works only while the proposal is *sent* and within its validity; after acceptance it shows the signed copy.
 * A contract is not edited; changes to scope and value arrive through change orders (Phase E, §11).
+
+---
+
+# Phase B+ — Projects in depth (and the open ends of A and B)
+
+Source: the projects comparison (Procore, Buildertrend, Houzz Pro, Powerplay / Onsite) agreed with the owner, requirements §1, §3.4, §4, §15 and §18. Delivered in blocks, each tested, checked in the browser and committed. Covered by [backend/tests/test_projects_plus.py](backend/tests/test_projects_plus.py).
+
+### Build status
+| Block | Scope | Status |
+|---|---|---|
+| 1 | Project notifications, scheduled project reminders, compliance expiry alerts, forgot password by email, change my own password, sessions signed out after a password change, real two-factor for Super Admin | **Done** |
+| 2 | Stage checklists and exit rules for projects, task checklists, comments with @mention, task files and photos, priority | Next |
+| 3 | Project timeline with filters, baseline vs actual with a reason for each delay, start-to-start / finish-to-finish / lag, working days and holidays, drag-to-edit Gantt | Planned |
+| 4 | Meetings and minutes (action items become tasks, minutes emailed), project health score, "waiting on whom" view | Planned |
+
+## B+1. Notifications, password and two-factor
+| Area | Implementation | Test |
+|---|---|---|
+| Who is told (projects) | Every stage / task / milestone write goes through `save_stages`, which compares before and after (`services/project_events.py`). **Task assigned** → the new assignee (not again when the same task is edited). **Task blocked** → the project's managers (team members with the Project Manager role; none → the Owners), with the reason. **Stage complete** (its last task done) → managers + Owners, once. **Milestone achieved** → managers + Owners. **Added to a project** → that staff user, with role and access. **Issue raised** → the issue's owner; high severity also the managers. Nobody is told about their own action | each rule; not twice; not the actor |
+| Scheduled (worker) | Planning / active projects only. **Due tomorrow** → assignee. **Overdue** → assignee; **3+ days overdue** → managers too, naming the assignee. **Milestone past its date** → managers. Keys carry the date, so a rescheduled task or milestone is reminded again for its new date; done tasks are never chased | each; no duplicates; reschedule; on-hold project quiet |
+| Compliance expiry | Contacts' insurance, licences, certificates: **30 days** and **7 days** before expiry and **once expired** → Owners + Procurement, linking to the contact. A renewed document (new expiry) starts again. (Also fixed: a contact with one document without an expiry date was skipped by the check and by the Home count) | each mark; renewal; no duplicates |
+| Settings | Notification settings grouped under *Leads & sales*, *Projects*, *Contacts*. Critical (always on): added to a project, task assigned, compliance expired | groups; critical cannot be switched off |
+| Forgot password | Sign-in → *Forgot password?* → email. Always the same answer (nobody can find out which emails have an account) and the email is sent in the background (same reply time). The link works **60 minutes, once**; only a hash of it is stored; at most **3 links per user per hour**; using one cancels the others. No company email set up → the answer says to ask the Owner (Users → reset). Deactivated users get no link | each case |
+| Change my own password | User menu (staff) / top bar (portal) → *Change password*: current + new twice (≥ 6, not the same as now). Returns a new session for this device | wrong current, short, same, ok |
+| Sessions after a password change | Tokens carry the time they were issued (ms). Any session issued before the last password change (reset link, own change, Owner reset) is refused with "Your password was changed. Sign in again", shown on the sign-in page | other devices signed out; this one carries on |
+| Audit | Password changes are logged as *changed* — never the value or its hash (25 older rows masked by migration 009) | no hash anywhere |
+| Super Admin two-factor | Real authenticator codes (RFC 6238: Google / Microsoft Authenticator, Authy, 1Password). First sign-in (and after a reset): the password step returns a key + QR code; the first code confirms it. Codes are 6 digits / 30 s, one step of clock drift allowed, a code cannot be used twice. **5 wrong passwords or codes → locked 15 minutes** (logged). The platform Owner can *Reset two-factor* for a member (lost phone); nobody can change their own access. Secrets are never returned by any endpoint. The demo code `123456` is gone (migration 009) | set-up, confirm, replay refused, lock, reset, no secret in /sa/me or /sa/team |
+| nginx | `/api` is resolved through Docker's DNS every 10 s, so a restarted backend is found without restarting nginx (before: 502s until nginx restarted, which also left forms blank). `index.html` is never cached | — |

@@ -1,8 +1,11 @@
 """Super Admin authentication & authorization (section 18). Platform-level only: no company private data."""
+from datetime import timedelta
+
 from flask import Blueprint, request, jsonify, abort, g
 
 from ..db import db, oid, serialize
 from ..security import superadmin, check_password, create_token, hash_password, SA_ROLES
+from ..services import totp
 from ..services.subscription import usage
 from ..tenancy import now
 
@@ -30,28 +33,70 @@ def _sa_perms(role):
     return out
 
 
+MAX_ATTEMPTS = 5      # wrong passwords or codes in a row ...
+LOCK_MINUTES = 15     # ... lock the Super Admin account for this long
+HIDDEN = {"totp_secret": 0, "totp_pending": 0, "totp_last_step": 0}
+
+
+def _fail(u, why):
+    """Count a failed attempt; the 5th in a row locks the account for 15 minutes."""
+    fails = (u.get("login_fails") or 0) + 1
+    changes = {"login_fails": fails}
+    if fails >= MAX_ATTEMPTS:
+        changes.update(login_fails=0, locked_until=now() + timedelta(minutes=LOCK_MINUTES))
+        db.sa_audit.insert_one({"by": u["name"], "role": u["role"], "action": "locked", "note": why, "at": now()})
+    db.superadmin_users.update_one({"_id": u["_id"]}, {"$set": changes})
+    left = MAX_ATTEMPTS - fails
+    abort(401, why + (f" ({left} attempt{'s' if left != 1 else ''} left before a {LOCK_MINUTES}-minute lock)"
+                      if fails < MAX_ATTEMPTS else f". Too many attempts: locked for {LOCK_MINUTES} minutes"))
+
+
 @bp.post("/sa/login")
 def login():
+    """Password, then a code from an authenticator app (two-factor is required for every Super Admin user).
+
+    First sign-in (or after an Owner reset two-factor): the password step returns a new secret and its QR link;
+    the user adds it to their app and enters the code it shows, which confirms the set-up. From then on the
+    password step returns two_factor_required and the code is checked against the confirmed secret."""
     d = request.get_json(force=True) or {}
     u = db.superadmin_users.find_one({"email": (d.get("email") or "").strip().lower()})
-    if not u or not check_password(d.get("password", ""), u["password"]):
+    if not u:
         abort(401, "Wrong email or password")
+    if u.get("locked_until") and u["locked_until"] > now():
+        mins = max(1, round((u["locked_until"] - now()).total_seconds() / 60))
+        abort(423, f"Too many failed attempts. Try again in {mins} minute{'s' if mins != 1 else ''}")
+    if not check_password(d.get("password", ""), u["password"]):
+        _fail(u, "Wrong email or password")
     if u.get("active") is False:
         abort(403, "This Super Admin user is deactivated")
-    # two-factor is required for every Super Admin user (demo TOTP is a fixed code until a real authenticator is wired)
+    enrolled = bool(u.get("totp_secret"))
     if not d.get("code"):
-        return jsonify({"two_factor_required": True}), 200
-    if d["code"] != u.get("totp_demo"):
-        abort(401, "Wrong two-factor code")
+        if enrolled:
+            return jsonify({"two_factor_required": True}), 200
+        secret = u.get("totp_pending") or totp.new_secret()  # same secret until it is confirmed
+        db.superadmin_users.update_one({"_id": u["_id"]}, {"$set": {"totp_pending": secret}})
+        return jsonify({"two_factor_setup": True, "secret": secret, "otpauth": totp.otpauth_uri(secret, u["email"])}), 200
+    secret = u["totp_secret"] if enrolled else u.get("totp_pending")
+    if not secret:
+        abort(400, "Start again: sign in with your password first")
+    step = totp.verify(secret, d["code"], u.get("totp_last_step"))
+    if step is None:
+        _fail(u, "Wrong or expired two-factor code")
+    changes = {"totp_last_step": step, "login_fails": 0, "locked_until": None, "last_login": now()}
+    if not enrolled:
+        changes.update(totp_secret=secret, totp_pending=None, totp_enrolled_at=now())
+    db.superadmin_users.update_one({"_id": u["_id"]}, {"$set": changes})
     token = create_token({"uid": str(u["_id"]), "kind": "superadmin", "role": u["role"], "name": u["name"]})
-    db.sa_audit.insert_one({"by": u["name"], "role": u["role"], "action": "login", "at": now()})
+    db.sa_audit.insert_one({"by": u["name"], "role": u["role"], "action": "login" if enrolled else "two_factor_set_up",
+                            "at": now()})
+    u = db.superadmin_users.find_one({"_id": u["_id"]}, HIDDEN)
     return jsonify({"token": token, "user": serialize(u), "permissions": _sa_perms(u["role"])})
 
 
 @bp.get("/sa/me")
 @superadmin("dashboard")
 def me():
-    u = db.superadmin_users.find_one({"_id": oid(g.sa["uid"])})
+    u = db.superadmin_users.find_one({"_id": oid(g.sa["uid"])}, HIDDEN)
     return jsonify({"user": serialize(u), "permissions": _sa_perms(u["role"]), "labels": SA_LABELS})
 
 
@@ -122,7 +167,11 @@ for _area in SA_AREAS:
 @bp.get("/sa/team")
 @superadmin("settings")
 def team():
-    return jsonify(serialize(list(db.superadmin_users.find({}, {"totp_demo": 0}))))
+    rows = []
+    for u in db.superadmin_users.find({}, {"password": 0, "totp_pending": 0, "totp_last_step": 0}):
+        u["two_factor"] = "on" if u.pop("totp_secret", None) else "not set up"
+        rows.append(u)
+    return jsonify(serialize(rows))
 
 
 @bp.post("/sa/team")
@@ -137,10 +186,11 @@ def add_team():
     if db.superadmin_users.find_one({"email": email}):
         abort(409, "Email already in use")
     doc = {"name": d["name"], "email": email, "role": d["role"], "password": hash_password(d["password"]),
-           "totp_demo": "123456", "active": True, "created_at": now()}
+           "active": True, "created_at": now()}  # two-factor is set up at their first sign-in
     doc["_id"] = db.superadmin_users.insert_one(doc).inserted_id
     sa_audit("add_team_member", email, d["role"])
-    doc.pop("totp_demo")
+    doc.pop("password")
+    doc["two_factor"] = "not set up"
     return jsonify(serialize(doc)), 201
 
 
@@ -155,6 +205,12 @@ def update_team(_id):
         changes["role"] = d["role"]
     if "active" in d:
         changes["active"] = bool(d["active"])
+    if d.get("reset_two_factor"):  # lost phone: they set up a new authenticator at their next sign-in
+        changes.update(totp_secret=None, totp_pending=None, totp_last_step=None, login_fails=0, locked_until=None)
+    if not changes:
+        abort(400, "Nothing to change")
+    if not db.superadmin_users.find_one({"_id": oid(_id)}):
+        abort(404, "Super Admin user not found")
     db.superadmin_users.update_one({"_id": oid(_id)}, {"$set": changes})
     sa_audit("update_team_member", _id, str(changes))
     return jsonify({"ok": True})

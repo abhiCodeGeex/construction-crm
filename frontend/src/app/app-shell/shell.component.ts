@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AvatarModule } from 'primeng/avatar';
 import { ButtonModule } from 'primeng/button';
@@ -10,10 +10,11 @@ import { AuthService } from '../core/auth.service';
 import { NAV, SECTIONS } from '../core/nav';
 import { ThemeService } from '../core/theme.service';
 import { NotificationBellComponent } from '../shared/notification-bell.component';
+import { ChangePasswordComponent } from '../shared/change-password.component';
 
 @Component({
   selector: 'app-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, AvatarModule, ButtonModule, MenuModule, TagModule, TooltipModule, NotificationBellComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AvatarModule, ButtonModule, MenuModule, TagModule, TooltipModule, NotificationBellComponent, ChangePasswordComponent],
   template: `
     <div class="layout" [class.collapsed]="collapsed()">
       <aside class="sidebar">
@@ -53,6 +54,7 @@ import { NotificationBellComponent } from '../shared/notification-bell.component
             <i class="pi pi-angle-down"></i>
           </button>
           <p-menu #menu [model]="userMenu" [popup]="true" appendTo="body" />
+          <app-change-password />
         </header>
         <main class="content"><router-outlet /></main>
       </div>
@@ -63,6 +65,7 @@ export class ShellComponent implements OnInit {
   auth = inject(AuthService);
   theme = inject(ThemeService);
   collapsed = signal(false);
+  pwd = viewChild.required(ChangePasswordComponent);
 
   // the menu only lists areas the role can at least read
   sections = computed(() => {
@@ -74,6 +77,7 @@ export class ShellComponent implements OnInit {
 
   userMenu: MenuItem[] = [
     { label: 'My access', icon: 'pi pi-shield', routerLink: '/app/access' },
+    { label: 'Change password', icon: 'pi pi-key', command: () => this.pwd().open() },
     { separator: true },
     { label: 'Sign out', icon: 'pi pi-sign-out', command: () => this.auth.logout() },
   ];

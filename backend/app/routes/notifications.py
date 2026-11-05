@@ -36,13 +36,31 @@ def read_all():
     return jsonify({"ok": True})
 
 
+PROJECT_EVENTS = {"project_pm", "project_added", "task_assigned", "task_due", "task_overdue", "task_blocked",
+                  "stage_done", "milestone_achieved", "milestone_late", "issue_raised"}
+
+
+GROUPS = ["Leads & sales", "Projects", "Contacts"]
+
+
+def notify_group(event):
+    """Heading the event is listed under in the notification settings."""
+    if event in PROJECT_EVENTS:
+        return "Projects"
+    if event.startswith("compliance"):
+        return "Contacts"
+    return "Leads & sales"
+
+
 @bp.get("/notifications/prefs")
 @api(None)
 def prefs():
     user = db.users.find_one({"_id": oid(g.uid)}, {"notify_prefs": 1})
     p = user.get("notify_prefs") or {}
-    return jsonify({"events": [{"event": k, "label": v[0], "critical": v[1], "in_app": k not in (p.get("off") or []) or v[1],
-                                "email": k not in (p.get("email_off") or [])} for k, v in NOTIFY_EVENTS.items()],
+    return jsonify({"events": [{"event": k, "label": v[0], "critical": v[1], "group": notify_group(k),
+                                "in_app": k not in (p.get("off") or []) or v[1],
+                                "email": k not in (p.get("email_off") or [])}
+                               for k, v in sorted(NOTIFY_EVENTS.items(), key=lambda kv: GROUPS.index(notify_group(kv[0])))],
                     "email_ready": notify.email_ready()})
 
 
