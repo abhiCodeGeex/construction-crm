@@ -37,6 +37,15 @@ import { ChangePasswordComponent } from '../shared/change-password.component';
           <ng-template #subtitle>{{ p.site?.line1 }} {{ p.site?.city }} · <p-tag [value]="label(p.status)" [severity]="sev[p.status]" /></ng-template>
           <div class="prog mb"><p-progressbar [value]="p.progress" [showValue]="false" styleClass="grow" /><strong>{{ p.progress }}%</strong></div>
           <p class="muted small">Planned completion {{ p.planned_end | date: 'mediumDate' }}</p>
+          @if (p.waiting_on_you?.length) {
+            <div class="waiting-you">
+              <b><i class="pi pi-hourglass"></i> Waiting on you</b>
+              <p class="small muted">The work below cannot move until we hear from you.</p>
+              @for (w of p.waiting_on_you; track $index) {
+                <div class="ms-row"><span class="grow">{{ w.title }}{{ w.note ? ' — ' + w.note : '' }}</span><small class="muted">{{ w.days }} day(s)</small></div>
+              }
+            </div>
+          }
           @for (s of p.stages; track s.name + s.service) {
             <div class="stage-row"><span class="svc-dot" [style.background]="color[s.service]"></span>
               <span class="grow">{{ s.name }} <small class="muted">{{ s.start | date: 'MMM d' }} – {{ s.end | date: 'MMM d' }}</small></span>

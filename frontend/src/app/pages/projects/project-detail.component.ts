@@ -6,6 +6,7 @@ import { Router, RouterLink } from '@angular/router';
 import { ConfirmationService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
+import { CheckboxModule } from 'primeng/checkbox';
 import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
@@ -25,6 +26,9 @@ import { Api, SERVICE_COLOR, SERVICE_LABEL, STATUS_SEVERITY, label, money } from
 import { AuthService } from '../../core/auth.service';
 import { GanttComponent } from '../../shared/gantt.component';
 import { MapPickerComponent } from '../../shared/map-picker.component';
+import { PRIORITY_SEVERITY, TaskPanelComponent } from './task-panel.component';
+import { ProjectMeetingsComponent } from './project-meetings.component';
+import { ProjectActivityComponent, ProjectHealthComponent } from './project-insights.component';
 
 const DESIGN = ['architecture', 'interior'];
 
@@ -32,7 +36,8 @@ const DESIGN = ['architecture', 'interior'];
   selector: 'app-project-detail',
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, KnobModule,
     MessageModule, MultiSelectModule, ProgressBarModule, SelectButtonModule, SelectModule, SliderModule, TableModule, TabsModule,
-    TagModule, TextareaModule, TooltipModule, GanttComponent, MapPickerComponent, FollowupDialogComponent],
+    TagModule, TextareaModule, TooltipModule, GanttComponent, MapPickerComponent, FollowupDialogComponent, CheckboxModule,
+    TaskPanelComponent, ProjectMeetingsComponent, ProjectActivityComponent, ProjectHealthComponent],
   template: `
     @if (p(); as p) {
       <div class="page-head">
@@ -61,8 +66,10 @@ const DESIGN = ['architecture', 'interior'];
           <p-tab value="team"><i class="pi pi-users mr"></i>Team ({{ p.team.length }})</p-tab>
           <p-tab value="issues"><i class="pi pi-exclamation-circle mr"></i>Issues ({{ dash()?.open_issues ?? 0 }})</p-tab>
           <p-tab value="details"><i class="pi pi-map-marker mr"></i>Details & site</p-tab>
+          <p-tab value="meetings"><i class="pi pi-calendar-plus mr"></i>Meetings</p-tab>
           <p-tab value="followups"><i class="pi pi-bell mr"></i>Follow-ups</p-tab>
-          <p-tab value="history"><i class="pi pi-history mr"></i>History</p-tab>
+          <p-tab value="activity"><i class="pi pi-list mr"></i>Activity</p-tab>
+          <p-tab value="history"><i class="pi pi-history mr"></i>Audit log</p-tab>
           @if (handover()) { <p-tab value="lead"><i class="pi pi-bullseye mr"></i>From the lead</p-tab> }
           @if (contract()) { <p-tab value="contract"><i class="pi pi-verified mr"></i>Contract</p-tab> }
         </p-tablist>
@@ -85,7 +92,8 @@ const DESIGN = ['architecture', 'interior'];
                   <div><small>Tasks</small><strong>{{ d.tasks.done }} / {{ d.tasks.total }} done</strong>
                     <small class="muted">{{ d.tasks.late }} late · {{ d.tasks.blocked }} blocked · {{ d.tasks.conflicts }} date conflicts</small></div></div>
               </div>
-              <div class="grid2 top">
+              @if (tab === 'overview') { <app-project-health #health [projectId]="p.id" /> }
+              <div class="grid2 top mt">
                 <p-card>
                   <ng-template #title>Next milestones</ng-template>
                   @for (m of d.next_milestones; track m.id) {
@@ -116,8 +124,16 @@ const DESIGN = ['architecture', 'interior'];
           <!-- ================= SCHEDULE ================= -->
           <p-tabpanel value="schedule">
             <div class="row-between mb">
-              <span class="muted">Stage progress = tasks done ÷ tasks. A task cannot start until the tasks it depends on are done.</span>
-              @if (anyStageEdit()) { <p-button label="Add stage" icon="pi pi-plus" size="small" (onClick)="openStage()" /> }
+              <span class="muted small">Stage progress = tasks done ÷ tasks. A stage closes through its “complete” milestone once its tasks are done,
+                its closing checklist is ticked and (where needed) the client has signed off.
+                @if (p.baseline) { <br /><i class="pi pi-bookmark"></i> Baseline set {{ p.baseline.at | date: 'd MMM y' }} by {{ p.baseline.by }}{{ p.baseline.note ? ' (' + p.baseline.note + ')' : '' }} ·
+                  <b [class.c-bad]="p.baseline.slip_days > 0">{{ p.baseline.slip_days > 0 ? p.baseline.slip_days + ' working days behind the baseline' : 'on the baseline' }}</b>.
+                  Moving a date later now asks why. }
+                @else { <br />No baseline yet: once the plan is agreed, set a baseline to track every delay and its reason. }</span>
+              <div class="row gap">
+                @if (p.my_access === 'edit') { <p-button [label]="p.baseline ? 'New baseline' : 'Set baseline'" icon="pi pi-bookmark" size="small" [outlined]="true" (onClick)="openBaseline()" /> }
+                @if (anyStageEdit()) { <p-button label="Add stage" icon="pi pi-plus" size="small" (onClick)="openStage()" /> }
+              </div>
             </div>
             @for (s of p.stages; track s.id; let first = $first; let last = $last) {
               <div class="stage-card" [style.--c]="color[s.service]">
@@ -144,13 +160,22 @@ const DESIGN = ['architecture', 'interior'];
                   <ng-template #header><tr><th>Task</th><th>Assignee</th><th>Dates</th><th>Depends on</th><th style="width: 10rem">Status</th><th></th></tr></ng-template>
                   <ng-template #body let-t>
                     <tr>
-                      <td>{{ t.title }} @if (t.conflict) { <i class="pi pi-exclamation-triangle c-bad" pTooltip="Starts before a task it depends on ends"></i> }</td>
+                      <td><a href="" (click)="$event.preventDefault(); panel().open(t.id)" class="task-link">{{ t.title }}</a>
+                        @if (t.conflict) { <i class="pi pi-exclamation-triangle c-bad" pTooltip="Its dates break a dependency"></i> }
+                        <div class="task-badges">
+                          @if (t.priority && t.priority !== 'normal') { <p-tag [value]="t.priority" [severity]="prio[t.priority]" /> }
+                          @if (t.checklist?.length) { <small><i class="pi pi-list-check"></i> {{ doneItems(t) }}/{{ t.checklist.length }}</small> }
+                          @if (t.comment_count) { <small><i class="pi pi-comment"></i> {{ t.comment_count }}</small> }
+                          @if (t.files?.length) { <small><i class="pi pi-paperclip"></i> {{ t.files.length }}</small> }
+                          @if (t.baseline?.slip_days > 0) { <small class="c-bad"><i class="pi pi-clock"></i> +{{ t.baseline.slip_days }} d</small> }
+                          @if (t.status === 'blocked' && t.waiting_on) { <small class="c-warn"><i class="pi pi-hourglass"></i> {{ partyLabel(t.waiting_on.party) }}</small> }
+                        </div></td>
                       <td>{{ t.assignee_name || '—' }} @if (t.assignee_id === auth.user()?.id) { <p-tag value="you" severity="info" /> }</td>
                       <td class="nowrap"><small>{{ t.start }} → {{ t.end }}</small></td>
                       <td><small>{{ depNames(t) }}</small></td>
                       <td>
                         @if (canEditStage(s) || t.assignee_id === auth.user()?.id) {
-                          <p-select [options]="taskStatuses" [ngModel]="t.status" (onChange)="setTaskStatus(t, $event.value)" size="small" appendTo="body" />
+                          <p-select [options]="taskStatuses" [ngModel]="t.status" (onChange)="$event.value === 'blocked' ? openWaiting(t) : setTaskStatus(t, $event.value)" size="small" appendTo="body" />
                         } @else { <p-tag [value]="label(t.status)" [severity]="sev[t.status]" /> }
                       </td>
                       <td class="right nowrap">@if (canEditStage(s)) {
@@ -166,7 +191,7 @@ const DESIGN = ['architecture', 'interior'];
                       <i class="pi" [class.pi-flag-fill]="m.status === 'achieved'" [class.pi-flag]="m.status !== 'achieved'"></i>
                       {{ m.name }} · {{ m.due }}
                       @if (canEditStage(s)) {
-                        <button class="link" (click)="toggleMilestone(m)">{{ m.status === 'achieved' ? 'undo' : 'mark achieved' }}</button>
+                        <button class="link" (click)="m.gate && m.status !== 'achieved' ? closeStage(s) : toggleMilestone(m)">{{ m.status === 'achieved' ? (m.gate ? 'reopen stage' : 'undo') : (m.gate ? 'close stage' : 'mark achieved') }}</button>
                         <button class="link" (click)="openMilestone(s, m)">edit</button>
                         <button class="link c-bad" (click)="deleteMilestone(m)">×</button>
                       }
@@ -177,13 +202,45 @@ const DESIGN = ['architecture', 'interior'];
                     <p-button label="Milestone" icon="pi pi-flag" size="small" [text]="true" (onClick)="openMilestone(s)" />
                   }
                 </div>
+                <div class="gate" [class.closed]="s.gate?.closed">
+                  <div class="row-between">
+                    <b><i class="pi" [class.pi-lock]="s.gate?.closed" [class.pi-sign-out]="!s.gate?.closed"></i> {{ s.gate?.closed ? 'Stage closed' : 'Closing this stage' }}</b>
+                    @if (s.gate?.milestone_id && !s.gate.closed && canEditStage(s)) {
+                      <p-button label="Close stage" icon="pi pi-check-circle" size="small" [severity]="s.gate.missing.length ? 'secondary' : 'success'" (onClick)="closeStage(s)" />
+                    }
+                  </div>
+                  @for (c of s.checklist; track c.id) {
+                    <div class="check-row"><p-checkbox [binary]="true" [ngModel]="c.done" (onChange)="tickStage(s, c, $event.checked)" [disabled]="!canEditStage(s) || s.gate?.closed" />
+                      <span class="grow" [class.strike]="c.done">{{ c.text }} @if (c.done_by) { <small class="muted">· {{ c.done_by }}</small> }</span>
+                      @if (canEditStage(s) && !s.gate?.closed) { <p-button icon="pi pi-times" [text]="true" size="small" severity="secondary" (onClick)="removeStageItem(s, c)" /> }</div>
+                  }
+                  @if (canEditStage(s) && !s.gate?.closed) {
+                    <form class="row gap mt-xs" (ngSubmit)="addStageItem(s)"><input pInputText [name]="'gi' + s.id" [(ngModel)]="stageItem[s.id]" placeholder="Add a closing check" class="grow" />
+                      <p-button type="submit" icon="pi pi-plus" size="small" [text]="true" [disabled]="!stageItem[s.id]?.trim()" /></form>
+                  }
+                  <div class="small mt-xs">
+                    @if (s.signoff) {
+                      <i class="pi pi-verified c-good"></i> Client sign-off: <b>{{ s.signoff.name }}</b> · {{ s.signoff.method }} · {{ s.signoff.date | date: 'd MMM y' }}{{ s.signoff.note ? ' — ' + s.signoff.note : '' }}
+                      <span class="muted">(recorded by {{ s.signoff.recorded_by }})</span>
+                      @if (canEditStage(s) && !s.gate?.closed) { <button class="link c-bad" (click)="removeSignoff(s)">remove</button> }
+                    } @else if (s.client_signoff_required) {
+                      <i class="pi pi-user"></i> Needs the client's sign-off.
+                      @if (canEditStage(s) && !s.gate?.closed) { <button class="link" (click)="openSignoff(s)">Record sign-off</button> }
+                    } @else { <span class="muted">No client sign-off needed for this stage.</span> }
+                    @if (p.my_access === 'edit' && !s.gate?.closed) {
+                      <button class="link" (click)="toggleSignoffRule(s)">{{ s.client_signoff_required ? 'not needed' : 'require sign-off' }}</button> }
+                  </div>
+                  @if (!s.gate?.closed && s.gate?.missing?.length) {
+                    <div class="small c-warn mt-xs">Still open: {{ s.gate.missing.join(' · ') }}</div>
+                  } @else if (!s.gate?.closed && s.gate?.milestone_id) { <div class="small c-good mt-xs">Ready to close.</div> }
+                </div>
               </div>
             }
           </p-tabpanel>
 
           <!-- ================= GANTT ================= -->
           <p-tabpanel value="gantt">
-            <app-gantt [stages]="p.stages" (select)="ganttSelect($event)" />
+            <app-gantt [stages]="p.stages" [editableStages]="editableStageIds()" (select)="ganttSelect($event)" (moved)="ganttMoved($event)" />
           </p-tabpanel>
 
           <!-- ================= TEAM ================= -->
@@ -224,12 +281,15 @@ const DESIGN = ['architecture', 'interior'];
               <p-button label="Raise issue" icon="pi pi-plus" size="small" (onClick)="openIssue()" />
             </div>
             <p-table [value]="issues()" size="small">
-              <ng-template #header><tr><th>Issue</th><th>Severity</th><th>Owner</th><th>Due</th><th>Raised by</th><th>Status</th><th></th></tr></ng-template>
+              <ng-template #header><tr><th>Issue</th><th>Severity</th><th>Owner</th><th>Due</th><th>Waiting on</th><th>Status</th><th></th></tr></ng-template>
               <ng-template #body let-i>
                 <tr>
-                  <td><strong>{{ i.title }}</strong><br /><small class="muted">{{ i.description }}</small></td>
+                  <td><strong>{{ i.title }}</strong><br /><small class="muted">{{ i.description }}{{ i.stage_id ? ' · ' + stageLabel(i.stage_id) : '' }} · raised by {{ i.raised_by }}</small></td>
                   <td><p-tag [value]="i.severity" [severity]="i.severity === 'high' ? 'danger' : i.severity === 'medium' ? 'warn' : 'secondary'" /></td>
-                  <td>{{ i.owner_name || '—' }}</td><td>{{ i.due || '—' }}</td><td><small>{{ i.raised_by }}</small></td>
+                  <td>{{ i.owner_name || '—' }}</td><td>{{ i.due || '—' }}</td>
+                  <td>@if (i.status === 'open' && (p.my_access === 'edit' || i.created_by === auth.user()?.id)) {
+                    <p-select [options]="partyOpts()" [ngModel]="i.waiting_on?.party ?? null" (onChange)="setIssueWaiting(i, $event.value)" optionLabel="label" optionValue="value" placeholder="—" [showClear]="true" size="small" appendTo="body" />
+                  } @else { {{ i.waiting_on ? partyLabel(i.waiting_on.party) : '—' }} }</td>
                   <td><p-tag [value]="i.status" [severity]="sev[i.status]" /></td>
                   <td class="right">@if (p.my_access === 'edit' || i.created_by === auth.user()?.id) {
                     <p-button [label]="i.status === 'open' ? 'Close' : 'Reopen'" size="small" [text]="true" (onClick)="toggleIssue(i)" /> }</td>
@@ -288,6 +348,8 @@ const DESIGN = ['architecture', 'interior'];
             }
           </p-tabpanel>
 
+          <p-tabpanel value="meetings">@if (tab === 'meetings') { <app-project-meetings [project]="p" [contacts]="contacts()" (changed)="reload()" /> }</p-tabpanel>
+          <p-tabpanel value="activity">@if (tab === 'activity') { <app-project-activity [projectId]="p.id" /> }</p-tabpanel>
           <p-tabpanel value="followups">
             @if (auth.can('followups', 'rw')) { <div class="row right mb"><p-button label="Add follow-up" icon="pi pi-plus" size="small" (onClick)="fd().open({ type: 'project', id: p.id, label: p.name })" /></div> }
             @for (r of timeline(); track $index) {
@@ -398,8 +460,18 @@ const DESIGN = ['architecture', 'interior'];
           </div>
           <label class="field"><span>Assignee <small class="muted">(project team staff)</small></span>
             <p-select name="a" [options]="staffOnTeam()" [(ngModel)]="tf.assignee_id" optionLabel="name" optionValue="user_id" [showClear]="true" fluid appendTo="body" /></label>
-          <label class="field"><span>Depends on <small class="muted">(finish-to-start)</small></span>
-            <p-multiselect name="d" [options]="depOptions()" [(ngModel)]="tf.depends_on" optionLabel="label" optionValue="id" [filter]="true" display="chip" fluid appendTo="body" /></label>
+          <label class="field"><span>Priority</span><p-selectbutton name="pr" [options]="priorities" [(ngModel)]="tf.priority" [allowEmpty]="false" /></label>
+          <div class="field"><span>Depends on <small class="muted">· lag in working days</small></span>
+            @for (l of tf.links; track $index; let i = $index) {
+              <div class="dep-row">
+                <p-select [name]="'lt' + i" [options]="depOptions()" [(ngModel)]="l.task_id" optionLabel="label" optionValue="id" [filter]="true" placeholder="Task" appendTo="body" />
+                <p-select [name]="'ly' + i" [options]="linkTypes" [(ngModel)]="l.type" optionLabel="label" optionValue="value" appendTo="body" />
+                <p-inputnumber [name]="'lg' + i" [(ngModel)]="l.lag" [min]="-60" [max]="365" [showButtons]="false" inputStyleClass="w-4" pTooltip="Lag (working days)" />
+                <p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="tf.links.splice(i, 1)" />
+              </div>
+            }
+            <p-button label="Add dependency" icon="pi pi-plus" size="small" [text]="true" (onClick)="tf.links.push({ task_id: null, type: 'FS', lag: 0 })" />
+            <small class="muted">Finish → start: starts after the other finishes. Start → start: starts once the other starts. Finish → finish: finishes once the other finishes.</small></div>
           <label class="field"><span>Notes</span><textarea pTextarea name="no" rows="2" [(ngModel)]="tf.notes" fluid></textarea></label>
           <div class="row gap right"><p-button type="submit" label="Save" icon="pi pi-check" /></div>
         </form>
@@ -436,8 +508,76 @@ const DESIGN = ['architecture', 'interior'];
             <label class="field"><span>Owner</span><p-select name="o" [options]="staffOnTeam()" [(ngModel)]="isf.owner_id" optionLabel="name" optionValue="user_id" [showClear]="true" fluid appendTo="body" /></label>
             <label class="field"><span>Due</span><input pInputText type="date" name="du" [(ngModel)]="isf.due" fluid /></label>
           </div>
+          <label class="field"><span>Stage <small class="muted">(a high issue on a stage stops it from closing)</small></span>
+            <p-select name="st" [options]="p.stages" [(ngModel)]="isf.stage_id" optionLabel="name" optionValue="id" [showClear]="true" placeholder="Whole project" fluid appendTo="body" /></label>
           <div class="row gap right"><p-button type="submit" label="Raise" icon="pi pi-check" /></div>
         </form>
+      </p-dialog>
+    }
+    @if (p(); as p) {
+      <app-task-panel [project]="p" [parties]="partyOpts()" (changed)="panelChanged($event)" />
+
+      <p-dialog header="Why is it later?" [modal]="true" [(visible)]="delayDlg" [style]="{ width: '30rem' }" [breakpoints]="{ '640px': '96vw' }">
+        <div class="stack">
+          <p class="small">{{ delayMsg }}</p>
+          <label class="field"><span>Reason</span><p-select [options]="delayReasons()" [(ngModel)]="dl.reason" optionLabel="label" optionValue="value" fluid appendTo="body" /></label>
+          <label class="field"><span>Note <small class="muted">(optional)</small></span><input pInputText [(ngModel)]="dl.note" fluid /></label>
+          <small class="muted">The plan has a baseline, so every date moved later is kept as a delay with who caused it.</small>
+          <div class="row gap right"><p-button label="Cancel" [text]="true" severity="secondary" (onClick)="delayDlg = false; reload()" />
+            <p-button label="Save" icon="pi pi-check" [disabled]="!dl.reason" (onClick)="delayOk()" /></div>
+        </div>
+      </p-dialog>
+
+      <p-dialog header="Blocked — waiting on whom?" [modal]="true" [(visible)]="waitDlg" [style]="{ width: '28rem' }" [breakpoints]="{ '640px': '96vw' }">
+        <div class="stack">
+          <label class="field"><span>Waiting on</span><p-select [options]="partyOpts()" [(ngModel)]="wf.party" optionLabel="label" optionValue="value" fluid appendTo="body" /></label>
+          <label class="field"><span>Who exactly <small class="muted">(optional contact)</small></span>
+            <p-select [options]="contacts()" [(ngModel)]="wf.contact_id" optionLabel="name" optionValue="id" [filter]="true" [showClear]="true" fluid appendTo="body" /></label>
+          <label class="field"><span>What for</span><input pInputText [(ngModel)]="wf.note" placeholder="e.g. tile selection, drawing approval" fluid /></label>
+          <div class="row gap right"><p-button label="Cancel" [text]="true" severity="secondary" (onClick)="waitDlg = false; reload()" />
+            <p-button label="Mark blocked" icon="pi pi-check" [disabled]="!wf.party" (onClick)="saveWaiting()" /></div>
+        </div>
+      </p-dialog>
+
+      <p-dialog header="Record client sign-off" [modal]="true" [(visible)]="signDlg" [style]="{ width: '28rem' }" [breakpoints]="{ '640px': '96vw' }">
+        <div class="stack">
+          <label class="field"><span>Signed off by</span><input pInputText [(ngModel)]="so.name" fluid /></label>
+          <div class="grid2">
+            <label class="field"><span>How</span><p-select [options]="signoffMethods" [(ngModel)]="so.method" fluid appendTo="body" /></label>
+            <label class="field"><span>Date</span><input pInputText type="date" [(ngModel)]="so.date" fluid /></label>
+          </div>
+          <label class="field"><span>Note</span><input pInputText [(ngModel)]="so.note" placeholder="e.g. approved on site walk-through" fluid /></label>
+          <div class="row gap right"><p-button label="Save" icon="pi pi-check" [disabled]="!so.name || !so.method" (onClick)="saveSignoff()" /></div>
+        </div>
+      </p-dialog>
+
+      <p-dialog header="Close the stage anyway?" [modal]="true" [(visible)]="overDlg" [style]="{ width: '30rem' }" [breakpoints]="{ '640px': '96vw' }">
+        <div class="stack">
+          <p class="small">{{ overStage?.name }} is not ready:</p>
+          <ul class="small">@for (m of overStage?.gate?.missing ?? []; track $index) { <li>{{ m }}</li> }</ul>
+          @if (auth.user()?.role === 'owner') {
+            <label class="field"><span>Reason (kept on the timeline)</span><input pInputText [(ngModel)]="overReason" fluid /></label>
+            <div class="row gap right"><p-button label="Cancel" [text]="true" severity="secondary" (onClick)="overDlg = false" />
+              <p-button label="Close anyway" icon="pi pi-exclamation-triangle" severity="warn" [disabled]="!overReason.trim()" (onClick)="override()" /></div>
+          } @else { <p class="small muted">Finish these first. Only the Owner can close a stage that is not ready.</p> }
+        </div>
+      </p-dialog>
+
+      <p-dialog header="Set the baseline" [modal]="true" [(visible)]="blDlg" [style]="{ width: '28rem' }" [breakpoints]="{ '640px': '96vw' }">
+        <div class="stack">
+          <p class="small">Today's dates become the agreed plan. From then on every task and stage shows how far it is from this plan, and moving a date later asks for a reason.</p>
+          <label class="field"><span>Note</span><input pInputText [(ngModel)]="blNote" placeholder="e.g. plan agreed with the client" fluid /></label>
+          <div class="row gap right"><p-button label="Set baseline" icon="pi pi-bookmark" (onClick)="saveBaseline()" /></div>
+        </div>
+      </p-dialog>
+
+      <p-dialog header="Move the tasks that depend on it?" [modal]="true" [(visible)]="shiftDlg" [style]="{ width: '28rem' }" [breakpoints]="{ '640px': '96vw' }">
+        <div class="stack">
+          <p class="small">{{ shiftMsg }}</p>
+          <div class="row gap right">
+            <p-button label="Only this task" [text]="true" (onClick)="doMove(false)" />
+            <p-button label="Move them too" icon="pi pi-arrows-h" (onClick)="doMove(true)" /></div>
+        </div>
       </p-dialog>
     }
     <app-followup-dialog (saved)="loadTimeline()" />
@@ -484,6 +624,25 @@ export class ProjectDetailComponent implements OnInit {
   issueFilter = [{ label: 'Open', value: 'open' }, { label: 'Closed', value: 'closed' }, { label: 'All', value: '' }];
   taskStatuses = [{ label: 'To do', value: 'todo' }, { label: 'In progress', value: 'in_progress' }, { label: 'Blocked', value: 'blocked' }, { label: 'Done', value: 'done' }];
   issueStatus = 'open';
+  prio = PRIORITY_SEVERITY;
+  priorities = [{ label: 'Low', value: 'low' }, { label: 'Normal', value: 'normal' }, { label: 'High', value: 'high' }, { label: 'Urgent', value: 'urgent' }];
+  linkTypes = [{ label: 'Finish → start', value: 'FS' }, { label: 'Start → start', value: 'SS' }, { label: 'Finish → finish', value: 'FF' }];
+  signoffMethods = ['In person', 'Email', 'WhatsApp', 'Phone', 'Signed document'];
+  planMeta = signal<any>(null);
+  panel = viewChild.required(TaskPanelComponent);
+  health = viewChild<ProjectHealthComponent>('health');
+  stageItem: Record<string, string | undefined> = {};
+  delayDlg = false; waitDlg = false; signDlg = false; overDlg = false; blDlg = false; shiftDlg = false;
+  delayMsg = ''; shiftMsg = ''; overReason = ''; blNote = '';
+  dl: any = {}; wf: any = {}; so: any = {};
+  overStage: any = null;
+  private signStage: any = null;
+  private waitTask: any = null;
+  private pending: { url: string; body: any; method: 'put' } | null = null;
+  private moveReq: any = null;
+  partyOpts = computed(() => this.planMeta()?.waiting_parties ?? []);
+  delayReasons = computed(() => this.planMeta()?.delay_reasons ?? []);
+  editableStageIds = computed(() => (this.p()?.stages ?? []).filter((s: any) => this.canEditStage(s)).map((s: any) => s.id));
 
   canEdit = computed(() => this.p()?.my_access === 'edit');
   hideMoney = computed(() => this.p() && this.p().value === undefined);
@@ -505,6 +664,7 @@ export class ProjectDetailComponent implements OnInit {
 
   async ngOnInit() {
     this.meta.set(await this.api.get('/projects/meta'));
+    this.planMeta.set(await this.api.get('/projects/plan_meta'));
     await this.reload();
     if (this.auth.can('contacts')) this.contacts.set(await this.api.get('/contacts'));
     this.staff.set(await this.api.get('/directory/staff'));
@@ -518,6 +678,7 @@ export class ProjectDetailComponent implements OnInit {
     this.contract.set(await this.api.get(`/projects/${this.id()}/contract`));
     if (this.auth.can('followups')) await this.loadTimeline();
     await this.loadIssues();
+    await this.health()?.load();
   }
 
   private setProject(p: any) {
@@ -559,9 +720,9 @@ export class ProjectDetailComponent implements OnInit {
     if (this.canEdit() && !this.hideMoney()) body.budget = this.sf.budget ?? 0;
     if (this.sf.id && !this.sf.hasTasks) body.progress = this.sf.progress;
     if (!this.sf.id) body.service = this.sf.service;
-    await this.apply(this.sf.id ? this.api.put(`/projects/${this.id()}/stages/${this.sf.id}`, body, 'Stage saved')
-      : this.api.post(`/projects/${this.id()}/stages`, body, 'Stage added'));
     this.stageDlg = false;
+    if (this.sf.id) await this.putWithReason(`/projects/${this.id()}/stages/${this.sf.id}`, body);
+    else await this.apply(this.api.post(`/projects/${this.id()}/stages`, body, 'Stage added'));
   }
 
   hold(s: any) {
@@ -584,16 +745,18 @@ export class ProjectDetailComponent implements OnInit {
   // ---------- tasks ----------
   openTask(s: any, t?: any) {
     this.taskStage = s;
-    this.tf = t ? { id: t.id, title: t.title, start: t.start, end: t.end, assignee_id: t.assignee_id, depends_on: [...(t.depends_on ?? [])], notes: t.notes ?? '' }
-      : { title: '', start: s.start, end: s.end, assignee_id: null, depends_on: [], notes: '' };
+    this.tf = t ? { id: t.id, title: t.title, start: t.start, end: t.end, assignee_id: t.assignee_id, notes: t.notes ?? '', priority: t.priority ?? 'normal',
+        links: (t.links ?? (t.depends_on ?? []).map((x: string) => ({ task_id: x, type: 'FS', lag: 0 }))).map((l: any) => ({ ...l })) }
+      : { title: '', start: s.start, end: s.end, assignee_id: null, notes: '', priority: 'normal', links: [] };
     this.taskDlg = true;
   }
 
   async saveTask() {
-    const body = { title: this.tf.title, start: this.tf.start, end: this.tf.end, assignee_id: this.tf.assignee_id, depends_on: this.tf.depends_on, notes: this.tf.notes };
-    await this.apply(this.tf.id ? this.api.put(`/projects/${this.id()}/tasks/${this.tf.id}`, body, 'Task saved')
-      : this.api.post(`/projects/${this.id()}/stages/${this.taskStage.id}/tasks`, body, 'Task added'));
+    const body = { title: this.tf.title, start: this.tf.start, end: this.tf.end, assignee_id: this.tf.assignee_id, notes: this.tf.notes,
+      priority: this.tf.priority, links: this.tf.links.filter((l: any) => l.task_id).map((l: any) => ({ ...l, lag: l.lag ?? 0 })) };
     this.taskDlg = false;
+    if (this.tf.id) await this.putWithReason(`/projects/${this.id()}/tasks/${this.tf.id}`, body);
+    else await this.apply(this.api.post(`/projects/${this.id()}/stages/${this.taskStage.id}/tasks`, body, 'Task added'));
   }
 
   async setTaskStatus(t: any, status: string) {
@@ -624,9 +787,9 @@ export class ProjectDetailComponent implements OnInit {
 
   async saveMilestone() {
     const body = { name: this.mf.name, due: this.mf.due };
-    await this.apply(this.mf.id ? this.api.put(`/projects/${this.id()}/milestones/${this.mf.id}`, body, 'Milestone saved')
-      : this.api.post(`/projects/${this.id()}/stages/${this.msStage.id}/milestones`, body, 'Milestone added'));
     this.msDlg = false;
+    if (this.mf.id) await this.putWithReason(`/projects/${this.id()}/milestones/${this.mf.id}`, body);
+    else await this.apply(this.api.post(`/projects/${this.id()}/stages/${this.msStage.id}/milestones`, body, 'Milestone added'));
   }
 
   toggleMilestone(m: any) {
@@ -670,7 +833,7 @@ export class ProjectDetailComponent implements OnInit {
   }
 
   openIssue() {
-    this.isf = { title: '', description: '', severity: 'medium', owner_id: null, due: null };
+    this.isf = { title: '', description: '', severity: 'medium', owner_id: null, due: null, stage_id: null };
     this.issueDlg = true;
   }
 
@@ -682,6 +845,145 @@ export class ProjectDetailComponent implements OnInit {
 
   async toggleIssue(i: any) {
     await this.api.put(`/projects/${this.id()}/issues/${i.id}`, { status: i.status === 'open' ? 'closed' : 'open' });
+    await this.reload();
+  }
+
+  // ---------- B+2: stage closing, task panel ----------
+  doneItems(t: any) {
+    return (t.checklist ?? []).filter((c: any) => c.done).length;
+  }
+
+  partyLabel(v: string) {
+    return this.partyOpts().find((x: any) => x.value === v)?.label ?? v;
+  }
+
+  stageLabel(id: string) {
+    return this.p()?.stages.find((s: any) => s.id === id)?.name ?? '';
+  }
+
+  async panelChanged(p: any) {
+    await this.reload(p ?? undefined);
+  }
+
+  async tickStage(s: any, c: any, done: boolean) {
+    await this.apply(this.api.put(`/projects/${this.id()}/stages/${s.id}/checklist/${c.id}`, { done }));
+  }
+
+  async addStageItem(s: any) {
+    const text = (this.stageItem[s.id] ?? '').trim();
+    if (!text) return;
+    await this.apply(this.api.post(`/projects/${this.id()}/stages/${s.id}/checklist`, { text }));
+    this.stageItem[s.id] = '';
+  }
+
+  async removeStageItem(s: any, c: any) {
+    await this.apply(this.api.del(`/projects/${this.id()}/stages/${s.id}/checklist/${c.id}`));
+  }
+
+  closeStage(s: any) {
+    if (s.gate?.missing?.length) {
+      this.overStage = s;
+      this.overReason = '';
+      this.overDlg = true;
+      return;
+    }
+    this.apply(this.api.put(`/projects/${this.id()}/milestones/${s.gate.milestone_id}`, { status: 'achieved' }, `${s.name} closed`));
+  }
+
+  async override() {
+    const s = this.overStage;
+    this.overDlg = false;
+    await this.apply(this.api.put(`/projects/${this.id()}/milestones/${s.gate.milestone_id}`, { status: 'achieved', override_reason: this.overReason.trim() },
+      `${s.name} closed by the Owner`));
+  }
+
+  openSignoff(s: any) {
+    this.signStage = s;
+    this.so = { name: this.p()?.client_name ?? '', method: 'In person', date: new Date().toISOString().slice(0, 10), note: '' };
+    this.signDlg = true;
+  }
+
+  async saveSignoff() {
+    this.signDlg = false;
+    await this.apply(this.api.post(`/projects/${this.id()}/stages/${this.signStage.id}/signoff`, this.so, 'Client sign-off recorded'));
+  }
+
+  removeSignoff(s: any) {
+    this.apply(this.api.del(`/projects/${this.id()}/stages/${s.id}/signoff`, 'Sign-off removed'));
+  }
+
+  toggleSignoffRule(s: any) {
+    this.apply(this.api.put(`/projects/${this.id()}/stages/${s.id}`, { client_signoff_required: !s.client_signoff_required }));
+  }
+
+  // ---------- B+3: baseline, delays, Gantt drag ----------
+  openBaseline() {
+    this.blNote = '';
+    this.blDlg = true;
+  }
+
+  async saveBaseline() {
+    this.blDlg = false;
+    await this.apply(this.api.post(`/projects/${this.id()}/baseline`, { note: this.blNote }, 'Baseline set'));
+  }
+
+  /** PUT that may need a delay reason (the plan has a baseline and a date moves later): ask, then send again. */
+  async putWithReason(url: string, body: any) {
+    try {
+      await this.reload(await this.api.raw('put', url, body));
+    } catch (e: any) {
+      const msg = e?.error?.error ?? '';
+      if (e?.status === 409 && msg.includes('delay reason')) {
+        this.pending = { url, body, method: 'put' };
+        this.delayMsg = msg.replace(': choose why (delay reason), because the plan has a baseline', '.');
+        this.dl = { reason: null, note: '' };
+        this.delayDlg = true;
+      } else {
+        this.api.toastError(e);
+        await this.reload();
+      }
+    }
+  }
+
+  async delayOk() {
+    const p = this.pending!;
+    this.delayDlg = false;
+    await this.apply(this.api.put(p.url, { ...p.body, delay_reason: this.dl.reason, delay_note: this.dl.note }, 'Saved — delay recorded'));
+  }
+
+  ganttMoved(e: { id: string; start: string; end: string }) {
+    const deps = this.allTasks().filter((t: any) => (t.depends_on ?? []).includes(e.id));
+    this.moveReq = e;
+    if (deps.length) {
+      this.shiftMsg = `${deps.length} task(s) depend on it (${deps.slice(0, 3).map((t: any) => t.title).join(', ')}${deps.length > 3 ? '…' : ''}). Move them by the same number of working days?`;
+      this.shiftDlg = true;
+    } else this.doMove(false);
+  }
+
+  async doMove(shift: boolean) {
+    this.shiftDlg = false;
+    const e = this.moveReq;
+    await this.putWithReason(`/projects/${this.id()}/tasks/${e.id}`, { start: e.start, end: e.end, shift_dependents: shift });
+  }
+
+  // ---------- B+4: waiting on whom ----------
+  openWaiting(t: any) {
+    this.waitTask = t;
+    this.wf = { party: t.waiting_on?.party ?? null, contact_id: t.waiting_on?.contact_id ?? null, note: t.waiting_on?.note ?? '' };
+    this.waitDlg = true;
+  }
+
+  async saveWaiting() {
+    this.waitDlg = false;
+    try {
+      await this.apply(this.api.put(`/projects/${this.id()}/tasks/${this.waitTask.id}`, { status: 'blocked', waiting_on: this.wf }, 'Marked blocked'));
+    } catch {
+      await this.reload();
+    }
+  }
+
+  async setIssueWaiting(i: any, party: string | null) {
+    await this.api.put(`/projects/${this.id()}/issues/${i.id}`, { waiting_on: party ? { party } : null });
     await this.reload();
   }
 

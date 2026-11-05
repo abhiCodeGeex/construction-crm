@@ -27,6 +27,16 @@ export class Api {
     }
   }
 
+  /** Like send, but no error toast: the caller decides (e.g. ask for a delay reason on a 409, then send again). */
+  raw<T = any>(method: 'post' | 'put' | 'delete', url: string, body?: unknown): Promise<T> {
+    return firstValueFrom(this.http.request<T>(method.toUpperCase(), '/api' + url, { body: body ?? {} }));
+  }
+
+  toastError(e: unknown) {
+    this.toast.add({ severity: 'error', summary: 'Not saved', detail: errorText(e), life: 5000 });
+    (e as any)[HANDLED] = true;
+  }
+
   post<T = any>(url: string, body?: unknown, ok?: string) {
     return this.send<T>('POST', url, body ?? {}, ok);
   }

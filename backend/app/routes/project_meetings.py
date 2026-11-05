@@ -3,14 +3,13 @@
 Meetings: plan (date, place, attendees, agenda) -> attendees are told; after the meeting write the minutes
 (notes, decisions, action items with an owner, due date and stage) -> Publish: every action becomes a task on
 the project, the minutes are emailed to every attendee with an email address and staff attendees are told."""
-from datetime import datetime
-
 from flask import Blueprint, request, jsonify, abort, g
 
 from .. import tenancy as t
 from ..db import db, oid, serialize
 from ..security import api
 from ..services import notify, project_events as ev, project_health
+from .lead_steps import when, fmt
 from .projects import load, require_edit, find_stage, save_stages, d
 
 bp = Blueprint("project_meetings", __name__)
@@ -26,10 +25,9 @@ def _clean(p, dat, existing=None):
     if "title" in dat or not existing:
         out["title"] = (dat.get("title") or "").strip()[:150] or abort(400, "Meeting title is required")
     if "at" in dat or not existing:
-        try:
-            out["at"] = datetime.fromisoformat(str(dat.get("at"))[:16])
-        except ValueError:
-            abort(400, "Meeting date and time are required (YYYY-MM-DDTHH:MM)")
+        if not dat.get("at"):
+            abort(400, "Meeting date and time are required")
+        out["at"] = when(dat["at"])  # the browser sends UTC, like site visits
     for k in ("place", "agenda", "notes"):
         if k in dat:
             out[k] = (dat.get(k) or "").strip()[:5000] or None
@@ -81,10 +79,10 @@ def add_meeting(_id):
            "place": None, "agenda": None, "notes": None, "status": "planned", "created_by": g.uid,
            "created_by_name": g.user.get("name"), "created_at": t.now(), **_clean(p, request.get_json(force=True) or {})}
     doc["_id"] = db.project_meetings.insert_one(doc).inserted_id
-    when = doc["at"].strftime("%d %b %Y %H:%M")
-    ev.log(_id, "meeting", f"Meeting planned: {doc['title']} on {when}", meeting_id=str(doc["_id"]))
+    at_text = fmt(doc["at"])
+    ev.log(_id, "meeting", f"Meeting planned: {doc['title']} on {at_text}", meeting_id=str(doc["_id"]))
     notify.send("meeting_scheduled", [s["user_id"] for s in doc["staff"]],
-                f"{doc['title']} ({p['name']}) on {when}" + (f" at {doc['place']}" if doc["place"] else ""), ev.link(p),
+                f"{doc['title']} ({p['name']}) on {at_text}" + (f" at {doc['place']}" if doc["place"] else ""), ev.link(p),
                 project_id=_id)
     return jsonify(serialize(doc)), 201
 
@@ -99,9 +97,9 @@ def update_meeting(_id, mid):
         abort(409, "Published minutes cannot be changed. Add a follow-up meeting instead.")
     changes = _clean(p, request.get_json(force=True) or {}, m)
     if "at" in changes and changes["at"] != m["at"]:
-        ev.log(_id, "meeting", f"Meeting moved: {m['title']} → {changes['at'].strftime('%d %b %Y %H:%M')}", meeting_id=mid)
+        ev.log(_id, "meeting", f"Meeting moved: {m['title']} → {fmt(changes['at'])}", meeting_id=mid)
         notify.send("meeting_scheduled", [s["user_id"] for s in changes.get("staff", m["staff"])],
-                    f"Moved: {m['title']} ({p['name']}) now on {changes['at'].strftime('%d %b %Y %H:%M')}", ev.link(p),
+                    f"Moved: {m['title']} ({p['name']}) now on {fmt(changes['at'])}", ev.link(p),
                     project_id=_id)
     db.project_meetings.update_one({"_id": m["_id"]}, {"$set": {**changes, "updated_at": t.now()}})
     return jsonify(serialize(_meeting(_id, mid)))
@@ -135,19 +133,19 @@ def publish(_id, mid):
     missing = [a["text"][:40] for a in m["actions"] if not (a.get("stage_id") and a.get("due"))]
     if missing:
         abort(400, f"Each action needs a stage and a due date: {', '.join(missing)}")
-    when = m["at"].strftime("%d %b %Y")
+    held = m["at"].strftime("%d %b %Y")
     for a in m["actions"]:
         stage = find_stage(p, a["stage_id"])
         start = min(a["due"], max(t.now().date().isoformat(), stage.get("start") or a["due"]))
         task = {"id": t.sid(), "title": a["text"][:150], "start": start, "end": a["due"], "status": "todo", "progress": 0,
                 "depends_on": [], "links": [], "assignee_id": a["owner_id"], "priority": "normal", "checklist": [],
-                "files": [], "notes": f"From the meeting “{m['title']}” on {when}", "meeting_id": mid,
+                "files": [], "notes": f"From the meeting “{m['title']}” on {held}", "meeting_id": mid,
                 "assignee_name": next((x["name"] for x in p["team"] if x.get("user_id") == a["owner_id"]), None)}
         stage.setdefault("tasks", []).append(task)
         a["task_id"] = task["id"]
     if m["actions"]:
         save_stages(_id, p)
-    lines = [f"Minutes — {m['title']}", f"Project: {p['name']}", f"Date: {m['at'].strftime('%d %b %Y %H:%M')}"
+    lines = [f"Minutes — {m['title']}", f"Project: {p['name']}", f"Date: {fmt(m['at'])}"
              + (f" · {m['place']}" if m.get("place") else ""),
              "Attendees: " + ", ".join([s["name"] for s in m["staff"]] + [c["name"] for c in m["contacts"]])]
     if m.get("notes"):

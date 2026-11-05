@@ -35,9 +35,10 @@ docker compose exec backend python tests/test_flow_gaps.py
 docker compose exec backend python tests/test_leads_deep.py
 docker compose exec backend python tests/test_phase_d.py
 docker compose exec backend python tests/test_projects_plus.py
+docker compose exec backend python tests/test_projects_depth.py
 ```
 
-`test_auth.py` runs every role against every permission area plus isolation, limits, deactivation, suspension and Super Admin checks. `test_phase_b.py` covers every Phase B requirement row in PLAN.md (B1). `test_phase_c.py` covers every Phase C row (C1). `test_e2e_flow.py` walks one enquiry through to a delivered project. `test_flow_gaps.py` covers the hand-offs between modules (PLAN.md C2b). `test_leads_deep.py` covers Phase C+ (leads in depth). `test_phase_d.py` covers Phase D (proposal builder, client link with e-signature, contract and payment schedule). `test_projects_plus.py` covers Phase B+ (project notifications, compliance alerts, forgot / change password, Super Admin two-factor). Every suite removes the records it creates (test logins and signed-up test companies included), so the demo data stays clean between runs.
+`test_auth.py` runs every role against every permission area plus isolation, limits, deactivation, suspension and Super Admin checks. `test_phase_b.py` covers every Phase B requirement row in PLAN.md (B1). `test_phase_c.py` covers every Phase C row (C1). `test_e2e_flow.py` walks one enquiry through to a delivered project. `test_flow_gaps.py` covers the hand-offs between modules (PLAN.md C2b). `test_leads_deep.py` covers Phase C+ (leads in depth). `test_phase_d.py` covers Phase D (proposal builder, client link with e-signature, contract and payment schedule). `test_projects_plus.py` covers Phase B+ block 1 (project notifications, compliance alerts, forgot / change password, Super Admin two-factor). `test_projects_depth.py` covers blocks 2–4 (stage closing rules, task depth, baseline and delays, working days, meetings, health, waiting on whom). Every suite removes the records it creates (test logins and signed-up test companies included), so the demo data stays clean between runs.
 
 ## Layout
 

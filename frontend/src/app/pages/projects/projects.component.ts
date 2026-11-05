@@ -36,7 +36,7 @@ import { AuthService } from '../../core/auth.service';
       <p-table [value]="rows()" [rowHover]="true" size="small" selectionMode="single" (onRowSelect)="open($event.data)" dataKey="id"
                [paginator]="rows().length > 20" [rows]="20">
         <ng-template #header>
-          <tr><th>Project</th><th>Client</th><th>Services</th><th>Status</th><th style="min-width: 10rem">Progress</th><th>Planned end</th>
+          <tr><th>Project</th><th>Client</th><th>Services</th><th>Status</th><th style="min-width: 10rem">Progress</th><th>Health</th><th>Planned end</th>
             @if (showMoney()) { <th class="right">Value</th> }</tr>
         </ng-template>
         <ng-template #body let-p>
@@ -47,11 +47,12 @@ import { AuthService } from '../../core/auth.service';
             <td><p-tag [value]="label(p.status)" [severity]="sev[p.status]" />
               @if (p.late) { <p-tag value="Late" severity="danger" styleClass="ml-xs" /> }</td>
             <td><div class="prog"><p-progressbar [value]="p.progress" [showValue]="false" styleClass="thin grow" /><span>{{ p.progress }}%</span></div></td>
+            <td>@if (p.health) { <span class="nowrap" [title]="p.health.late_days ? 'Forecast ' + p.health.late_days + ' working days late' : ''"><i class="health-dot" [class]="p.health.grade"></i>{{ p.health.score }} · {{ p.health.label }}</span> } @else { <span class="muted">—</span> }</td>
             <td>{{ p.planned_end || '—' }}</td>
             @if (showMoney()) { <td class="right">{{ fmt(p.value) }}</td> }
           </tr>
         </ng-template>
-        <ng-template #emptymessage><tr><td colspan="7" class="center muted">No projects yet</td></tr></ng-template>
+        <ng-template #emptymessage><tr><td colspan="8" class="center muted">No projects yet</td></tr></ng-template>
       </p-table>
     </p-card>
 

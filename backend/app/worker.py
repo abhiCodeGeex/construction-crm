@@ -236,7 +236,7 @@ def check_meetings(now):
         if not p:
             continue
         notify.send("meeting_reminder", [s["user_id"] for s in m.get("staff", [])],
-                    f"{m['title']} ({p['name']}) at {m['at'].strftime('%H:%M')}" + (f", {m['place']}" if m.get("place") else ""),
+                    f"{m['title']} ({p['name']}) at {m['at'].strftime('%H:%M')} UTC" + (f", {m['place']}" if m.get("place") else ""),
                     f"/app/projects/{m['project_id']}", project_id=m["project_id"], key=f"meet-2h:{m['_id']}:{m['at'].isoformat()}")
 
 

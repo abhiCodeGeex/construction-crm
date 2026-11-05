@@ -299,15 +299,15 @@ Source: requirements §5 (proposal types, templates, versions, optional items, d
 
 # Phase B+ — Projects in depth (and the open ends of A and B)
 
-Source: the projects comparison (Procore, Buildertrend, Houzz Pro, Powerplay / Onsite) agreed with the owner, requirements §1, §3.4, §4, §15 and §18. Delivered in blocks, each tested, checked in the browser and committed. Covered by [backend/tests/test_projects_plus.py](backend/tests/test_projects_plus.py).
+Source: the projects comparison (Procore, Buildertrend, Houzz Pro, Powerplay / Onsite) agreed with the owner, requirements §1, §3.4, §4, §15 and §18. Delivered in blocks, each tested, checked in the browser and committed. Covered by [backend/tests/test_projects_plus.py](backend/tests/test_projects_plus.py) (block 1) and [backend/tests/test_projects_depth.py](backend/tests/test_projects_depth.py) (blocks 2–4).
 
 ### Build status
 | Block | Scope | Status |
 |---|---|---|
 | 1 | Project notifications, scheduled project reminders, compliance expiry alerts, forgot password by email, change my own password, sessions signed out after a password change, real two-factor for Super Admin | **Done** |
-| 2 | Stage checklists and exit rules for projects, task checklists, comments with @mention, task files and photos, priority | Next |
-| 3 | Project timeline with filters, baseline vs actual with a reason for each delay, start-to-start / finish-to-finish / lag, working days and holidays, drag-to-edit Gantt | Planned |
-| 4 | Meetings and minutes (action items become tasks, minutes emailed), project health score, "waiting on whom" view | Planned |
+| 2 | Stage closing rules (checklist, client sign-off, Owner override), task checklists, comments with @mention, task files and photos, priority | **Done** |
+| 3 | Project timeline with filters, baseline vs actual with a reason for each delay, start-to-start / finish-to-finish / lag, working days and holidays, moving dependent tasks, drag-to-edit Gantt | **Done** |
+| 4 | Meetings and minutes (action items become tasks, minutes emailed), project health score, finish forecast, "waiting on whom" (also in the client portal) | **Done** |
 
 ## B+1. Notifications, password and two-factor
 | Area | Implementation | Test |
@@ -322,3 +322,35 @@ Source: the projects comparison (Procore, Buildertrend, Houzz Pro, Powerplay / O
 | Audit | Password changes are logged as *changed* — never the value or its hash (25 older rows masked by migration 009) | no hash anywhere |
 | Super Admin two-factor | Real authenticator codes (RFC 6238: Google / Microsoft Authenticator, Authy, 1Password). First sign-in (and after a reset): the password step returns a key + QR code; the first code confirms it. Codes are 6 digits / 30 s, one step of clock drift allowed, a code cannot be used twice. **5 wrong passwords or codes → locked 15 minutes** (logged). The platform Owner can *Reset two-factor* for a member (lost phone); nobody can change their own access. Secrets are never returned by any endpoint. The demo code `123456` is gone (migration 009) | set-up, confirm, replay refused, lock, reset, no secret in /sa/me or /sa/team |
 | nginx | `/api` is resolved through Docker's DNS every 10 s, so a restarted backend is found without restarting nginx (before: 502s until nginx restarted, which also left forms blank). `index.html` is never cached | — |
+
+## B+2. Closing a stage, task depth
+| Area | Implementation | Test |
+|---|---|---|
+| Stage gate | Every stage closes through its **“<stage> complete” milestone** (the gate; contract payment rows hang on it). It closes only when every task is done (no tasks → progress 100 %), every **closing check** is ticked, the **client’s sign-off** is recorded (when the stage needs it) and no **high-severity issue** on that stage is open. The refusal lists exactly what is missing. The **Owner** may close anyway with a reason (kept on the timeline); nobody else can. A closed stage’s checklist and sign-off are locked until it is reopened | each rule; override owner-only; lock |
+| Closing checklist | Defaults per service — Architecture: drawings issued, client comments addressed (+ client sign-off). Construction: quality inspection passed, site photos uploaded, snags closed. Interior: items installed as selected, client walk-through, snags closed (+ client sign-off). Editable per template stage (Settings → Stage templates: one check per line + “needs the client’s sign-off”) and per stage on the project. Open stages of existing projects got the defaults (migration 010) | defaults; template → new project; duplicates refused |
+| Client sign-off | Recorded by staff: who, how (in person / email / WhatsApp / phone / signed document), date, note; managers are told. Removable while the stage is open | method required; notified |
+| Task checklist | Steps inside a task, ticked by editors or the assignee (who may also add steps). Progress follows the ticks; a task is done only when every step is ticked; a new open step reopens a done task | each |
+| Priority | Low / normal / high / urgent, shown on the task row | invalid refused |
+| Comments & @mentions | Any staff member on the project comments on a task. **@Name** of a team member (the “@ Mention” button inserts it) notifies them; the assignee is told about every comment; nobody about their own. Delete: author or Owner | mention, assignee, author, outsider 404 |
+| Task files & photos | Upload and attach with a caption (editors and the assignee); remove: uploader or editor (the stored file is deleted too) | each |
+| Timeline entries | Every change above, plus task / stage / milestone changes, team and issues, is written to the project timeline | — |
+
+## B+3. Plan, delays, timeline
+| Area | Implementation | Test |
+|---|---|---|
+| Working days & holidays | Settings → Branches, tax & numbering → *Working days & holidays* (default Monday–Saturday). Lags, moving dependent tasks, delay days and the forecast count working days only | weekends and holidays skipped |
+| Dependency types | Finish → start (FS), start → start (SS), finish → finish (FF), each with a lag in working days. FS: cannot start until the other finishes; SS: cannot start until the other started; FF: cannot finish until the other finished. Dates that break a link are flagged. Older tasks keep working as FS | each type; lag; refusals |
+| Baseline | *Set baseline* freezes today’s dates as the agreed plan (later baselines are kept too). Every task and stage shows its slip in working days; the project shows how far its planned finish is from the baseline | slip values |
+| Delay reasons | Once a baseline exists, moving a task, stage or milestone **later** asks *why* (client change / decision / payment, authority, consultant, material, subcontractor, labour, our planning, rework, weather, site condition, other). Each is kept as a delay with **who caused it** and the working days; the overview totals the days lost per party | refused without a reason; recorded; totals |
+| Move dependents | When a task moves, the tasks that depend on it (and theirs) can move by the same number of working days — asked after a drag | dates shifted |
+| Drag-to-edit Gantt | Timeline tab: drag a task bar to move it, drag its right edge to change the end; a live label shows the new dates; the baseline is a grey line under each bar | browser |
+| Project timeline | *Activity* tab: every change newest first; filters Tasks · Stages & milestones · Schedule & delays · Team · Issues · Comments & files · Meetings · Edits. The field-level audit stays under *Audit log* | filters; unknown filter 400 |
+
+## B+4. Meetings, health, waiting on whom
+| Area | Implementation | Test |
+|---|---|---|
+| Meetings | Plan (title, date/time, place, staff from the team, contacts, agenda) → staff attendees told; moved → told again; reminder in the last 2 hours. Minutes: notes, decisions, actions (text, owner on the team, stage, due date). **Publish**: each action becomes a task (assigned, dated, “From the meeting …”), the minutes are emailed to every attendee with an email (result kept per address), staff are told. Published minutes are locked; only the Owner deletes them | each |
+| Waiting on whom | Blocking a task asks who it waits on (client, architect / consultant, vendor, subcontractor, authority, our team + optional contact and note). Issues can wait on a party too. A stage whose work is done but lacks the client’s sign-off waits on the client. Per project (overview) with days waiting and totals per party; across projects `GET /waiting?party=`; the **client portal shows “Waiting on you”** (client items only) | each source; portal |
+| Health score | Six parts out of 100, each with its reason: work on time (25), forecast finish (15), open issues (15), blocked / waiting (15), kept up to date (15), budget (15, full until costs are recorded in Phase E). Green ≥ 75 on track, amber 50–74 at risk, red < 50 off track. On the overview, the projects list and Home (*Projects at risk*). The managers and Owners are told once when a project turns red | parts sum; red; list; home; notified once |
+| Finish forecast | Per stage, at the pace kept so far (progress per working day since it started): forecast finish and working days late; a stage that should have started with 0 % needs its full length from today. The project forecast is the latest stage forecast, said in plain words (“At the current pace Foundation finishes 9 working days late”) | late stage |
+| Times | Meeting times go to the server in UTC and show in the viewer’s local time, like site visits; emailed and notified times are labelled UTC | browser |

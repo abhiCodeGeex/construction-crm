@@ -42,6 +42,16 @@ import { NAV } from '../core/nav';
         }
       </div>
 
+      @if (h.projects_at_risk?.length) {
+        <p-card styleClass="mb"><ng-template #title>Projects at risk <small class="muted">· health under 75</small></ng-template>
+          @for (r of h.projects_at_risk; track r.id) {
+            <a class="ms-row link-row" [routerLink]="['/app/projects', r.id]">
+              <i class="health-dot" [class]="r.grade"></i>
+              <div class="grow"><strong>{{ r.name }}</strong><br /><small class="muted">{{ r.why }}</small></div>
+              <p-tag [value]="r.score + ' · ' + r.label" [severity]="r.grade === 'red' ? 'danger' : 'warn'" /></a>
+          }
+        </p-card>
+      }
       @if (h.projects) {
         <div class="grid2 top">
           <p-card><ng-template #title>My tasks</ng-template>

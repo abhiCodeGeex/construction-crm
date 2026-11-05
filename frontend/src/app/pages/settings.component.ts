@@ -3,6 +3,8 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
+import { CheckboxModule } from 'primeng/checkbox';
+import { TextareaModule } from 'primeng/textarea';
 import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
@@ -20,7 +22,7 @@ import { AuthService } from '../core/auth.service';
 
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, DatePipe, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, MessageModule, SelectButtonModule,
+  imports: [FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, TextareaModule, DialogModule, InputNumberModule, InputTextModule, MessageModule, SelectButtonModule,
     SelectModule, TableModule, TabsModule, TagModule, ToggleSwitchModule, SalesSettingsComponent, ProposalSettingsComponent],
   template: `
     <div class="page-head"><div><h1>Company settings</h1><p class="muted">Company setup, stage templates, role permissions and the audit log.</p></div></div>
@@ -87,6 +89,25 @@ import { AuthService } from '../core/auth.service';
                     <small class="muted">Use <code>{{ '{' }}n{{ '}' }}</code> (or <code>{{ '{' }}n:04d{{ '}' }}</code> for padding) and optional <code>{{ '{' }}year{{ '}' }}</code>. Next number: <strong>{{ nextNo() }}</strong></small></label>
                 </div>
               </p-card>
+              <p-card><ng-template #title>Working days & holidays</ng-template>
+                <div class="stack">
+                  <small class="muted">Used for task lags, moving dependent tasks, delay days and the finish forecast — a Sunday or a holiday never counts as a day of work.</small>
+                  <div class="row gap wrap">
+                    @for (d of cal.weekdays; track $index; let i = $index) {
+                      <label class="check"><p-checkbox [binary]="true" [ngModel]="cal.working_days.includes(i)" (onChange)="toggleDay(i, $event.checked)" [disabled]="!canEdit()" /> {{ d }}</label>
+                    }
+                  </div>
+                  @for (h of cal.holidays; track $index; let i = $index) {
+                    <div class="row gap"><input pInputText type="date" [(ngModel)]="h.date" [disabled]="!canEdit()" />
+                      <input pInputText [(ngModel)]="h.name" placeholder="Holiday name" class="grow" [disabled]="!canEdit()" />
+                      @if (canEdit()) { <p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="cal.holidays.splice(i, 1)" /> }</div>
+                  }
+                  @if (canEdit()) {
+                    <div class="row-between"><p-button label="Add holiday" icon="pi pi-plus" size="small" [text]="true" (onClick)="cal.holidays.push({ date: '', name: '' })" />
+                      <p-button label="Save calendar" icon="pi pi-check" size="small" (onClick)="saveCalendar()" /></div>
+                  }
+                </div>
+              </p-card>
             </div>
             @if (canEdit()) { <div class="row right mt"><p-button label="Save setup" icon="pi pi-check" (onClick)="saveSetup()" /></div> }
           }
@@ -109,7 +130,7 @@ import { AuthService } from '../core/auth.service';
                 <ng-template #title><div class="row-between"><span>{{ t.name }}</span>
                   @if (t.is_default) { <p-tag value="Default" severity="success" /> }</div></ng-template>
                 <ng-template #subtitle>{{ svc[t.service] }} · {{ t.stages.length }} stages · {{ total(t) }} days</ng-template>
-                <ol class="tpl-stages">@for (s of t.stages; track s.name) { <li>{{ s.name }} <small class="muted">{{ s.duration_days }} d</small></li> }</ol>
+                <ol class="tpl-stages">@for (s of t.stages; track s.name) { <li>{{ s.name }} <small class="muted">{{ s.duration_days }} d{{ s.checklist?.length ? ' · ' + s.checklist.length + ' closing checks' : '' }}{{ s.client_signoff ? ' · client sign-off' : '' }}</small></li> }</ol>
                 @if (canEdit()) {
                   <div class="row gap">
                     <p-button label="Edit" icon="pi pi-pencil" size="small" [text]="true" (onClick)="editTemplate(t)" />
@@ -178,16 +199,18 @@ import { AuthService } from '../core/auth.service';
           <label class="field"><span>Service</span><p-select [options]="modules" [(ngModel)]="tf.service" optionLabel="label" optionValue="value" fluid appendTo="body" /></label>
         </div>
         <p-table [value]="tf.stages" size="small">
-          <ng-template #header><tr><th>#</th><th>Stage</th><th>Days</th><th></th></tr></ng-template>
+          <ng-template #header><tr><th>#</th><th>Stage <small class="muted">· closing checklist, one per line</small></th><th>Days</th><th></th></tr></ng-template>
           <ng-template #body let-s let-i="rowIndex">
-            <tr><td>{{ i + 1 }}</td><td><input pInputText [(ngModel)]="s.name" fluid /></td>
+            <tr><td>{{ i + 1 }}</td><td><input pInputText [(ngModel)]="s.name" fluid />
+              <textarea pTextarea rows="2" [ngModel]="(s.checklist ?? []).join('\n')" (ngModelChange)="s.checklist = splitLines($event)" placeholder="Checks before this stage can close" class="mt-xs" fluid></textarea>
+              <label class="check small"><p-checkbox [binary]="true" [(ngModel)]="s.client_signoff" /> Needs the client's sign-off</label></td>
               <td><p-inputnumber [(ngModel)]="s.duration_days" [min]="1" [max]="3650" [showButtons]="false" inputStyleClass="w-5" /></td>
               <td class="nowrap"><p-button icon="pi pi-arrow-up" [text]="true" size="small" [disabled]="i === 0" (onClick)="swap(i, i - 1)" />
                 <p-button icon="pi pi-arrow-down" [text]="true" size="small" [disabled]="i === tf.stages.length - 1" (onClick)="swap(i, i + 1)" />
                 <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="tf.stages.splice(i, 1)" /></td></tr>
           </ng-template>
         </p-table>
-        <p-button label="Add stage" icon="pi pi-plus" size="small" [text]="true" (onClick)="tf.stages.push({ name: '', duration_days: 14 })" />
+        <p-button label="Add stage" icon="pi pi-plus" size="small" [text]="true" (onClick)="tf.stages.push({ name: '', duration_days: 14, checklist: [], client_signoff: false })" />
         <label class="check"><p-toggleswitch [(ngModel)]="tf.is_default" /> Default for this service</label>
         <div class="row gap right"><p-button label="Save template" icon="pi pi-check" (onClick)="saveTemplate()" /></div>
       </div>
@@ -208,11 +231,31 @@ export class SettingsComponent implements OnInit {
   modules = Object.entries(SERVICE_LABEL).map(([value, label]) => ({ value, label }));
   currencies = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'AUD'];
   setup: any = { branches: [] };
+  cal: any = { weekdays: [], working_days: [], holidays: [] };
   tplDlg = false;
   tf: any = { stages: [] };
 
   async ngOnInit() {
-    await Promise.all([this.loadCompany(), this.loadTemplates(), this.loadRoles(), this.loadAudit()]);
+    await Promise.all([this.loadCompany(), this.loadTemplates(), this.loadRoles(), this.loadAudit(), this.loadCalendar()]);
+  }
+
+  async loadCalendar() {
+    const c = await this.api.get('/settings/calendar');
+    this.cal = { weekdays: c.weekdays, working_days: [...c.working_days], holidays: c.holidays.map((h: any) => ({ ...h })) };
+  }
+
+  toggleDay(i: number, on: boolean) {
+    this.cal.working_days = on ? [...new Set([...this.cal.working_days, i])].sort() : this.cal.working_days.filter((d: number) => d !== i);
+  }
+
+  async saveCalendar() {
+    await this.api.put('/settings/calendar', { working_days: this.cal.working_days, holidays: this.cal.holidays.filter((h: any) => h.date || h.name) },
+      'Working days saved');
+    await this.loadCalendar();
+  }
+
+  splitLines(v: string) {
+    return v.split('\n').map((x) => x.trim()).filter(Boolean);
   }
 
   async loadCompany() {
@@ -281,7 +324,7 @@ export class SettingsComponent implements OnInit {
 
   editTemplate(t?: any) {
     this.tf = t ? { id: t.id, name: t.name, service: t.service, is_default: t.is_default, stages: t.stages.map((s: any) => ({ ...s })) }
-      : { name: '', service: 'architecture', is_default: false, stages: [{ name: '', duration_days: 14 }] };
+      : { name: '', service: 'architecture', is_default: false, stages: [{ name: '', duration_days: 14, checklist: [], client_signoff: true }] };
     this.tplDlg = true;
   }
 

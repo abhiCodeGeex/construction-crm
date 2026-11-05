@@ -316,3 +316,17 @@ button.link { background: none; border: 0; padding: 0 .15rem; color: var(--brand
   body { background: #fff !important; color: #000 !important; }
 }
 .danger { color: var(--p-red-500, #dc2626); }
+
+/* Phase B+ (projects in depth) */
+.c-good { color: var(--good, #16a34a); }
+.w-4 { width: 4rem; } .w-10 { width: 10rem; }
+.gate { margin-top: .6rem; padding: .6rem .75rem; border: 1px dashed var(--border); border-radius: 10px; }
+.gate.closed { border-style: solid; background: color-mix(in srgb, #16a34a 6%, transparent); }
+.check-row { display: flex; align-items: center; gap: .5rem; padding: .2rem 0; }
+.task-link { color: inherit; font-weight: 500; } .task-link:hover { color: var(--brand); }
+.task-badges { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-top: .15rem; color: var(--muted); }
+.task-badges small { display: inline-flex; gap: .2rem; align-items: center; }
+.dep-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.3fr) 4.5rem auto; gap: .4rem; margin-bottom: .4rem; align-items: center; }
+.health-dot { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; margin-right: .3rem; }
+.health-dot.green { background: #16a34a; } .health-dot.amber { background: #f59e0b; } .health-dot.red { background: #ef4444; }
+.waiting-you { border: 1px solid #f59e0b; background: color-mix(in srgb, #f59e0b 8%, transparent); border-radius: 10px; padding: .65rem .8rem; margin-bottom: .9rem; }
