@@ -242,7 +242,7 @@ const EVENT_ICON: Record<string, string> = {
           <p-tabpanel value="proposals">@if (tab === 'proposals') { <app-lead-proposals [lead]="l" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="files">@if (tab === 'files') { <app-lead-files [lead]="l" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="timeline">
-            <div class="filters"><p-selectbutton [options]="groups" [(ngModel)]="group" [allowEmpty]="false" /></div>
+            <div class="filters"><p-selectbutton [options]="groups" [ngModel]="group()" (onChange)="group.set($event.value ?? 'All')" [allowEmpty]="false" /></div>
             @for (a of timeline(); track a.id) {
               <div class="timeline-row"><i [class]="icon[a.type] || eventIcon[a.type] || 'pi pi-circle'"></i>
                 <div class="grow"><div>{{ a.text }}</div>
@@ -317,7 +317,7 @@ export class LeadDetailComponent implements OnInit {
   channelOptions = computed(() => (this.meta()?.channels ?? []).map((v: string) => ({ value: v, label: CHANNEL_LABEL[v] || label(v) })));
   timeline = computed(() => {
     const all = [...(this.l()?.activities ?? [])].reverse();
-    return this.group === 'All' ? all : all.filter((a) => GROUPS[this.group]?.includes(a.type));
+    return this.group() === 'All' ? all : all.filter((a) => GROUPS[this.group()]?.includes(a.type));
   });
   svc = SERVICE_LABEL;
   color = SERVICE_COLOR;
@@ -328,7 +328,7 @@ export class LeadDetailComponent implements OnInit {
   units = [{ label: 'sq ft', value: 'sqft' }, { label: 'm²', value: 'sqm' }];
   temps = [{ label: 'Hot', value: 'hot' }, { label: 'Warm', value: 'warm' }, { label: 'Cold', value: 'cold' }];
   groups = ['All', ...Object.keys(GROUPS)];
-  group = 'All';
+  group = signal('All');
   tab = 'overview';
   today = new Date().toISOString().slice(0, 10);
   tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
