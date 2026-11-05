@@ -149,6 +149,8 @@ def health(p, today=None):
         pts, why = 7, f"{round(spent / budget * 100)}% of the budget spent at {prog}% progress"
     else:
         pts, why = 15, "Spending within the budget"
+    if getattr(g, "hide_costs", False):  # site staff and portal users never see spending, not even as a sentence
+        why = "Budget details are not shown for your role"
     parts.append({"key": "budget", "label": "Budget", "points": pts, "max": 15, "why": why})
 
     score = sum(x["points"] for x in parts)
