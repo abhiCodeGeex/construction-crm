@@ -27,7 +27,7 @@ import { AuthService } from '../../core/auth.service';
             <input type="file" hidden (change)="upload($event)" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.doc,.docx,.xlsx,.xls,.csv,.dwg,.dxf,.mp4,.mov" /></label>
         </div>
       }
-      <div class="filters"><p-selectbutton [options]="filterOpts()" [(ngModel)]="filter" optionLabel="label" optionValue="value" [allowEmpty]="false" /></div>
+      <div class="filters"><p-selectbutton [options]="filterOpts()" [ngModel]="filter()" (onChange)="filter.set($event.value ?? '')" optionLabel="label" optionValue="value" [allowEmpty]="false" /> <small class="muted">{{ shown().length }} of {{ files().length }} files</small></div>
       <p-table [value]="shown()" size="small">
         <ng-template #header><tr><th>File</th><th>Folder</th><th>Room</th><th>Added</th><th></th></tr></ng-template>
         <ng-template #body let-f><tr>
@@ -52,12 +52,12 @@ export class LeadFilesComponent implements OnInit {
   editable = computed(() => this.lead()?.status === 'open' && this.lead()?.can_edit);
   folderOpts = computed(() => this.folders().map((f) => ({ value: f, label: label(f) })));
   filterOpts = computed(() => [{ value: '', label: 'All' }, ...this.folderOpts()]);
-  shown = computed(() => this.files().filter((f) => !this.filter || f.folder === this.filter));
+  shown = computed(() => this.files().filter((f) => !this.filter() || f.folder === this.filter()));
   label = label;
   folder = 'photos';
   roomId: string | null = null;
   caption = '';
-  filter = '';
+  filter = signal('');
 
   async ngOnInit() {
     await this.load();
@@ -77,6 +77,7 @@ export class LeadFilesComponent implements OnInit {
     const up = await this.api.upload(file);
     await this.api.post(`/leads/${this.lead().id}/files`, { key: up.key, folder: this.folder, room_id: this.roomId, caption: this.caption }, 'File added');
     this.caption = '';
+    this.filter.set(''); // show the new file whatever filter was on
     await this.load();
     this.changed.emit();
   }

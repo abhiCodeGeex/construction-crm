@@ -369,8 +369,7 @@ export class LeadsComponent implements OnInit {
   wl = viewChild.required(WinLoseComponent);
 
   async ngOnInit() {
-    const m = await this.api.get('/leads/meta');
-    this.meta.set(m);
+    const m = await this.loadMeta();
     this.service = m.services[0];
     this.loadViews();
     await this.load();
@@ -422,7 +421,15 @@ export class LeadsComponent implements OnInit {
     this.wl().open(kind, lead, this.meta());
   }
 
+  /** Dropdown options (services, sources, staff…). Fetched again if the first load failed, so forms are never left blank. */
+  async loadMeta() {
+    const m = await this.api.get('/leads/meta');
+    this.meta.set(m);
+    return m;
+  }
+
   async openNew() {
+    if (!this.meta()) await this.loadMeta();
     if (this.auth.can('contacts') && !this.contacts().length) this.contacts.set(await this.api.get('/contacts'));
     this.duplicate.set(null);
     this.contactMode = 'new';
