@@ -434,6 +434,8 @@ def delete_lead(_id):
     lead = load_lead(_id)
     if lead["status"] == "won" and t.get("projects", lead.get("project_id"), required=False):
         abort(409, "Won leads cannot be deleted while their project exists")
+    if db.lead_receipts.count_documents({"company_id": g.cid, "lead_id": _id, "status": {"$ne": "void"}}):
+        abort(409, "Money was received on this lead; void its receipts first (or record the lead as lost)")
     t.delete("leads", _id)
     db.followups.update_many({"company_id": g.cid, "related.type": "lead", "related.id": _id, "status": "open"},
                              {"$set": {"status": "cancelled", "outcome": "Lead deleted"}})
@@ -444,7 +446,7 @@ def delete_lead(_id):
     for f in db.lead_files.find({"company_id": g.cid, "lead_id": _id, "project_id": None}):
         delete_stored(f["key"])
     db.lead_files.delete_many({"company_id": g.cid, "lead_id": _id, "project_id": None})
-    for coll in ("lead_visits", "lead_expenses"):
+    for coll in ("lead_visits", "lead_expenses", "lead_receipts", "estimates", "proposals"):
         db[coll].delete_many({"company_id": g.cid, "lead_id": _id})
     return jsonify({"ok": True})
 
@@ -603,6 +605,8 @@ def win_lead(lead, d, bid=None):
     db.followups.update_many({"company_id": g.cid, "related.type": "lead", "related.id": _id, "status": "open"},
                              {"$set": {"related": {"type": "project", "id": pid, "label": project["name"]}}})
     close_bids(_id, "won", {"project_id": pid, "project_code": code})
+    from .lead_money import hand_over_to_project
+    hand_over_to_project(lead, project, d["pm_id"], d.get("advance"))
     link = f"/app/projects/{pid}"
     notify.send("project_pm", [d["pm_id"]], f"You are the project manager of {code} {project['name']} (won by "
                 f"{g.user.get('name')})", link, _id)

@@ -38,6 +38,16 @@ import { Api } from '../../core/api.service';
               <label class="field"><span>Start date</span><input pInputText type="date" name="s" [(ngModel)]="w.start" fluid /></label>
               <label class="field"><span>Project value</span><p-inputnumber name="v" [(ngModel)]="w.value" [min]="0" fluid /></label>
             </div>
+            @if (!bid) {
+              <details><summary class="small">Advance received now (optional)</summary>
+                <div class="grid2 mt-xs">
+                  <p-select name="ak" [options]="adv.kinds" [(ngModel)]="w.advance.kind" placeholder="What for" fluid appendTo="body" />
+                  <p-inputnumber name="aa" [(ngModel)]="w.advance.amount" [min]="0" placeholder="Amount" fluid />
+                  <p-select name="am" [options]="adv.modes" [(ngModel)]="w.advance.mode" placeholder="Mode" fluid appendTo="body" />
+                  <input pInputText name="ar" [(ngModel)]="w.advance.reference" placeholder="Reference (UPI / cheque no.)" />
+                </div>
+              </details>
+            }
           }
           <div class="row gap right"><p-button type="submit" [label]="bid?.status === 'won' ? 'Create project' : bid?.lead_status === 'won' ? 'Record win' : 'Win & create project'" icon="pi pi-trophy" severity="success" [loading]="busy()" /></div>
         </form>
@@ -68,9 +78,10 @@ export class WinLoseComponent {
   bid: any = null;
   pms: any[] = [];
   reasons: string[] = [];
-  w: any = {};
+  w: any = { advance: {} };
   clients: any[] = [];
   l: any = {};
+  adv = { kinds: ['Token / booking advance', 'Design fee advance'], modes: ['Cash', 'UPI', 'Bank transfer', 'Cheque', 'Card'] };
   tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
 
   /** `bid` holds the bid plus `lead_status` of its linked lead (if any). */
@@ -81,7 +92,9 @@ export class WinLoseComponent {
     this.bid = bid ? item : null;
     this.pms = meta?.project_managers ?? [];
     this.reasons = meta?.loss_reasons ?? [];
-    this.w = { project_name: item.title, pm_id: null, start: new Date().toISOString().slice(0, 10), value: (bid ? item.value : item.budget) ?? null };
+    const today = new Date().toISOString().slice(0, 10);
+    this.w = { project_name: item.title, pm_id: null, start: today, value: (bid ? item.value : item.value || item.budget) ?? null,
+      advance: { kind: null, amount: null, mode: null, reference: '', date: today } };
     this.l = { reason: null, note: '', competitor: '', competitor_price: null, reengage_on: '' };
     this.visible = true;
   }
@@ -94,7 +107,9 @@ export class WinLoseComponent {
     this.busy.set(true);
     try {
       const path = !this.bid ? 'win' : this.bid.status === 'won' ? 'project' : 'won';
-      const r = await this.api.post(`${this.base()}/${path}`, this.w, path === 'project' ? 'Project created' : this.bid ? 'Bid won' : 'Won — project created');
+      const { advance, ...w } = this.w;
+      const body = advance?.amount ? { ...w, advance } : w;
+      const r = await this.api.post(`${this.base()}/${path}`, body, path === 'project' ? 'Project created' : this.bid ? 'Bid won' : 'Won — project created');
       this.visible = false;
       this.done.emit();
       if (r.project_id) this.router.navigate(['/app/projects', r.project_id]);

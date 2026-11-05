@@ -22,6 +22,8 @@ import { CHANNEL_ICON, CHANNEL_LABEL, FollowupDialogComponent } from '../../shar
 import { WinLoseComponent } from './win-lose.component';
 import { LeadBriefComponent } from './lead-brief.component';
 import { LeadFilesComponent } from './lead-files.component';
+import { LeadMoneyComponent } from './lead-money.component';
+import { LeadProposalsComponent } from './lead-proposals.component';
 import { LeadVisitsComponent } from './lead-visits.component';
 
 /** Timeline filter groups (C+3). */
@@ -29,18 +31,19 @@ const GROUPS: Record<string, string[]> = {
   'Calls & messages': ['call', 'email', 'whatsapp', 'meeting', 'note', 'site_visit'],
   'Visits & site': ['visit', 'measurement', 'file'],
   'Brief & people': ['brief', 'stakeholder', 'ballpark'],
+  'Money & proposals': ['estimate', 'expense', 'receipt', 'proposal', 'negotiation'],
   'Stage & status': ['created', 'stage', 'checklist', 'won', 'lost', 'reopened', 'on_hold', 'resumed', 'merged'],
   Edits: ['edit'],
 };
 const EVENT_ICON: Record<string, string> = {
   created: 'pi pi-plus-circle', stage: 'pi pi-arrow-right', checklist: 'pi pi-check-square', edit: 'pi pi-pencil',
-  brief: 'pi pi-list-check', stakeholder: 'pi pi-users', ballpark: 'pi pi-calculator', visit: 'pi pi-map-marker', measurement: 'pi pi-arrows-h', file: 'pi pi-paperclip', won: 'pi pi-trophy', lost: 'pi pi-times-circle', reopened: 'pi pi-replay', on_hold: 'pi pi-pause', resumed: 'pi pi-play', note: 'pi pi-file',
+  estimate: 'pi pi-calculator', expense: 'pi pi-minus-circle', receipt: 'pi pi-wallet', proposal: 'pi pi-file-edit', negotiation: 'pi pi-arrows-h', brief: 'pi pi-list-check', stakeholder: 'pi pi-users', ballpark: 'pi pi-calculator', visit: 'pi pi-map-marker', measurement: 'pi pi-arrows-h', file: 'pi pi-paperclip', won: 'pi pi-trophy', lost: 'pi pi-times-circle', reopened: 'pi pi-replay', on_hold: 'pi pi-pause', resumed: 'pi pi-play', note: 'pi pi-file',
 };
 
 @Component({
   selector: 'app-lead-detail',
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule, MessageModule,
-    SelectButtonModule, SelectModule, TabsModule, TagModule, TextareaModule, FollowupDialogComponent, WinLoseComponent, LeadBriefComponent, LeadFilesComponent, LeadVisitsComponent],
+    SelectButtonModule, SelectModule, TabsModule, TagModule, TextareaModule, FollowupDialogComponent, WinLoseComponent, LeadBriefComponent, LeadFilesComponent, LeadMoneyComponent, LeadProposalsComponent, LeadVisitsComponent],
   template: `
     @if (l(); as l) {
       <div class="page-head">
@@ -112,6 +115,8 @@ const EVENT_ICON: Record<string, string> = {
           <p-tab value="overview"><i class="pi pi-id-card mr"></i>Overview</p-tab>
           <p-tab value="visits"><i class="pi pi-map-marker mr"></i>Visits & measurements</p-tab>
           <p-tab value="brief"><i class="pi pi-list-check mr"></i>Brief & decision-makers</p-tab>
+          <p-tab value="money"><i class="pi pi-calculator mr"></i>Estimate & money</p-tab>
+          <p-tab value="proposals"><i class="pi pi-file-edit mr"></i>Proposals & negotiation</p-tab>
           <p-tab value="files"><i class="pi pi-folder mr"></i>Files</p-tab>
           <p-tab value="timeline"><i class="pi pi-history mr"></i>Timeline ({{ l.activities.length }})</p-tab>
         </p-tablist>
@@ -233,6 +238,8 @@ const EVENT_ICON: Record<string, string> = {
 
           <p-tabpanel value="visits">@if (tab === 'visits') { <app-lead-visits [lead]="l" [staff]="meta()?.staff ?? []" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="brief">@if (tab === 'brief') { <app-lead-brief [lead]="l" [contacts]="contacts()" (changed)="reload()" /> }</p-tabpanel>
+          <p-tabpanel value="money">@if (tab === 'money') { <app-lead-money [lead]="l" (changed)="reload()" /> }</p-tabpanel>
+          <p-tabpanel value="proposals">@if (tab === 'proposals') { <app-lead-proposals [lead]="l" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="files">@if (tab === 'files') { <app-lead-files [lead]="l" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="timeline">
             <div class="filters"><p-selectbutton [options]="groups" [(ngModel)]="group" [allowEmpty]="false" /></div>

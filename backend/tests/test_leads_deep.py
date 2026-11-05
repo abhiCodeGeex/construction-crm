@@ -59,7 +59,7 @@ day = lambda n: (date.today() + timedelta(days=n)).isoformat()
 T = {r: login(f"{r}@skyline.test") for r in ("owner", "sales", "pm", "estimator", "accounts")}
 U = {u["email"].split("@")[0]: u["id"] for u in call("GET", "/users", token=T["owner"])[1] if u["kind"] == "staff"}
 CID = mongo.users.find_one({"email": "owner@skyline.test"})["company_id"]
-leads, contacts, temp_users = [], [], []
+leads, contacts, temp_users, projects_made, rates_made = [], [], [], [], []
 n = 0
 company_before = mongo.companies.find_one({"_id": ObjectId(CID)}, {"sales": 1, "email_settings": 1})
 
@@ -559,9 +559,157 @@ try:
     check("C+2.4 salesperson told", any(x["event"] == "questionnaire" and x["lead_id"] == V["id"] for x in bell("sales")))
     check("C+2.4 answers logged", "answered the questionnaire" in get(V["id"])["activities"][-1]["text"])
 
+    # ================= C+2.5a rate library =================
+    expect("C+2.5 pm cannot change rates", call("POST", "/rates", {"kind": "material", "name": "x", "unit": "sqft", "rate": 1}, T["pm"]), 403)
+    expect("C+2.5 rate kind", call("POST", "/rates", {"kind": "magic", "name": "x", "unit": "sqft", "rate": 1}, T["estimator"]), 400)
+    r_mat = expect("C+2.5 material rate", call("POST", "/rates", {"kind": "material", "name": f"Gypsum ceiling {RUN}", "unit": "sq ft", "rate": 85,
+                                                                  "category": "False ceiling"}, T["estimator"]), 201)
+    r_lab = expect("C+2.5 labour rate", call("POST", "/rates", {"kind": "labour", "name": f"Ceiling labour {RUN}", "unit": "sq ft", "rate": 30,
+                                                                "category": "False ceiling"}, T["estimator"]), 201)
+    rates_made += [r_mat["id"], r_lab["id"]]
+    check("C+2.5 rates listed", {r_mat["id"], r_lab["id"]} <= {r["id"] for r in call("GET", "/rates", token=T["sales"])[1]["rates"]})
+
+    # ================= C+2.5a estimate with approval =================
+    expect("C+2.5 site staff cannot see estimates", call("GET", f"/leads/{V['id']}/estimates", token=login("site@skyline.test")), 403)
+    est = expect("C+2.5 start estimate", call("POST", f"/leads/{V['id']}/estimates", {}, T["estimator"]), 201)
+    check("C+2.5 tax from company settings", est["tax_pct"] == float(mongo.companies.find_one({"_id": ObjectId(CID)}).get("tax_rate") or 0) and est["status"] == "draft")
+    E = f"/estimates/{est['id']}"
+    expect("C+2.5 measured line needs a room", call("PUT", E, {"lines": [{"description": "Ceiling", "qty_source": "ceiling_area"}]}, T["estimator"]), 400)
+    expect("C+2.5 typed line needs a quantity", call("PUT", E, {"lines": [{"description": "Lights"}]}, T["estimator"]), 400)
+    lines = [{"description": "Gypsum false ceiling", "room_id": living, "qty_source": "ceiling_area", "work_type": "False ceiling", "unit": "sq ft",
+              "material_rate": 85, "labour_rate": 30, "material_rate_id": r_mat["id"], "labour_rate_id": r_lab["id"]},
+             {"description": "Modular kitchen", "qty": 1, "unit": "lot", "material_rate": 50000, "work_type": "Modular kitchen"}]
+    e1 = expect("C+2.5 lines and percentages", call("PUT", E, {"lines": lines, "overhead_pct": 10, "markup_pct": 20, "discount_pct": 5, "tax_pct": 18}, T["estimator"]), 200)
+    tt = e1["totals"]
+    check("C+2.5 quantity from the measured ceiling", e1["lines"][0]["qty"] == 120 and e1["lines"][0]["line_cost"] == 13800, e1["lines"][0])
+    check("C+2.5 cost -> overheads -> markup -> discount -> tax", (tt["direct_cost"], tt["overheads"], tt["cost"], tt["markup_amount"], tt["discount"], tt["subtotal"]) ==
+          (63800, 6380, 70180, 14036, 4210.8, 80005.2) and tt["total"] == round(80005.2 * 1.18, 2) and round(tt["margin_pct"], 2) == 12.28, tt)
+    expect("C+2.5 room used by an estimate cannot be removed", call("DELETE", f"/leads/{V['id']}/rooms/{living}", token=T["sales"]), 409)
+    sub = expect("C+2.5 submit", call("POST", f"{E}/submit", {}, T["estimator"]), 200)
+    check("C+2.5 low margin waits for approval", sub["status"] == "pending_approval" and "margin 12.3% is below 15%" in sub["approval"]["reasons"][0], sub["approval"])
+    check("C+2.5 approver told", any(x["event"] == "approval_needed" and x["lead_id"] == V["id"] for x in bell("owner")))
+    expect("C+2.5 waiting estimate is locked", call("PUT", E, {"discount_pct": 0}, T["estimator"]), 409)
+    expect("C+2.5 estimator cannot approve", call("POST", f"{E}/decide", {"approve": True}, T["estimator"]), 403)
+    expect("C+2.5 refusal needs a reason", call("POST", f"{E}/decide", {"approve": False}, T["owner"]), 400)
+    rf = expect("C+2.5 refuse", call("POST", f"{E}/decide", {"approve": False, "note": "Margin too thin, drop the discount"}, T["owner"]), 200)
+    check("C+2.5 refused and author told", rf["status"] == "refused" and any(x["event"] == "approval_decided" and "refused" in x["text"] for x in bell("estimator")))
+    e2 = expect("C+2.5 fix the refused estimate", call("PUT", E, {"discount_pct": 0}, T["estimator"]), 200)
+    ok_ = expect("C+2.5 within limits approves at once", call("POST", f"{E}/submit", {}, T["estimator"]), 200)
+    check("C+2.5 approved", ok_["status"] == "approved" and ok_["approval"]["note"] == "within the limits")
+    check("C+2.5 lead value now the approved estimate", get(V["id"])["value"] == ok_["totals"]["total"])
+    expect("C+2.5 approved estimate is locked", call("PUT", E, {"discount_pct": 1}, T["estimator"]), 409)
+    expect("C+2.5 approved estimate is kept", call("DELETE", E, token=T["estimator"]), 409)
+    v2 = expect("C+2.5 new version from the approved one", call("POST", f"/leads/{V['id']}/estimates", {"copy_from": est["id"]}, T["estimator"]), 201)
+    check("C+2.5 copied lines", v2["version"] == 2 and len(v2["lines"]) == 2 and v2["status"] == "draft")
+
+    # ================= C+2.5b proposals =================
+    PB = f"/leads/{V['id']}/proposals"
+    expect("C+2.5b needs a validity date", call("POST", PB, {"estimate_id": est["id"]}, T["sales"]), 400)
+    expect("C+2.5b only approved estimates", call("POST", PB, {"estimate_id": v2["id"], "valid_until": day(15)}, T["sales"]), 400)
+    p1 = expect("C+2.5b proposal from the estimate", call("POST", PB, {"estimate_id": est["id"], "valid_until": day(15)}, T["sales"]), 201)
+    check("C+2.5b value from the estimate", p1["value"] == ok_["totals"]["total"] and p1["status"] == "draft")
+    expect("C+2.5b how it was sent", call("POST", f"/proposals/{p1['id']}/send", {"channel": "fax"}, T["sales"]), 400)
+    mails.clear()
+    s1 = expect("C+2.5b send by email", call("POST", f"/proposals/{p1['id']}/send", {"channel": "email"}, T["sales"]), 200)
+    time.sleep(0.5)
+    check("C+2.5b sent and emailed", s1["status"] == "sent" and any(p1["number"] in x for x in mails))
+    check("C+2.5b proposal requirement met", get(V["id"])["value"] == p1["value"])
+    p2 = expect("C+2.5b typed proposal", call("POST", PB, {"value": 95000, "valid_until": day(10), "title": "Revised"}, T["sales"]), 201)
+    call("POST", f"/proposals/{p2['id']}/send", {"channel": "whatsapp"}, T["sales"])
+    lst = {p["id"]: p["status"] for p in call("GET", PB, token=T["sales"])[1]["proposals"]}
+    check("C+2.5b sending a newer one supersedes the open one", lst[p1["id"]] == "superseded" and lst[p2["id"]] == "sent", lst)
+    expect("C+2.5b rejection needs a reason", call("POST", f"/proposals/{p2['id']}/respond", {"result": "rejected"}, T["sales"]), 400)
+    rv = expect("C+2.5b revision requested", call("POST", f"/proposals/{p2['id']}/respond", {"result": "revision_requested", "reason": "Price",
+                                                                                           "comment": "Wants under 90k"}, T["sales"]), 200)
+    check("C+2.5b manager told of the rejection", rv["status"] == "revision_requested" and any(x["event"] == "proposal_response" and x["lead_id"] == V["id"] for x in bell("owner")))
+    p3 = expect("C+2.5b revised version", call("POST", PB, {"value": 89000, "valid_until": day(10), "revision_of": p2["id"]}, T["sales"]), 201)
+    call("POST", f"/proposals/{p3['id']}/send", {"channel": "in_person"}, T["sales"])
+    ac = expect("C+2.5b accepted", call("POST", f"/proposals/{p3['id']}/respond", {"result": "accepted", "comment": "Signed copy received"}, T["sales"]), 200)
+    check("C+2.5b lead value = accepted proposal", ac["status"] == "accepted" and get(V["id"])["value"] == 89000)
+    p4 = expect("C+2.5b another proposal", call("POST", PB, {"value": 88000, "valid_until": day(10)}, T["sales"]), 201)
+    call("POST", f"/proposals/{p4['id']}/send", {"channel": "email"}, T["sales"])
+    expect("C+2.5b only one accepted per lead", call("POST", f"/proposals/{p4['id']}/respond", {"result": "accepted"}, T["sales"]), 409)
+    mongo.proposals.update_one({"_id": ObjectId(p4["id"])}, {"$set": {"sent_at": datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=4), "valid_until": day(1)}})
+    worker()
+    worker()
+    check("C+2.5b not answered in 3 days -> salesperson", any(x["event"] == "proposal_waiting" and p4["id"] in x.get("key", "") for x in bell("sales")))
+    chase = [f for f in call("GET", f"/followups?related_id={V['id']}", token=T["sales"])[1] if f["title"].startswith("Chase proposal")]
+    check("C+2.5b chase follow-up created once", len(chase) == 1, chase)
+    check("C+2.5b expiring in 2 days -> salesperson", any(x["event"] == "proposal_expiring" and p4["id"] in x.get("key", "") for x in bell("sales")))
+    mongo.proposals.update_one({"_id": ObjectId(p4["id"])}, {"$set": {"valid_until": day(-1)}})
+    worker()
+    check("C+2.5b expired by the worker", mongo.proposals.find_one({"_id": ObjectId(p4["id"])})["status"] == "expired")
+    check("C+2.5b manager told of the expiry", any(x["event"] == "proposal_expired" and p4["id"] in x.get("key", "") for x in bell("owner")))
+
+    # ================= C+2.6 negotiation and competitors =================
+    NB = f"/leads/{V['id']}/negotiation"
+    expect("C+2.6 offer above our price", call("POST", NB, {"asked": 100000, "offered": 120000}, T["sales"]), 400)
+    n1 = expect("C+2.6 small discount", call("POST", NB, {"asked": 100000, "offered": 95000}, T["sales"]), 201)
+    check("C+2.6 within the limit needs no approval", n1["discount_pct"] == 5 and n1["approval"]["status"] == "not_needed")
+    n2 = expect("C+2.6 big discount", call("POST", NB, {"asked": 100000, "offered": 80000, "note": "Client threatens to walk"}, T["sales"]), 201)
+    check("C+2.6 above the limit waits for approval", n2["approval"]["status"] == "pending"
+          and any(x["event"] == "approval_needed" and "20%" in x["text"] for x in bell("owner")))
+    expect("C+2.6 sales cannot approve", call("POST", f"{NB}/{n2['id']}/decide", {"approve": True}, T["sales"]), 403)
+    dn2 = expect("C+2.6 owner approves", call("POST", f"{NB}/{n2['id']}/decide", {"approve": True, "note": "Strategic client"}, T["owner"]), 200)
+    check("C+2.6 approved and salesperson told", dn2["approval"]["status"] == "approved" and any(x["event"] == "approval_decided" and "20%" in x["text"] for x in bell("sales")))
+    expect("C+2.6 decided once", call("POST", f"{NB}/{n2['id']}/decide", {"approve": False, "note": "x"}, T["owner"]), 409)
+    cp = expect("C+2.6 competitor", call("POST", f"/leads/{V['id']}/competitors", {"name": f"Rival {RUN}", "price": 85000}, T["sales"]), 201)
+    expect("C+2.6 competitor once", call("POST", f"/leads/{V['id']}/competitors", {"name": f"rival {RUN}"}, T["sales"]), 409)
+    expect("C+2.6 remove competitor", call("DELETE", f"/leads/{V['id']}/competitors/{cp['id']}", token=T["sales"]), 200)
+
+    # ================= C+3 pre-sales money =================
+    expect("C+3 expense category", call("POST", f"/leads/{V['id']}/expenses", {"category": "Party", "amount": 1, "date": day(0)}, T["sales"]), 400)
+    xe = expect("C+3 expense", call("POST", f"/leads/{V['id']}/expenses", {"category": "3D renders", "amount": 1500, "date": day(0), "note": "Kitchen render"}, T["sales"]), 201)
+    vexp = mongo.lead_expenses.find_one({"company_id": CID, "lead_id": V["id"], "visit_id": {"$ne": None}})
+    expect("C+3 visit cost is changed in the report", call("DELETE", f"/lead_expenses/{vexp['_id']}", token=T["sales"]), 409)
+    mo = call("GET", f"/leads/{V['id']}/money", token=T["sales"])[1]
+    check("C+3 spent = visit cost + render", mo["totals"]["spent"] == 2500, mo["totals"])
+    expect("C+3 receipt not in the future", call("POST", f"/leads/{V['id']}/receipts", {"kind": "Token / booking advance", "amount": 10, "date": day(1), "mode": "Cash"}, T["sales"]), 400)
+    expect("C+3 reference for non-cash", call("POST", f"/leads/{V['id']}/receipts", {"kind": "Token / booking advance", "amount": 10, "date": day(0), "mode": "UPI"}, T["sales"]), 400)
+    rc = expect("C+3 token advance received", call("POST", f"/leads/{V['id']}/receipts", {"kind": "Token / booking advance", "amount": 25000, "date": day(0),
+                                                                                          "mode": "UPI", "reference": f"UPI{RUN}"}, T["sales"]), 201)
+    check("C+3 receipt numbered", rc["number"].startswith("RCT"))
+    check("C+3 accounts told of the advance", any(x["event"] == "advance_received" and rc["number"] in x["text"] for x in bell("accounts")))
+    expect("C+3 only the owner voids", call("POST", f"/lead_receipts/{rc['id']}/void", {"reason": "x"}, T["sales"]), 403)
+    expect("C+3 lead with money cannot be deleted", call("DELETE", f"/leads/{V['id']}", token=T["owner"]), 409)
+
+    # ================= C+2.7 won: everything moves to the project =================
+    fk = json.loads(urllib.request.urlopen(req.__class__(BASE + "/uploads", method="POST", data=body.replace(f"site{RUN}".encode(), f"plan{RUN}".encode()),
+                                                        headers={"Content-Type": f"multipart/form-data; boundary={boundary}", "Authorization": f"Bearer {T['sales']}"})).read())
+    call("POST", f"/leads/{V['id']}/files", {"key": fk["key"], "folder": "client_drawings"}, T["sales"])
+    mails.clear()
+    w = expect("C+2.7 win with an advance", call("POST", f"/leads/{V['id']}/win", {"pm_id": U["pm"], "advance": {
+        "kind": "Design fee advance", "amount": 40000, "date": day(0), "mode": "Bank transfer", "reference": f"NEFT{RUN}"}}, T["sales"]), 200)
+    PID = w["project_id"]
+    projects_made.append(PID)
+    pj = call("GET", f"/projects/{PID}", token=T["pm"])[1]
+    check("C+2.7 project value = accepted proposal", pj["value"] == 89000, pj["value"])
+    roles = {m.get("contact_id"): m["project_role"] for m in pj["team"] if m.get("contact_id")}
+    check("C+2.7 decision-makers on the project team", roles.get(st[0]["contact_id"]) == "Other" and roles.get(st[1]["contact_id"]) == "Architect", roles)
+    ho = expect("C+2.7 hand-over on the project", call("GET", f"/projects/{PID}/handover", token=T["pm"]), 200)
+    check("C+2.7 brief, measurements, proposal, visits carried", ho["brief"]["version"] == 2 and ho["measurements"]["rooms"]
+          and ho["accepted_proposal"]["number"] == p3["number"] and ho["visits"] and ho["questionnaire"]["floors"] == "G+2", list(ho))
+    check("C+2.7 files moved", any(f["name"].endswith(f"plan{RUN}.png") for f in ho["files"]))
+    check("C+2.7 receipts moved (the advance included)", sorted(r["amount"] for r in ho["receipts"]) == [25000, 40000], ho.get("receipts"))
+    hs = call("GET", f"/projects/{PID}/handover", token=login("site@skyline.test"))
+    check("C+2.7 no money for site staff", hs[0] in (200, 404) and (hs[0] == 404 or ("receipts" not in hs[1] and "value" not in (hs[1]["accepted_proposal"] or {}))), hs)
+    hf = [f for f in call("GET", f"/followups?related_id={PID}", token=T["pm"])[1] if f["title"].startswith("Hand-off meeting")]
+    check("C+2.7 hand-off meeting for the PM", len(hf) == 1 and hf[0]["owner_id"] == U["pm"])
+    check("C+2.7 PM told", any(x["event"] == "project_pm" and x["lead_id"] == V["id"] for x in bell("pm")))
+    check("C+2.7 accounts told", any(x["event"] == "advance_received" and "40,000" in x["text"] for x in bell("accounts")))
+    time.sleep(0.5)
+    check("C+2.7 client welcome email", any("Welcome to" in x for x in mails))
+    check("C+2.7 hand-over logged", any("Handed over to" in a["text"] for a in get(V["id"])["activities"]))
+
     call("PUT", "/settings/email", {"host": ""}, T["owner"])
 finally:
     smtp.shutdown()
+    for pid in projects_made:
+        call("DELETE", f"/projects/{pid}", token=T["owner"])
+        mongo.followups.delete_many({"company_id": CID, "related.id": pid})
+    mongo.lead_receipts.update_many({"company_id": CID, "lead_id": {"$in": leads}}, {"$set": {"status": "void"}})
+    for rid in rates_made:
+        mongo.rate_library.delete_one({"_id": ObjectId(rid)})
     for lid in leads:
         call("DELETE", f"/leads/{lid}", token=T["owner"])
     mongo.followups.delete_many({"company_id": CID, "related.id": {"$in": leads}})
@@ -577,7 +725,7 @@ finally:
         mongo.followups.count_documents({"company_id": CID, "title": {"$regex": RUN}})
     check("cleanup: nothing left", left == 0, left)
     cascade = sum(mongo[c].count_documents({"company_id": CID, "lead_id": {"$in": leads}})
-                  for c in ("lead_visits", "lead_expenses", "lead_files", "notifications"))
+                  for c in ("lead_visits", "lead_expenses", "lead_files", "lead_receipts", "estimates", "proposals", "notifications"))
     check("deleting a lead removes its visits, expenses, files and notifications", cascade == 0, cascade)
 
 print(f"passed: {passed}  failed: {len(failures)}")

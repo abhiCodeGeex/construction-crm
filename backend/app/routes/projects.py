@@ -390,6 +390,9 @@ def delete_project(_id):
     db.leads.update_many({"company_id": g.cid, "project_id": _id},
                          {"$set": {"project_id": None}, "$push": {"activities": note}})
     db.bids.update_many({"company_id": g.cid, "project_id": _id}, {"$set": {"project_id": None}})
+    # lead files and receipts stay with their lead
+    db.lead_files.update_many({"company_id": g.cid, "project_id": _id}, {"$set": {"project_id": None}})
+    db.lead_receipts.update_many({"company_id": g.cid, "project_id": _id}, {"$set": {"project_id": None}})
     return jsonify({"ok": True})
 
 

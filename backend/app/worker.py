@@ -116,7 +116,44 @@ def check_visits(now):
                         f"No report yet for the visit of {fmt(v['at'])} ({v['lead_title']})", link, lid, key=f"report:{vid}")
 
 
-CHECKS = [check_leads, check_followups, check_visits]
+def check_proposals(now):
+    """Sent and not answered in 3 days -> salesperson + a follow-up; expiring in 2 days; expired -> manager too.
+    Approvals waiting more than a day remind the approver."""
+    from . import tenancy as t
+    today = now.date().isoformat()
+    soon = (now.date() + timedelta(days=2)).isoformat()
+    for p in db.proposals.find({"company_id": g.cid, "status": "sent"}):
+        pid, lid = str(p["_id"]), p["lead_id"]
+        lead = db.leads.find_one({"_id": oid(lid), "company_id": g.cid}) or {}
+        if lead.get("status") != "open":
+            continue
+        owner = [lead["owner_id"]] if lead.get("owner_id") else notify.managers()
+        link = f"/app/leads/{lid}"
+        if p["valid_until"] < today:
+            db.proposals.update_one({"_id": p["_id"]}, {"$set": {"status": "expired", "updated_at": now}})
+            sales.log(lid, "proposal", f"Proposal {p['number']} expired (valid until {p['valid_until']})")
+            notify.send("proposal_expired", owner + notify.managers(), f"Proposal {p['number']} for {p['lead_title']} expired",
+                        link, lid, key=f"expired:{pid}")
+            continue
+        if p["valid_until"] <= soon:
+            notify.send("proposal_expiring", owner, f"Proposal {p['number']} for {p['lead_title']} expires on {p['valid_until']}",
+                        link, lid, key=f"expiring:{pid}")
+        if p.get("sent_at") and now - p["sent_at"] > timedelta(days=3):
+            sent = notify.send("proposal_waiting", owner, f"Proposal {p['number']} for {p['lead_title']} sent "
+                               f"{(now - p['sent_at']).days} days ago and not answered", link, lid, key=f"waiting:{pid}")
+            if sent and not db.followups.find_one({"company_id": g.cid, "kind": "proposal_chase", "proposal_id": pid}):
+                u = db.users.find_one({"_id": oid(owner[0])}, {"name": 1}) if owner else None
+                t.insert("followups", {"title": f"Chase proposal {p['number']}: {p['lead_title']}", "due": today, "priority": "high",
+                                       "channel": "call", "owner_id": owner[0] if owner else None, "owner_name": u and u["name"],
+                                       "status": "open", "kind": "proposal_chase", "proposal_id": pid,
+                                       "related": {"type": "lead", "id": lid, "label": p["lead_title"], "contact_id": lead.get("contact_id")}})
+    for e in db.estimates.find({"company_id": g.cid, "status": "pending_approval"}):
+        if now - e["approval"]["requested_at"] > timedelta(days=1):
+            notify.send("approval_needed", notify.managers(), f"Estimate {e['number']} for {e['lead_title']} is still waiting for approval",
+                        f"/app/leads/{e['lead_id']}", e["lead_id"], key=f"appr-wait:{e['_id']}")
+
+
+CHECKS = [check_leads, check_followups, check_visits, check_proposals]
 
 
 def run_once(now=None):

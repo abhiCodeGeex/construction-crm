@@ -63,6 +63,7 @@ const DESIGN = ['architecture', 'interior'];
           <p-tab value="details"><i class="pi pi-map-marker mr"></i>Details & site</p-tab>
           <p-tab value="followups"><i class="pi pi-bell mr"></i>Follow-ups</p-tab>
           <p-tab value="history"><i class="pi pi-history mr"></i>History</p-tab>
+          @if (handover()) { <p-tab value="lead"><i class="pi pi-bullseye mr"></i>From the lead</p-tab> }
         </p-tablist>
         <p-tabpanels>
           <!-- ================= OVERVIEW ================= -->
@@ -303,6 +304,55 @@ const DESIGN = ['architecture', 'interior'];
                 <td class="cap">{{ h.action }} @if (h.fields.length) { <small class="muted">· {{ h.fields.join(', ') }}</small> }</td></tr></ng-template>
             </p-table>
           </p-tabpanel>
+
+          <!-- ================= FROM THE LEAD (C+2.7: nothing is retyped) ================= -->
+          @if (handover(); as h) {
+            <p-tabpanel value="lead">
+              <div class="grid2 top">
+                <div class="stack">
+                  @if (h.brief) {
+                    <p-card><ng-template #title>Brief v{{ h.brief.version }} @if (h.brief.client_confirmed) { <small class="muted">· confirmed by the client ({{ h.brief.client_confirmed.how }})</small> }</ng-template>
+                      @for (s of h.brief.scope; track $index) { <div class="small"><strong>{{ s.room }}</strong>: {{ s.work_types.join(', ') }}</div> }
+                      @for (k of briefKeys; track k.key) { @if (h.brief[k.key]) { <div class="small mt-xs"><strong>{{ k.label }}:</strong> {{ h.brief[k.key] }}</div> } }
+                    </p-card>
+                  }
+                  @if (h.stakeholders?.length) {
+                    <p-card><ng-template #title>Decision-makers</ng-template>
+                      @for (s of h.stakeholders; track s.id) { <div class="small">{{ s.name }} — {{ s.role }}{{ s.main ? ' (main)' : '' }}{{ s.phone ? ' · ' + s.phone : '' }}</div> }
+                    </p-card>
+                  }
+                  @if (h.visits?.length) {
+                    <p-card><ng-template #title>Site visit reports</ng-template>
+                      @for (v of h.visits; track $index) { @if (v.report) { <div class="small mb-xs"><strong>{{ v.at | date: 'd MMM y' }}:</strong> {{ v.report.findings }}{{ v.report.risks ? ' · Risks: ' + v.report.risks : '' }}</div> } }
+                    </p-card>
+                  }
+                </div>
+                <div class="stack">
+                  @if (h.measurements?.rooms?.length) {
+                    <p-card><ng-template #title>Measurements ({{ h.measurements.unit }})</ng-template>
+                      @for (r of h.measurements.rooms; track r.id) { <div class="small">{{ r.name }}: {{ r.length }} × {{ r.width }}{{ r.height ? ' × ' + r.height : '' }}</div> }
+                    </p-card>
+                  }
+                  @if (h.accepted_proposal; as a) {
+                    <p-card><ng-template #title>Accepted proposal</ng-template>
+                      <div class="small"><strong>{{ a.number }}</strong> {{ a.title }}{{ a.value != null ? ' · ' + fmt(a.value) : '' }}</div>
+                      @if (a.file_key) { <a class="small" href="" (click)="$event.preventDefault(); api.openFile('/api/files/' + a.file_key)">Open the proposal file</a> }
+                    </p-card>
+                  }
+                  @if (h.receipts?.length) {
+                    <p-card><ng-template #title>Advances received</ng-template>
+                      @for (r of h.receipts; track r.id) { <div class="small" [class.strike]="r.status === 'void'">{{ r.number }} · {{ r.kind }} · {{ fmt(r.amount) }} · {{ r.mode }} · {{ r.date | date: 'd MMM y' }}</div> }
+                    </p-card>
+                  }
+                  @if (h.files?.length) {
+                    <p-card><ng-template #title>Files from the lead</ng-template>
+                      @for (f of h.files; track f.id) { <div class="small"><a href="" (click)="$event.preventDefault(); api.openFile(f.url)">{{ f.name }}</a> <span class="muted">· {{ f.folder }}{{ f.room ? ' · ' + f.room : '' }}</span></div> }
+                    </p-card>
+                  }
+                </div>
+              </div>
+            </p-tabpanel>
+          }
         </p-tabpanels>
       </p-tabs>
 
@@ -387,7 +437,7 @@ export class ProjectDetailComponent implements OnInit {
 
   id = input.required<string>();
   auth = inject(AuthService);
-  private api = inject(Api);
+  api = inject(Api);
   private router = inject(Router);
   private confirm = inject(ConfirmationService);
 
@@ -396,6 +446,9 @@ export class ProjectDetailComponent implements OnInit {
   meta = signal<any>(null);
   issues = signal<any[]>([]);
   history = signal<any[]>([]);
+  handover = signal<any>(null);
+  briefKeys = [{ key: "style", label: "Style" }, { key: "materials", label: "Materials" }, { key: "brands", label: "Brands" }, { key: "must_haves", label: "Must-haves" },
+    { key: "nice_to_haves", label: "Nice-to-haves" }, { key: "programme", label: "Spaces" }, { key: "approvals_needed", label: "Approvals" }, { key: "notes", label: "Notes" }];
   contacts = signal<any[]>([]);
   staff = signal<any[]>([]);
   form = signal<any>(null);
@@ -442,6 +495,7 @@ export class ProjectDetailComponent implements OnInit {
     this.setProject(p ?? (await this.api.get(`/projects/${this.id()}`)));
     this.dash.set(await this.api.get(`/projects/${this.id()}/dashboard`));
     this.history.set(await this.api.get(`/projects/${this.id()}/history`));
+    this.handover.set(await this.api.get(`/projects/${this.id()}/handover`));
     if (this.auth.can('followups')) await this.loadTimeline();
     await this.loadIssues();
   }
