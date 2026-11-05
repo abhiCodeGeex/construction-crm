@@ -138,6 +138,10 @@ def check_proposals(now):
         if p["valid_until"] <= soon:
             notify.send("proposal_expiring", owner, f"Proposal {p['number']} for {p['lead_title']} expires on {p['valid_until']}",
                         link, lid, key=f"expiring:{pid}")
+        if p.get("first_viewed_at") and now - p["first_viewed_at"] > timedelta(days=2):  # §16 viewed but not accepted
+            notify.send("proposal_waiting", owner, f"{p['lead_title']}: proposal {p['number']} was opened "
+                        f"{(now - p['first_viewed_at']).days} days ago ({p.get('view_count', 0)} views) and is not answered",
+                        link, lid, key=f"viewed-wait:{pid}")
         if p.get("sent_at") and now - p["sent_at"] > timedelta(days=3):
             sent = notify.send("proposal_waiting", owner, f"Proposal {p['number']} for {p['lead_title']} sent "
                                f"{(now - p['sent_at']).days} days ago and not answered", link, lid, key=f"waiting:{pid}")

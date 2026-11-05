@@ -287,3 +287,31 @@ button.link { background: none; border: 0; padding: 0 .15rem; color: var(--brand
 .cal-ev.k-proposal { background: color-mix(in srgb, #ef4444 18%, transparent); }
 .totals td { padding: .12rem .4rem; }
 .w-6 { width: 6rem; }
+/* ---------- Phase D: proposal / contract documents ---------- */
+.doc-wrap { padding: 1.5rem 1rem; display: flex; justify-content: center; }
+.doc { --brand: #1f6feb; max-width: 860px; width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-top: 6px solid var(--brand); border-radius: 10px; padding: 2rem 2.2rem; }
+.doc-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.doc-logo { max-height: 64px; max-width: 220px; }
+.doc-co { font-size: 1.3rem; color: var(--brand); }
+.doc-title { color: var(--brand); margin: 1.2rem 0 .4rem; }
+.doc-meta { border-bottom: 1px solid var(--border); padding-bottom: .7rem; margin-bottom: 1rem; }
+.doc h3 { color: var(--brand); margin: 1.3rem 0 .5rem; font-size: 1rem; }
+.doc-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.doc-table th { text-align: left; border-bottom: 2px solid var(--border); padding: .35rem .3rem; }
+.doc-table td { border-bottom: 1px solid var(--border); padding: .35rem .3rem; vertical-align: top; }
+.doc-table tr.opt td { color: var(--muted, #777); }
+.doc-totals { margin-left: auto; margin-top: .6rem; min-width: 260px; font-size: .92rem; }
+.doc-totals td { padding: .2rem .4rem; }
+.doc-totals .grand td { font-weight: 700; font-size: 1.05rem; border-top: 2px solid var(--brand); }
+.doc-sign { margin-top: 1.5rem; border: 1px dashed var(--border); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; gap: .6rem; }
+.doc-foot { margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: .6rem; }
+.sig-pad { width: 100%; max-width: 520px; height: 160px; border: 1px solid var(--border); border-radius: 6px; background: #fff; touch-action: none; display: block; }
+.sig-img { max-width: 260px; max-height: 90px; background: #fff; border-radius: 4px; }
+.tag-preview { background: #f59e0b; color: #fff; padding: .05rem .4rem; border-radius: 4px; font-size: .75rem; }
+.pre { white-space: pre-wrap; }
+@media print {
+  .no-print, .sidebar, .topbar, p-toast { display: none !important; }
+  .doc { border: 0; padding: 0; max-width: none; }
+  .content, .main, .layout { padding: 0 !important; margin: 0 !important; display: block !important; }
+  body { background: #fff !important; color: #000 !important; }
+}

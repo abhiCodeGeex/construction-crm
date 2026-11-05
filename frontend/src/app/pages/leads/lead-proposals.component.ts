@@ -1,4 +1,6 @@
 import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
+import { MessageService } from 'primeng/api';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
@@ -20,29 +22,33 @@ const P_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'secon
 /** Lead steps 5b-6 (C+2): proposal versions and the client's answer, negotiation rounds with discount approval, competitors. */
 @Component({
   selector: 'app-lead-proposals',
-  imports: [FormsModule, DatePipe, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, SelectModule, SelectButtonModule, TableModule, TagModule],
+  imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, SelectModule, SelectButtonModule, TableModule, TagModule],
   template: `
     <div class="stack">
       @if (auth.can('proposals')) {
         <p-card>
           <ng-template #title><div class="row-between"><span>Proposals</span>
             @if (canProp()) { <p-button label="New proposal" icon="pi pi-plus" size="small" (onClick)="openNew()" /> }</div></ng-template>
-          <p class="muted small">The proposal document itself (builder, client link and e-signature) arrives in Phase D. Here every version is tracked: sent, accepted, rejected, expired.</p>
+          <p class="muted small">Each proposal opens in the builder. Sending gives the client a private link to view, choose options and sign; you are told when they open it.</p>
           <p-table [value]="proposals()" size="small">
             <ng-template #header><tr><th>Proposal</th><th class="right">Value</th><th>Valid until</th><th>Status</th><th></th></tr></ng-template>
             <ng-template #body let-p><tr>
-              <td><strong>{{ p.number }}</strong> v{{ p.version }} · {{ p.title }}<br /><small class="muted">{{ p.estimate_number ? 'from ' + p.estimate_number : 'typed value' }}
+              <td><a [routerLink]="['/app/proposals', p.id]"><strong>{{ p.number }}</strong> v{{ p.version }} · {{ p.title }}</a><br /><small class="muted">{{ types()[p.type] || p.type }}{{ p.estimate_number ? ' · from ' + p.estimate_number : '' }}
+                @if (p.view_count) { · opened {{ p.view_count }}× }
                 @if (p.file_key) { · <a href="" (click)="$event.preventDefault(); api.openFile('/api/files/' + p.file_key)">file</a> }</small></td>
               <td class="right">{{ fmt(p.value) }}</td><td><small>{{ p.valid_until | date: 'd MMM y' }}</small></td>
               <td><p-tag [value]="label(p.status)" [severity]="sev[p.status]" />
                 @if (p.sent_at) { <br /><small class="muted">sent {{ p.sent_at | date: 'd MMM' }} · {{ label(p.channel) }}</small> }
-                @if (p.response?.reason) { <br /><small class="muted">{{ p.response.reason }}{{ p.response.comment ? ' — ' + p.response.comment : '' }}</small> }</td>
-              <td class="right nowrap">@if (canProp()) {
-                @if (p.status === 'draft') { <p-button label="Sent" size="small" [text]="true" (onClick)="sf = { p, channel: 'email' }; sendDlg = true" />
-                  <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="del(p)" /> }
-                @if (p.status === 'sent') { <p-button label="Accepted" size="small" [text]="true" severity="success" (onClick)="respond(p, 'accepted')" />
+                @if (p.response?.reason) { <br /><small class="muted">{{ p.response.reason }}{{ p.response.comment ? ' — ' + p.response.comment : '' }}</small> }
+                @if (p.contract_id) { <br /><a class="small" [routerLink]="['/app/contracts', p.contract_id]">Contract →</a> }</td>
+              <td class="right nowrap">
+                <p-button icon="pi pi-pencil" [text]="true" [rounded]="true" ariaLabel="Open" [routerLink]="['/app/proposals', p.id]" />
+                @if (p.link) { <p-button icon="pi pi-link" [text]="true" [rounded]="true" ariaLabel="Copy client link" (onClick)="copy(origin + p.link)" /> }
+                @if (canProp()) {
+                @if (p.status === 'draft') { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="del(p)" /> }
+                @if (p.status === 'sent') { <p-button label="Accepted" size="small" [text]="true" severity="success" (onClick)="ac = { p, signed_by: lead().contact_name }; acDlg = true" />
                   <p-button label="Rejected" size="small" [text]="true" severity="danger" (onClick)="openReject(p)" /> }
-                @if (p.status === 'revision_requested' || p.status === 'rejected' || p.status === 'expired') { <p-button label="Revise" size="small" [text]="true" (onClick)="openNew(p)" /> } }</td></tr></ng-template>
+                @if (p.status === 'revision_requested' || p.status === 'rejected' || p.status === 'expired') { <p-button label="Revise" size="small" [text]="true" (onClick)="revise(p)" /> } }</td></tr></ng-template>
             <ng-template #emptymessage><tr><td colspan="5" class="muted center">No proposal yet</td></tr></ng-template>
           </p-table>
         </p-card>
@@ -94,22 +100,29 @@ const P_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'secon
 
     <p-dialog header="New proposal" [modal]="true" [(visible)]="newDlg" [style]="{ width: '32rem' }">
       <div class="stack">
-        <label class="field"><span>From an approved estimate</span><p-select [options]="approved()" [(ngModel)]="pf.estimate_id" optionLabel="label" optionValue="id" [showClear]="true" placeholder="— or type the value —" fluid appendTo="body" /></label>
-        @if (!pf.estimate_id) { <label class="field"><span>Value</span><p-inputnumber [(ngModel)]="pf.value" [min]="0" fluid /></label> }
+        <p-selectbutton [options]="typeOptions()" [(ngModel)]="pf.type" optionLabel="label" optionValue="value" [allowEmpty]="false" />
+        @if (pf.type === 'construction') {
+          <label class="field"><span>Approved estimate</span><p-select [options]="approved()" [(ngModel)]="pf.estimate_id" optionLabel="label" optionValue="id" placeholder="Approve an estimate first (Estimate & money)" fluid appendTo="body" /></label>
+        } @else if (pf.type === 'simple') {
+          <label class="field"><span>Value</span><p-inputnumber [(ngModel)]="pf.value" [min]="0" fluid /></label>
+        } @else {
+          <label class="field"><span>Template</span><p-select [options]="templatesFor()" [(ngModel)]="pf.template_id" optionLabel="name" optionValue="id" [showClear]="true" placeholder="Start empty" fluid appendTo="body" /></label>
+        }
         <div class="grid2">
-          <label class="field"><span>Title</span><input pInputText [(ngModel)]="pf.title" fluid /></label>
+          <label class="field"><span>Title</span><input pInputText [(ngModel)]="pf.title" placeholder="e.g. Interior design — 3BHK" fluid /></label>
           <label class="field"><span>Valid until</span><input pInputText type="date" [min]="tomorrow" [(ngModel)]="pf.valid_until" fluid /></label>
         </div>
-        <label class="field"><span>Proposal file (PDF) <small class="muted">optional</small></span><input type="file" accept=".pdf,.doc,.docx" (change)="pickFile($event)" /></label>
-        <div class="row right"><p-button label="Save draft" (onClick)="create()" [disabled]="!pf.valid_until || (!pf.estimate_id && !pf.value)" /></div>
+        <div class="row right"><p-button label="Create and open the builder" (onClick)="create()" [disabled]="!pf.valid_until || (pf.type === 'construction' && !pf.estimate_id) || (pf.type === 'simple' && !pf.value)" /></div>
       </div>
     </p-dialog>
 
-    <p-dialog header="How was it sent?" [modal]="true" [(visible)]="sendDlg" [style]="{ width: '28rem' }">
+    <p-dialog header="Accepted by the client" [modal]="true" [(visible)]="acDlg" [style]="{ width: '28rem' }">
       <div class="stack">
-        <p-selectbutton [options]="channels" [(ngModel)]="sf.channel" optionLabel="label" optionValue="value" [allowEmpty]="false" />
-        <small class="muted">Email sends it to the client (with the file) when email is set up; the result is logged.</small>
-        <div class="row right"><p-button label="Mark as sent" (onClick)="send()" /></div>
+        <p class="small muted">For an acceptance signed on paper or confirmed by phone. A signed copy can be attached. The contract is created with the payment schedule.</p>
+        <label class="field"><span>Accepted by</span><input pInputText [(ngModel)]="ac.signed_by" fluid /></label>
+        <input pInputText [(ngModel)]="ac.comment" placeholder="Note (optional)" />
+        <label class="field"><span>Signed copy (optional)</span><input type="file" accept=".pdf,.png,.jpg,.jpeg" (change)="ac.file = $any($event.target).files?.[0]" /></label>
+        <div class="row right"><p-button label="Record acceptance" severity="success" (onClick)="recordAccept()" [disabled]="!ac.signed_by?.trim()" /></div>
       </div>
     </p-dialog>
 
@@ -136,6 +149,18 @@ export class LeadProposalsComponent implements OnInit {
   proposals = signal<any[]>([]);
   estimates = signal<any[]>([]);
   rejectReasons = signal<string[]>([]);
+  types = signal<Record<string, string>>({});
+  templates = signal<any[]>([]);
+  defaultType = signal('fee');
+  typeOptions = computed(() => Object.entries(this.types()).map(([value, label]) => ({ value, label })));
+  templatesFor() {
+    return this.templates().filter((x) => x.type === this.pf.type);
+  }
+  private router = inject(Router);
+  private toast = inject(MessageService);
+  origin = location.origin;
+  ac: any = {};
+  acDlg = false;
   managerId = signal<string | null>(null);
   editable = computed(() => this.lead()?.status === 'open' && this.lead()?.can_edit);
   canProp = computed(() => this.lead()?.status === 'open' && this.auth.can('proposals', 'rw'));
@@ -148,7 +173,7 @@ export class LeadProposalsComponent implements OnInit {
   rejOpts = [{ label: 'Rejected', value: 'rejected' }, { label: 'Wants a revision', value: 'revision_requested' }];
   pf: any = {}; sf: any = {}; rj: any = {}; nf: any = {}; cf: any = {}; nr2: any = {};
   newDlg = false; sendDlg = false; rejDlg = false; refDlg = false;
-  private file: File | null = null;
+
 
   async ngOnInit() {
     await this.load();
@@ -164,6 +189,9 @@ export class LeadProposalsComponent implements OnInit {
       const r = await this.api.get(`/leads/${id}/proposals`);
       this.proposals.set(r.proposals);
       this.rejectReasons.set(r.reject_reasons);
+      this.types.set(r.types);
+      this.templates.set(r.templates);
+      this.defaultType.set(r.default_type);
       this.estimates.set((await this.api.get(`/leads/${id}/estimates`)).estimates);
     }
     this.managerId.set((await this.api.get('/leads/meta')).sales_settings?.manager_id ?? null);
@@ -176,31 +204,45 @@ export class LeadProposalsComponent implements OnInit {
     await this.load();
   }
 
-  openNew(from?: any) {
+  openNew() {
     const valid = new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10);
-    this.pf = { estimate_id: from?.estimate_id ?? this.approved().at(-1)?.id ?? null, value: from?.value ?? null, title: '', valid_until: valid, revision_of: from?.id };
-    this.file = null;
+    const type = this.defaultType();
+    this.pf = { type, estimate_id: this.approved().at(-1)?.id ?? null, value: null, title: '', valid_until: valid,
+      template_id: this.templates().find((x) => x.type === type)?.id ?? null };
     this.newDlg = true;
   }
 
-  pickFile(ev: Event) {
-    this.file = (ev.target as HTMLInputElement).files?.[0] ?? null;
-  }
-
   async create() {
-    const body = { ...this.pf };
-    if (this.file) body.file_key = (await this.api.upload(this.file)).key;
-    if (body.estimate_id) delete body.value;
-    await this.api.post(`/leads/${this.lead().id}/proposals`, body, 'Proposal saved');
+    const { type, estimate_id, value, template_id, title, valid_until } = this.pf;
+    const body: any = { type, title: title || undefined, valid_until };
+    if (type === 'construction') body.estimate_id = estimate_id;
+    else if (type === 'simple') body.value = value;
+    else if (template_id) body.template_id = template_id;
+    const p = await this.api.post(`/leads/${this.lead().id}/proposals`, body, 'Proposal created');
     this.newDlg = false;
+    this.changed.emit();
+    this.router.navigate(['/app/proposals', p.id]);
+  }
+
+  async revise(p: any) {
+    const valid = new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10);
+    const r = await this.api.post(`/leads/${this.lead().id}/proposals`, { revision_of: p.id, valid_until: p.valid_until > valid ? p.valid_until : valid }, 'New version created');
+    this.changed.emit();
+    this.router.navigate(['/app/proposals', r.id]);
+  }
+
+  async recordAccept() {
+    const body: any = { result: 'accepted', signed_by: this.ac.signed_by, comment: this.ac.comment };
+    if (this.ac.file) body.file_key = (await this.api.upload(this.ac.file)).key;
+    await this.api.post(`/proposals/${this.ac.p.id}/respond`, body, 'Accepted — contract created. You can now mark the lead as won.');
+    this.acDlg = false;
     await this.done();
   }
 
-  async send() {
-    await this.api.post(`/proposals/${this.sf.p.id}/send`, { channel: this.sf.channel }, 'Marked as sent');
-    this.sendDlg = false;
-    await this.done();
+  copy(text: string) {
+    navigator.clipboard?.writeText(text).then(() => this.toast.add({ severity: 'success', summary: 'Link copied', life: 1500 }));
   }
+
 
   openReject(p: any) {
     this.rj = { p, result: 'rejected', reason: null, comment: '' };

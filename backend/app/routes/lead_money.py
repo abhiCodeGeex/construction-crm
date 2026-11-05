@@ -10,7 +10,7 @@ from ..db import db, oid, serialize
 from ..security import api, can
 from ..services import notify, sales
 from ..services.defaults import (RATE_KINDS, MEASURE_SOURCES, WORK_TYPES, EXPENSE_CATEGORIES, RECEIPT_KINDS,
-                                 PAYMENT_MODES, PROPOSAL_CHANNELS, REJECT_REASONS, STAKEHOLDER_ROLES)
+                                 PAYMENT_MODES, STAKEHOLDER_ROLES)
 from ..services.sales import load_lead, log
 from .lead_steps import open_lead, num, client_email, measurements, room_calc
 
@@ -376,134 +376,6 @@ def void_receipt(rid):
     t.update("lead_receipts", rid, {"status": "void", "void_reason": reason, "voided_at": t.now(), "voided_by": g.user.get("name")})
     log(r["lead_id"], "receipt", f"Receipt {r['number']} ({money_text(r['amount'])}) voided — {reason}")
     return jsonify({"ok": True})
-
-
-# ---------------- proposals (tracking; the builder and e-signature come in Phase D) ----------------
-def load_proposal(pid):
-    p = t.get("proposals", pid)
-    return p, load_lead(p["lead_id"])
-
-
-@bp.get("/leads/<_id>/proposals")
-@api("proposals", write=False)
-def list_proposals(_id):
-    load_lead(_id)
-    return jsonify({"proposals": serialize(t.find("proposals", {"lead_id": _id}, sort=[("version", 1)])),
-                    "channels": PROPOSAL_CHANNELS, "reject_reasons": REJECT_REASONS})
-
-
-@bp.post("/leads/<_id>/proposals")
-@api("proposals")
-def create_proposal(_id):
-    lead = open_lead(_id)
-    d = request.get_json(force=True) or {}
-    est = None
-    if d.get("estimate_id"):
-        est = t.get("estimates", d["estimate_id"], required=False)
-        if not est or est["lead_id"] != _id:
-            abort(400, "Estimate not found on this lead")
-        if est["status"] != "approved":
-            abort(400, "Only an approved estimate can go into a proposal")
-    value = est["totals"]["total"] if est else num(d.get("value"), "Value", required=True, positive=True)
-    valid = a_date(d.get("valid_until"), "Valid until")
-    if valid <= sales.today():
-        abort(400, "Valid until must be in the future")
-    if d.get("file_key") and not db.files.find_one({"company_id": g.cid, "key": d["file_key"]}):
-        abort(400, "Upload the proposal file first")
-    version = db.proposals.count_documents({"company_id": g.cid, "lead_id": _id}) + 1
-    p = t.insert("proposals", {"lead_id": _id, "lead_title": lead["title"], "number": t.next_number("PRO", "PRO"), "version": version,
-                               "title": (d.get("title") or f"Proposal v{version}").strip(), "estimate_id": str(est["_id"]) if est else None,
-                               "estimate_number": est and est["number"], "value": value, "valid_until": valid,
-                               "file_key": d.get("file_key"), "notes": (d.get("notes") or "").strip() or None, "status": "draft",
-                               "sent_at": None, "response": None, "revision_of": d.get("revision_of")})
-    log(_id, "proposal", f"Proposal {p['number']} (v{version}) prepared — {money_text(value)}, valid until {valid}"
-        + (f", from estimate {est['number']}" if est else ""), proposal_id=str(p["_id"]))
-    return jsonify(serialize(p)), 201
-
-
-@bp.delete("/proposals/<pid>")
-@api("proposals")
-def delete_proposal(pid):
-    p, _ = load_proposal(pid)
-    open_lead(p["lead_id"])
-    if p["status"] != "draft":
-        abort(409, "Only a draft proposal can be deleted")
-    t.delete("proposals", pid)
-    log(p["lead_id"], "proposal", f"Draft proposal {p['number']} deleted")
-    return jsonify({"ok": True})
-
-
-def supersede(lead_id, keep):
-    for o in t.find("proposals", {"lead_id": lead_id, "status": {"$in": ["sent", "revision_requested"]}}):
-        if str(o["_id"]) != keep:
-            t.update("proposals", str(o["_id"]), {"status": "superseded"})
-
-
-@bp.post("/proposals/<pid>/send")
-@api("proposals")
-def send_proposal(pid):
-    p, lead = load_proposal(pid)
-    open_lead(p["lead_id"])
-    if p["status"] != "draft":
-        abort(409, f"This proposal is already {p['status'].replace('_', ' ')}")
-    d = request.get_json(force=True) or {}
-    channel = d.get("channel")
-    if channel not in PROPOSAL_CHANNELS:
-        abort(400, f"How was it sent? {', '.join(PROPOSAL_CHANNELS)}")
-    if p["valid_until"] <= sales.today():
-        abort(409, "The proposal's validity has passed; make a new version")
-    supersede(p["lead_id"], pid)
-    upd = t.update("proposals", pid, {"status": "sent", "sent_at": t.now(), "channel": channel, "sent_by": g.user.get("name")})
-    # an accepted proposal stays the lead's value; a later one sent for discussion does not replace it
-    value = {} if lead.get("accepted_proposal_id") else {"proposal_value": p["value"]}
-    db.leads.update_one({"_id": lead["_id"]}, {"$set": {**value, "last_activity_at": t.now()}})
-    log(p["lead_id"], "proposal", f"Proposal {p['number']} sent by {channel.replace('_', ' ')} — {money_text(p['value'])}", proposal_id=pid)
-    if channel == "email":
-        import os
-        from ..config import Config
-        atts = []
-        if p.get("file_key"):
-            f = db.files.find_one({"company_id": g.cid, "key": p["file_key"]})
-            with open(os.path.join(Config.UPLOAD_DIR, p["file_key"]), "rb") as fh:
-                atts.append((f["name"], fh.read()))
-        c = db.contacts.find_one({"_id": oid(lead.get("contact_id"))}, {"email": 1})
-        result = notify.deliver(g.company, (c or {}).get("email"), f"Proposal {p['number']} — {lead['title']}",
-                                f"Dear {lead.get('contact_name')},\n\nPlease find our proposal for {lead['title']}: "
-                                f"{money_text(p['value'])}, valid until {p['valid_until']}.\n\nRegards,\n{g.company['name']}", atts)
-        log(p["lead_id"], "email", f"Proposal {p['number']} emailed to the client: {result}", outcome=result, auto=True)
-    return jsonify(serialize(upd))
-
-
-@bp.post("/proposals/<pid>/respond")
-@api("proposals")
-def respond_proposal(pid):
-    """The client's answer: accepted (only one per lead), rejected with a reason, or a revision requested."""
-    p, lead = load_proposal(pid)
-    open_lead(p["lead_id"])
-    if p["status"] != "sent":
-        abort(409, "Only a sent proposal can be answered")
-    d = request.get_json(force=True) or {}
-    result = d.get("result")
-    comment = (d.get("comment") or "").strip() or None
-    if result == "accepted":
-        if db.proposals.find_one({"company_id": g.cid, "lead_id": p["lead_id"], "status": "accepted"}):
-            abort(409, "Another proposal of this lead is already accepted")
-        upd = t.update("proposals", pid, {"status": "accepted", "response": {"at": t.now(), "by": g.user.get("name"), "comment": comment}})
-        supersede(p["lead_id"], pid)
-        db.leads.update_one({"_id": lead["_id"]}, {"$set": {"proposal_value": p["value"], "accepted_proposal_id": pid}})
-        text = f"Proposal {p['number']} accepted by the client — {money_text(p['value'])}"
-    elif result in ("rejected", "revision_requested"):
-        if d.get("reason") not in REJECT_REASONS:
-            abort(400, f"Choose the reason: {', '.join(REJECT_REASONS)}")
-        upd = t.update("proposals", pid, {"status": result, "response": {"at": t.now(), "by": g.user.get("name"),
-                                                                          "reason": d["reason"], "comment": comment}})
-        text = f"Proposal {p['number']} {'rejected' if result == 'rejected' else 'needs a revision'} — {d['reason']}"
-    else:
-        abort(400, "Result must be accepted, rejected or revision requested")
-    log(p["lead_id"], "proposal", text + (f": {comment}" if comment else ""), proposal_id=pid)
-    notify.send("proposal_response", [lead.get("owner_id")] + (notify.managers() if result != "accepted" else []),
-                f"{lead['title']}: {text}", f"/app/leads/{p['lead_id']}", p["lead_id"])
-    return jsonify(serialize(upd))
 
 
 # ---------------- negotiation and competitors ----------------

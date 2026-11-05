@@ -2,7 +2,7 @@
 
 Construction & interior CRM — Angular 19 + PrimeNG (Aura) · Flask · MongoDB · Docker.
 
-**Current phase: C+ — leads in depth** (Phases A, B and C are done). See [PLAN.md](PLAN.md).
+**Current phase: D — proposals & contracts** (Phases A, B, C and C+ are done). See [PLAN.md](PLAN.md).
 
 ## Run
 
@@ -33,9 +33,10 @@ docker compose exec backend python tests/test_phase_c.py
 docker compose exec backend python tests/test_e2e_flow.py
 docker compose exec backend python tests/test_flow_gaps.py
 docker compose exec backend python tests/test_leads_deep.py
+docker compose exec backend python tests/test_phase_d.py
 ```
 
-`test_auth.py` runs every role against every permission area plus isolation, limits, deactivation, suspension and Super Admin checks. `test_phase_b.py` covers every Phase B requirement row in PLAN.md (B1). `test_phase_c.py` covers every Phase C row (C1). `test_e2e_flow.py` walks one enquiry through to a delivered project. `test_flow_gaps.py` covers the hand-offs between modules (PLAN.md C2b). `test_leads_deep.py` covers Phase C+ (leads in depth: notifications, stage rules, scheduled checks, email). Every suite removes the records it creates (test logins and signed-up test companies included), so the demo data stays clean between runs.
+`test_auth.py` runs every role against every permission area plus isolation, limits, deactivation, suspension and Super Admin checks. `test_phase_b.py` covers every Phase B requirement row in PLAN.md (B1). `test_phase_c.py` covers every Phase C row (C1). `test_e2e_flow.py` walks one enquiry through to a delivered project. `test_flow_gaps.py` covers the hand-offs between modules (PLAN.md C2b). `test_leads_deep.py` covers Phase C+ (leads in depth). `test_phase_d.py` covers Phase D (proposal builder, client link with e-signature, contract and payment schedule). Every suite removes the records it creates (test logins and signed-up test companies included), so the demo data stays clean between runs.
 
 ## Layout
 

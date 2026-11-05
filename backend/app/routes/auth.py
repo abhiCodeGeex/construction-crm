@@ -51,7 +51,7 @@ def signup():
         "currency": "INR", "tax_rate": 18.0, "tax_label": "GST", "gstin": d.get("gstin"),
         "city": d.get("city"), "phone": d.get("phone"),
         "branches": [{"name": "Head office", "city": d.get("city")}],
-        "branding": {"primary": "#1f6feb", "logo": None},
+        "branding": {"primary": "#1f6feb", "logo_key": None},
         "numbering": {}, "counters": {}, "allow_support_login": False,
         "created_at": now(), "owner_email": email,
     }

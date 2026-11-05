@@ -265,3 +265,32 @@ Source: the leads review (sections A–E agreed with the owner), built on requir
 | Google / Outlook calendar sync | Integration (§15); the in-app calendar is in C+ |
 | Real costs updating the rate library | Phase E (§12 "learn from it") |
 | AI follow-up drafts | Phase 3 |
+
+---
+
+# Phase D — Proposals & estimates → contract with payment schedule
+
+Source: requirements §5 (proposal types, templates, versions, optional items, discounts, taxes, online acceptance with e-signature, contract with a payment schedule tied to milestones, rate library), §1 (branding on proposals), §16 (alert when a proposal is viewed but not accepted). Builds on the C+ proposal tracking and estimates. Invoicing against the schedule is Phase E. Covered by [backend/tests/test_phase_d.py](backend/tests/test_phase_d.py).
+
+## D1. Requirement → implementation → test
+| Req | Requirement line | Implementation | Test |
+|---|---|---|---|
+| §5 | Fee proposal: fixed fee, hourly, % of project cost, per sq ft/m² | Type *fee*: basis fixed / hourly (hours × rate) / percent (% × project cost) / per area (area × rate); optional split of the fee across stages (% each, totals 100) | each basis; split must total 100 |
+| §5 | Construction estimate: BOQ with quantities, material + labour rates, overheads, markup | Type *construction* from an **approved** C+ estimate: every estimate line becomes a client line priced at its share of the estimate's price (cost × overheads × markup), so the client never sees cost, overheads or markup and the proposal total equals the estimate total | totals equal; no cost fields in the client view |
+| §5 | Interior quote: design fee + product list with markup | Type *interior*: design fee (fixed or per area) + products (room, name, brand, qty, unit, trade price, markup %) → client price; trade price and margin internal only | client price = trade × (1 + markup) |
+| §5 | Templates | Settings → Proposals: templates per type (intro, scope, terms, default lines, payment schedule). Each company starts with one per enabled service, editable | create from template copies content |
+| §5 | Versions (v1, v2…) | Every proposal of a lead is a version; *Revise* copies the content into a new draft version | revision copies content |
+| §5 | Optional items | Lines can be optional; the client ticks the ones they want before accepting; the total follows | accepted total includes chosen items only |
+| §5 | Discounts, taxes | Discount % and tax % (company tax rate by default, its label shown); a discount above the limit, or a margin below the minimum where cost is known, needs the owner / sales manager's approval before sending | send refused until approved |
+| §5 | Online acceptance with e-signature | Sending creates a private client link. The client sees the branded proposal, picks optional items, types their name, draws their signature and accepts; time, IP address and browser are recorded with the signature. They can also decline or ask for changes (with a reason). Accepting on paper can still be recorded by staff | sign; decline; expired / used link refused |
+| §16 | Alert when a proposal is viewed but not accepted | Every opening of the client link is logged (time, count); the salesperson is told at the first view; the worker reminds them when it was viewed 2 days ago and is still not answered | first view notifies once; reminder once |
+| §1 | Branding on proposals | Settings → Company: logo, brand colour, address / phone / email / website footer — on the client page and the printout | logo served publicly only for the company's own logo |
+| §5 | Converts to a contract with a payment schedule tied to milestones | Accepting creates the contract (number, value, signed lines, signature, payment schedule). Schedule rows: % of value due **on signing**, **on a stage's completion** (stage of the service's default template) or **on a date**; rows total 100 %. When the lead is won the contract joins the project: the project value is the contract value and each stage row links to that stage's "complete" milestone; a row is *due* once its trigger happens | schedule must total 100; milestone links; due follows the milestone |
+| §5 | Rate library reused across estimates | Done in C+ (estimates); product lines can be picked from it | — |
+| — | Print / PDF | A print layout of the proposal and of the contract (browser "Save as PDF") | — |
+
+## D2. Rules fixed in this phase
+* A proposal can only be edited as a draft. Editing after an approval clears the approval.
+* One accepted proposal per lead; accepting supersedes the other open versions.
+* The client link works only while the proposal is *sent* and within its validity; after acceptance it shows the signed copy.
+* A contract is not edited; changes to scope and value arrive through change orders (Phase E, §11).

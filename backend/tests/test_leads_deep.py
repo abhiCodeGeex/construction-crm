@@ -848,6 +848,7 @@ finally:
         call("DELETE", f"/projects/{pid}", token=T["owner"])
         mongo.followups.delete_many({"company_id": CID, "related.id": pid})
     mongo.lead_receipts.update_many({"company_id": CID, "lead_id": {"$in": leads}}, {"$set": {"status": "void"}})
+    mongo.contracts.delete_many({"company_id": CID, "lead_id": {"$in": leads}})  # signed contracts are never deleted in the app
     for rid in rates_made:
         mongo.rate_library.delete_one({"_id": ObjectId(rid)})
     for lid in leads:

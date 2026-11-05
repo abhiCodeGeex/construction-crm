@@ -204,4 +204,25 @@ NOTIFY_EVENTS = {
     "lead_resumed": ("On-hold lead back in the pipeline", False),
     "bid_due": ("Bid due soon", False),
     "lead_merged": ("Lead merged", False),
+    "proposal_viewed": ("Client opened a proposal", False),
+    "contract_signed": ("Contract signed", True),
+}
+
+# ---------------- Phase D ----------------
+PROPOSAL_TYPES = {"fee": "Fee proposal", "construction": "Construction estimate", "interior": "Interior quote",
+                  "simple": "Proposal with a typed value"}
+FEE_BASES = {"fixed": "Fixed fee", "hourly": "Hourly", "percent": "% of project cost", "per_area": "Per sq ft / m²"}
+SCHEDULE_TRIGGERS = {"signing": "On signing", "stage": "When a stage is complete", "date": "On a date"}
+SERVICE_PROPOSAL_TYPE = {"architecture": "fee", "construction": "construction", "interior": "interior"}
+TEMPLATE_TEXT = {
+    "fee": {"intro": "Thank you for the opportunity to design your project. This proposal sets out our scope, fee and terms.",
+            "terms": "Fees exclude statutory approval charges and third-party consultants unless listed. Additional services "
+                     "beyond the scope are charged separately after your written approval."},
+    "construction": {"intro": "Thank you for inviting us to quote. This estimate is based on the drawings and site visit "
+                              "made with you.",
+                     "terms": "Rates are valid for the period shown. Changes to the scope are priced and approved as change "
+                              "orders before the work is done."},
+    "interior": {"intro": "Thank you for choosing us for your interiors. This quote covers our design fee and the "
+                          "products selected for each room.",
+                 "terms": "Products are ordered after your approval and deposit. Lead times are as advised by the suppliers."},
 }

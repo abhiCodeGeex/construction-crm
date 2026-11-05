@@ -52,7 +52,7 @@ def get_company():
 @api("settings")
 def update_company():
     d = request.get_json(force=True) or {}
-    changes = {k: d[k] for k in ("name", "modules", "currency", "tax_rate", "gstin", "city", "branding", "branches",
+    changes = {k: d[k] for k in ("name", "modules", "currency", "tax_rate", "gstin", "city", "branches",
                                  "allow_support_login") if k in d}
     if "modules" in changes:
         changes["modules"] = [m for m in changes["modules"] if m in ("architecture", "construction", "interior")]

@@ -64,6 +64,7 @@ const DESIGN = ['architecture', 'interior'];
           <p-tab value="followups"><i class="pi pi-bell mr"></i>Follow-ups</p-tab>
           <p-tab value="history"><i class="pi pi-history mr"></i>History</p-tab>
           @if (handover()) { <p-tab value="lead"><i class="pi pi-bullseye mr"></i>From the lead</p-tab> }
+          @if (contract()) { <p-tab value="contract"><i class="pi pi-verified mr"></i>Contract</p-tab> }
         </p-tablist>
         <p-tabpanels>
           <!-- ================= OVERVIEW ================= -->
@@ -305,6 +306,23 @@ const DESIGN = ['architecture', 'interior'];
             </p-table>
           </p-tabpanel>
 
+          <!-- ================= CONTRACT (Phase D: payment schedule follows the milestones) ================= -->
+          @if (contract(); as c) {
+            <p-tabpanel value="contract">
+              <div class="row-between mb"><div><strong>Contract {{ c.number }}</strong> · {{ fmt(c.value) }} · signed {{ c.signed_at | date: 'd MMM y' }} by {{ c.acceptance?.name }}</div>
+                <a [routerLink]="['/app/contracts', c.id]">Open / print →</a></div>
+              <p-table [value]="c.payment_schedule" size="small">
+                <ng-template #header><tr><th>Payment</th><th>When</th><th class="right">%</th><th class="right">Amount</th><th>Now</th></tr></ng-template>
+                <ng-template #body let-r><tr><td>{{ r.name }}</td>
+                  <td class="small">{{ r.trigger === 'signing' ? 'On signing' : r.trigger === 'date' ? (r.date | date: 'd MMM y') : (r.milestone?.name || r.stage + ' complete') }}
+                    @if (r.milestone?.due) { <span class="muted"> · planned {{ r.milestone.due | date: 'd MMM y' }}</span> }</td>
+                  <td class="right">{{ r.pct }}</td><td class="right">{{ fmt(r.amount) }}</td>
+                  <td><p-tag [value]="label(r.state)" [severity]="r.state === 'due' ? 'warn' : 'secondary'" /></td></tr></ng-template>
+              </p-table>
+              <small class="muted">A stage payment becomes due when its milestone is marked achieved. Invoicing arrives with Finance (Phase E).</small>
+            </p-tabpanel>
+          }
+
           <!-- ================= FROM THE LEAD (C+2.7: nothing is retyped) ================= -->
           @if (handover(); as h) {
             <p-tabpanel value="lead">
@@ -447,6 +465,7 @@ export class ProjectDetailComponent implements OnInit {
   issues = signal<any[]>([]);
   history = signal<any[]>([]);
   handover = signal<any>(null);
+  contract = signal<any>(null);
   briefKeys = [{ key: "style", label: "Style" }, { key: "materials", label: "Materials" }, { key: "brands", label: "Brands" }, { key: "must_haves", label: "Must-haves" },
     { key: "nice_to_haves", label: "Nice-to-haves" }, { key: "programme", label: "Spaces" }, { key: "approvals_needed", label: "Approvals" }, { key: "notes", label: "Notes" }];
   contacts = signal<any[]>([]);
@@ -496,6 +515,7 @@ export class ProjectDetailComponent implements OnInit {
     this.dash.set(await this.api.get(`/projects/${this.id()}/dashboard`));
     this.history.set(await this.api.get(`/projects/${this.id()}/history`));
     this.handover.set(await this.api.get(`/projects/${this.id()}/handover`));
+    this.contract.set(await this.api.get(`/projects/${this.id()}/contract`));
     if (this.auth.can('followups')) await this.loadTimeline();
     await this.loadIssues();
   }

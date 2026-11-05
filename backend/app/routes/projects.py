@@ -393,6 +393,10 @@ def delete_project(_id):
     # lead files and receipts stay with their lead
     db.lead_files.update_many({"company_id": g.cid, "project_id": _id}, {"$set": {"project_id": None}})
     db.lead_receipts.update_many({"company_id": g.cid, "project_id": _id}, {"$set": {"project_id": None}})
+    # a signed contract stays with its lead; its milestone links went with the project
+    for c in db.contracts.find({"company_id": g.cid, "project_id": _id}):
+        db.contracts.update_one({"_id": c["_id"]}, {"$set": {"project_id": None, "payment_schedule": [
+            {**r, "milestone_id": None} for r in c["payment_schedule"]]}})
     return jsonify({"ok": True})
 
 

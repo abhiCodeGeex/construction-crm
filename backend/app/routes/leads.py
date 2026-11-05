@@ -441,6 +441,8 @@ def delete_lead(_id):
     lead = load_lead(_id)
     if lead["status"] == "won" and t.get("projects", lead.get("project_id"), required=False):
         abort(409, "Won leads cannot be deleted while their project exists")
+    if db.contracts.count_documents({"company_id": g.cid, "lead_id": _id, "status": "signed"}):
+        abort(409, "This lead has a signed contract; it cannot be deleted")
     if db.lead_receipts.count_documents({"company_id": g.cid, "lead_id": _id, "status": {"$ne": "void"}}):
         abort(409, "Money was received on this lead; void its receipts first (or record the lead as lost)")
     t.delete("leads", _id)
@@ -595,6 +597,11 @@ def win_lead(lead, d, bid=None):
         extra.append({"user_id": lead["owner_id"], "name": lead.get("owner_name"), "project_role": "Sales", "access": "view"})
     value = num(d.get("value"), "Value") if d.get("value") not in (None, "") else \
         ((bid or {}).get("value") or lead.get("proposal_value") or lead.get("budget") or 0)
+    contract = db.contracts.find_one({"company_id": g.cid, "lead_id": _id, "status": "signed"})
+    if contract:  # the signed contract decides the project value
+        if d.get("value") not in (None, "") and abs(value - contract["value"]) > 0.01:
+            abort(400, f"The project value comes from signed contract {contract['number']} ({money_text(contract['value'])})")
+        value = contract["value"]
     project = new_project({
         "name": (d.get("project_name") or lead["title"]).strip(), "services": [lead["service"]],
         "client_id": lead["contact_id"], "project_type": lead.get("project_type"), "start": d.get("start"),
@@ -613,7 +620,10 @@ def win_lead(lead, d, bid=None):
                              {"$set": {"related": {"type": "project", "id": pid, "label": project["name"]}}})
     close_bids(_id, "won", {"project_id": pid, "project_code": code})
     from .lead_money import hand_over_to_project
+    from .proposals import link_contract
     hand_over_to_project(lead, project, d["pm_id"], d.get("advance"))
+    if link_contract(lead, project):
+        log(_id, "won", f"Contract {contract['number']} linked to {code}; its payment schedule follows the project's milestones")
     link = f"/app/projects/{pid}"
     notify.send("project_pm", [d["pm_id"]], f"You are the project manager of {code} {project['name']} (won by "
                 f"{g.user.get('name')})", link, _id)

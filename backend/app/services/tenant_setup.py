@@ -2,7 +2,8 @@ import secrets
 
 from ..db import db, oid
 from ..tenancy import now
-from .defaults import STAGE_TEMPLATES, MESSAGE_TEMPLATES, PIPELINE, LEAD_SOURCES, template_stages, LOSS_REASONS
+from .defaults import (STAGE_TEMPLATES, MESSAGE_TEMPLATES, PIPELINE, LEAD_SOURCES, template_stages, LOSS_REASONS,
+                       SERVICE_PROPOSAL_TYPE, TEMPLATE_TEXT, PROPOSAL_TYPES)
 
 
 def bootstrap_company(company_id, modules):
@@ -17,6 +18,10 @@ def bootstrap_company(company_id, modules):
         })
     for tpl in platform.get("message_templates") or MESSAGE_TEMPLATES:
         db.message_templates.insert_one({**tpl, "company_id": company_id, "created_at": now(), "created_by": None})
+    for service, ptype in SERVICE_PROPOSAL_TYPE.items():
+        db.proposal_templates.insert_one({"company_id": company_id, "name": f"Standard {PROPOSAL_TYPES[ptype].lower()}", "type": ptype,
+                                          "service": service, **TEMPLATE_TEXT[ptype], "scope_text": None, "items": [], "fee": None,
+                                          "payment_schedule": [], "created_at": now(), "created_by": None})
     db.companies.update_one({"_id": oid(company_id)}, {"$set": {
         "pipelines": {m: PIPELINE for m in ("architecture", "construction", "interior")},
         "lead_sources": LEAD_SOURCES,

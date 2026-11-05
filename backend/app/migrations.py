@@ -98,6 +98,24 @@ def m007_leads_deep():
     db.lead_visits.create_index([("company_id", 1), ("status", 1), ("at", 1)])
 
 
+def m008_phase_d():
+    """Phase D: one editable proposal template per enabled service (fee / construction / interior), indexes."""
+    from .services.defaults import SERVICE_PROPOSAL_TYPE, TEMPLATE_TEXT, PROPOSAL_TYPES
+    for c in db.companies.find({}):
+        cid = str(c["_id"])
+        for service in c.get("modules", []):
+            ptype = SERVICE_PROPOSAL_TYPE.get(service)
+            if not ptype or db.proposal_templates.find_one({"company_id": cid, "type": ptype}):
+                continue
+            db.proposal_templates.insert_one({"company_id": cid, "name": f"Standard {PROPOSAL_TYPES[ptype].lower()}", "type": ptype,
+                                              "service": service, **TEMPLATE_TEXT[ptype], "scope_text": None, "items": [],
+                                              "fee": None, "payment_schedule": [], "created_at": now(), "created_by": None})
+    db.proposals.create_index("token", sparse=True)
+    db.proposals.create_index([("company_id", 1), ("lead_id", 1)])
+    db.contracts.create_index([("company_id", 1), ("lead_id", 1)])
+    db.contracts.create_index([("company_id", 1), ("project_id", 1)])
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -106,6 +124,7 @@ MIGRATIONS = [
     ("005_contact_types", m005_contact_types),
     ("006_phase_c", m006_phase_c),
     ("007_leads_deep", m007_leads_deep),
+    ("008_phase_d", m008_phase_d),
 ]
 
 
