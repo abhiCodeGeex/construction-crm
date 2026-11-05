@@ -200,6 +200,8 @@ def delete_contact(_id):
     leads = db.leads.count_documents({"company_id": g.cid, "contact_id": _id})
     if leads:
         abort(409, f"This contact is the enquirer on {leads} lead(s). Delete or relink those leads first.")
+    if db.leads.count_documents({"company_id": g.cid, "stakeholders.contact_id": _id}):
+        abort(409, "This contact is a decision-maker on a lead. Remove them from the lead first.")
     if db.bids.count_documents({"company_id": g.cid, "client_id": _id}):
         abort(409, "This contact is the client on a bid. Change the bid's client first.")
     referred = sum(getattr(db, c).count_documents({"company_id": g.cid, "referred_by": _id})

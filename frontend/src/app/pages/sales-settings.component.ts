@@ -62,6 +62,23 @@ import { CHANNEL_LABEL } from '../shared/followup-dialog.component';
         @if (canEdit()) { <div class="row right mt"><p-button label="Save sales rules" icon="pi pi-check" (onClick)="saveRules()" /></div> }
       </p-card>
 
+      <p-card styleClass="mt"><ng-template #title>Package rates — for the ballpark on a lead (area × rate)</ng-template>
+        <div class="tpl-grid">
+          @for (svc of m.services; track svc) {
+            <div class="gate"><strong>{{ label[svc] }}</strong>
+              @for (p of pkgs[svc]; track $index; let i = $index) {
+                <div class="row gap mt-xs"><input pInputText [(ngModel)]="p.name" placeholder="Package" [disabled]="!canEdit()" style="width: 8rem" />
+                  <p-inputnumber [(ngModel)]="p.rate" [min]="0" placeholder="Rate" [disabled]="!canEdit()" [inputStyle]="{ width: '7rem' }" />
+                  <p-select [options]="rateUnits" [(ngModel)]="p.unit" optionLabel="label" optionValue="value" [disabled]="!canEdit()" appendTo="body" />
+                  @if (canEdit()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="pkgs[svc].splice(i, 1)" /> }</div>
+              } @empty { <p class="muted small">No packages yet.</p> }
+              @if (canEdit()) { <p-button label="Add package" icon="pi pi-plus" size="small" [text]="true" (onClick)="pkgs[svc].push({ name: '', rate: null, unit: 'sqft' })" /> }
+            </div>
+          }
+        </div>
+        @if (canEdit()) { <div class="row right mt"><p-button label="Save package rates" icon="pi pi-check" (onClick)="savePkgs()" /></div> }
+      </p-card>
+
       <p-card styleClass="mt"><ng-template #title>Stage rules — what must be done before a lead leaves a stage</ng-template>
         <p class="muted small">Moving a lead forward needs every stage it passes to meet its rules. Moving back is always allowed. The owner can override with a reason, which is logged.</p>
         @for (svc of m.services; track svc) {
@@ -160,6 +177,8 @@ export class SalesSettingsComponent implements OnInit {
   ss: any = {};
   rules: Record<string, Record<string, any>> = {};
   em: any = {};
+  pkgs: Record<string, any[]> = {};
+  rateUnits = [{ label: 'per sq ft', value: 'sqft' }, { label: 'per m²', value: 'sqm' }];
   origin = location.origin;
   reqOptions = computed(() => Object.entries(this.meta()?.requirements ?? {}).map(([value, label]) => ({ value, label })));
   tplDlg = false;
@@ -179,8 +198,15 @@ export class SalesSettingsComponent implements OnInit {
       const r = m.stage_rules[s][st];
       return [st, { checklist_text: (r.checklist || []).join('\n'), requires: [...(r.requires || [])], max_days: r.max_days ?? null, probability: r.probability ?? null }];
     }))]));
+    const rates = await this.api.get('/leads/package-rates');
+    this.pkgs = Object.fromEntries(m.services.map((s: string) => [s, (rates[s] ?? []).map((p: any) => ({ ...p }))]));
     this.templates.set(await this.api.get('/message_templates'));
     if (this.auth.can('settings')) this.em = { port: 587, use_tls: true, ...(await this.api.get('/settings/email')) };
+  }
+
+  async savePkgs() {
+    await this.api.put('/leads/package-rates', { package_rates: this.pkgs }, 'Package rates saved');
+    await this.load();
   }
 
   async saveRules() {

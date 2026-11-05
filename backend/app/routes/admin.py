@@ -206,8 +206,11 @@ def numbering_preview():
 
 
 # ---------------- uploads (compliance documents) ----------------
-ALLOWED = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".doc", ".docx"}
+ALLOWED = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".heic", ".doc", ".docx", ".xlsx", ".xls", ".csv", ".dwg", ".dxf",
+           ".mp4", ".mov"}
+VIDEO = {".mp4", ".mov"}
 MAX_BYTES = 20 * 1024 * 1024
+MAX_VIDEO_BYTES = 100 * 1024 * 1024  # site walk-through videos
 
 
 @bp.post("/uploads")
@@ -219,14 +222,14 @@ def upload():
     name = secure_filename(f.filename) or "file"
     ext = os.path.splitext(name)[1].lower()
     if ext not in ALLOWED:
-        abort(400, "Allowed files: PDF, image or Word document")
+        abort(400, "Allowed files: PDF, image, Word, Excel / CSV, CAD (DWG, DXF) or video (MP4, MOV)")
     key = f"{g.cid}_{uuid.uuid4().hex[:12]}_{name}"
     path = os.path.join(Config.UPLOAD_DIR, key)
     f.save(path)
     size = os.path.getsize(path)
-    if size > MAX_BYTES:
+    if size > (MAX_VIDEO_BYTES if ext in VIDEO else MAX_BYTES):
         os.remove(path)
-        abort(400, "File is larger than 20 MB")
+        abort(400, f"File is larger than {100 if ext in VIDEO else 20} MB")
     lim = limits()["storage_gb"]
     if lim and usage(g.company)["storage_bytes"] + size > lim * 1024 ** 3:
         os.remove(path)

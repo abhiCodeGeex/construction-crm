@@ -264,7 +264,7 @@ try:
     expect("setup task 2", call("POST", f"/projects/{hp2['id']}/stages/{hp2['stages'][0]['id']}/tasks",
                                 {"title": f"HO task2 {RUN}", "assignee_id": u["id"], "start": day(0), "end": day(3)}, T["pm"]), 201)
     work = call("GET", f"/users/{u['id']}/open-work", token=T["owner"])[1]
-    check("open work counted", work == {"leads": 1, "followups": 1, "tasks": 2}, work)
+    check("open work counted", work == {"leads": 1, "followups": 1, "tasks": 2, "visits": 0}, work)
     expect("deactivate with open work needs a hand-over", call("PUT", f"/users/{u['id']}", {"active": False}, T["owner"]), 409)
     expect("cannot hand over to self", call("PUT", f"/users/{u['id']}", {"active": False, "handover_to": u["id"]}, T["owner"]), 400)
     expect("hand over and deactivate", call("PUT", f"/users/{u['id']}", {"active": False, "handover_to": staff["sales"]}, T["owner"]), 200)
@@ -275,7 +275,7 @@ try:
     tk2 = [x for s in call("GET", f"/projects/{hp2['id']}", token=T["pm"])[1]["stages"] for x in s.get("tasks", [])][0]
     check("task moves to the new owner where they are on the team", tk2.get("assignee_id") == staff["sales"], tk2.get("assignee_name"))
     check("deactivated user has no open work", call("GET", f"/users/{u['id']}/open-work", token=T["owner"])[1]
-          == {"leads": 0, "followups": 0, "tasks": 0})
+          == {"leads": 0, "followups": 0, "tasks": 0, "visits": 0})
 
     # ---------------- website form closed for read-only / cancelled companies ----------------
     key = call("GET", "/leads/meta", token=T["owner"])[1]["form_key"]

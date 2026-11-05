@@ -209,9 +209,9 @@ Source: the leads review (sections A–E agreed with the owner), built on requir
 | Block | Scope | Status |
 |---|---|---|
 | 1 | Notifications + bell + email, preferences, stage checklists / exit rules / day limits / override, call & meeting outcome + next step, old→new edit log, temperature / probability / close date / score / value, on hold & resume, lost with competitor + re-engage, sales settings, visibility, worker (response time, stuck, hot idle, follow-ups, resume) | **Done** |
-| 2 | Site visits (appointments, reminders, report, cost), measurements, site checklist, lead files | Next |
-| 3 | Brief + client questionnaire, decision-makers, ballpark from package rates | Pending |
-| 4 | Rate library, estimates + approval, expenses, receipts, proposals tracking, negotiation, competitors, won carry-over to the project | Pending |
+| 2 | Site visits (appointments, reminders, report, cost), measurements, site checklist, lead files | **Done** |
+| 3 | Brief + client questionnaire, decision-makers, ballpark from package rates | **Done** |
+| 4 | Rate library, estimates + approval, expenses, receipts, proposals tracking, negotiation, competitors, won carry-over to the project | Next |
 | 5 | Assignment rules, merge, import, bulk, export, saved views, calendar, Needs attention, bid additions, reports | Pending |
 
 ## C+1. Rules for every step

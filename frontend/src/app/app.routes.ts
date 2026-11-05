@@ -32,6 +32,7 @@ export const routes: Routes = [
     ],
   },
   { path: 'f/:key', loadComponent: () => import('./pages/public-form.component').then((m) => m.PublicFormComponent) },
+  { path: 'q/:token', loadComponent: () => import('./pages/public-questionnaire.component').then((m) => m.PublicQuestionnaireComponent) },
   { path: 'portal', canActivate: [portalGuard], loadComponent: () => import('./pages/portal.component').then((m) => m.PortalComponent) },
   { path: 'sa/login', loadComponent: () => import('./superadmin/sa-login.component').then((m) => m.SaLoginComponent) },
   {

@@ -20,22 +20,27 @@ import { Api, SERVICE_COLOR, SERVICE_LABEL, label, money } from '../../core/api.
 import { AuthService } from '../../core/auth.service';
 import { CHANNEL_ICON, CHANNEL_LABEL, FollowupDialogComponent } from '../../shared/followup-dialog.component';
 import { WinLoseComponent } from './win-lose.component';
+import { LeadBriefComponent } from './lead-brief.component';
+import { LeadFilesComponent } from './lead-files.component';
+import { LeadVisitsComponent } from './lead-visits.component';
 
 /** Timeline filter groups (C+3). */
 const GROUPS: Record<string, string[]> = {
   'Calls & messages': ['call', 'email', 'whatsapp', 'meeting', 'note', 'site_visit'],
+  'Visits & site': ['visit', 'measurement', 'file'],
+  'Brief & people': ['brief', 'stakeholder', 'ballpark'],
   'Stage & status': ['created', 'stage', 'checklist', 'won', 'lost', 'reopened', 'on_hold', 'resumed', 'merged'],
   Edits: ['edit'],
 };
 const EVENT_ICON: Record<string, string> = {
   created: 'pi pi-plus-circle', stage: 'pi pi-arrow-right', checklist: 'pi pi-check-square', edit: 'pi pi-pencil',
-  won: 'pi pi-trophy', lost: 'pi pi-times-circle', reopened: 'pi pi-replay', on_hold: 'pi pi-pause', resumed: 'pi pi-play', note: 'pi pi-file',
+  brief: 'pi pi-list-check', stakeholder: 'pi pi-users', ballpark: 'pi pi-calculator', visit: 'pi pi-map-marker', measurement: 'pi pi-arrows-h', file: 'pi pi-paperclip', won: 'pi pi-trophy', lost: 'pi pi-times-circle', reopened: 'pi pi-replay', on_hold: 'pi pi-pause', resumed: 'pi pi-play', note: 'pi pi-file',
 };
 
 @Component({
   selector: 'app-lead-detail',
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule, MessageModule,
-    SelectButtonModule, SelectModule, TabsModule, TagModule, TextareaModule, FollowupDialogComponent, WinLoseComponent],
+    SelectButtonModule, SelectModule, TabsModule, TagModule, TextareaModule, FollowupDialogComponent, WinLoseComponent, LeadBriefComponent, LeadFilesComponent, LeadVisitsComponent],
   template: `
     @if (l(); as l) {
       <div class="page-head">
@@ -105,6 +110,9 @@ const EVENT_ICON: Record<string, string> = {
       <p-tabs [(value)]="tab" [scrollable]="true">
         <p-tablist>
           <p-tab value="overview"><i class="pi pi-id-card mr"></i>Overview</p-tab>
+          <p-tab value="visits"><i class="pi pi-map-marker mr"></i>Visits & measurements</p-tab>
+          <p-tab value="brief"><i class="pi pi-list-check mr"></i>Brief & decision-makers</p-tab>
+          <p-tab value="files"><i class="pi pi-folder mr"></i>Files</p-tab>
           <p-tab value="timeline"><i class="pi pi-history mr"></i>Timeline ({{ l.activities.length }})</p-tab>
         </p-tablist>
         <p-tabpanels>
@@ -223,6 +231,9 @@ const EVENT_ICON: Record<string, string> = {
             </div>
           </p-tabpanel>
 
+          <p-tabpanel value="visits">@if (tab === 'visits') { <app-lead-visits [lead]="l" [staff]="meta()?.staff ?? []" (changed)="reload()" /> }</p-tabpanel>
+          <p-tabpanel value="brief">@if (tab === 'brief') { <app-lead-brief [lead]="l" [contacts]="contacts()" (changed)="reload()" /> }</p-tabpanel>
+          <p-tabpanel value="files">@if (tab === 'files') { <app-lead-files [lead]="l" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="timeline">
             <div class="filters"><p-selectbutton [options]="groups" [(ngModel)]="group" [allowEmpty]="false" /></div>
             @for (a of timeline(); track a.id) {

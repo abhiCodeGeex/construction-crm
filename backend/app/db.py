@@ -34,8 +34,15 @@ def serialize(doc):
     if isinstance(doc, ObjectId):
         return str(doc)
     if isinstance(doc, (datetime, date)):
-        return doc.isoformat()
+        return iso(doc)
     return doc
+
+
+def iso(v):
+    """Times are stored as naive UTC; they leave the API marked as UTC ('Z') so browsers show local time."""
+    if isinstance(v, datetime) and v.tzinfo is None:
+        return v.isoformat() + "Z"
+    return v.isoformat()
 
 
 class JSONProvider(DefaultJSONProvider):
@@ -43,7 +50,7 @@ class JSONProvider(DefaultJSONProvider):
         if isinstance(o, ObjectId):
             return str(o)
         if isinstance(o, (datetime, date)):
-            return o.isoformat()
+            return iso(o)
         return super().default(o)
 
 

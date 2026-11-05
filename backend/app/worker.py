@@ -3,11 +3,11 @@
 Every reminder carries a key, so running the checks again never notifies twice. `run_once(now)` takes the
 time as a parameter so the tests can step the clock."""
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import g
 
-from .db import db
+from .db import db, oid
 from .services import notify, sales
 
 ACTIVE = {"$nin": ["suspended", "cancelled"]}
@@ -81,7 +81,42 @@ def check_followups(now):
                             f"overdue: {what}", link, lead_id, key=f"fu-esc:{fid}")
 
 
-CHECKS = [check_leads, check_followups]
+def check_visits(now):
+    """Day-before and 2-hour reminders (staff in app, client by email); missed visits; reports not written."""
+    from .routes.lead_steps import fmt
+    for v in db.lead_visits.find({"company_id": g.cid, "status": {"$in": ["scheduled", "confirmed", "done"]}}):
+        vid, lid = str(v["_id"]), v["lead_id"]
+        lead = db.leads.find_one({"_id": oid(lid), "company_id": g.cid}) or {}
+        if lead.get("status") != "open":
+            continue
+        link, staff = f"/app/leads/{lid}", [s["id"] for s in v["staff"]]
+        what = f"{'Site visit' if v['kind'] == 'site_visit' else 'Meeting'} for {v['lead_title']} at {v['address']}"
+        if v["status"] in ("scheduled", "confirmed"):
+            left = (v["at"] - now).total_seconds() / 3600
+            stamp = v["at"].isoformat()
+            if 2 < left <= 24:
+                notify.send("visit_reminder", staff, f"Tomorrow: {what}, {fmt(v['at'])}", link, lid, key=f"visit-24:{vid}:{stamp}")
+                if not db.notifications.find_one({"company_id": g.cid, "key": f"client-24:{vid}:{stamp}"}):
+                    c = db.contacts.find_one({"_id": oid(lead.get("contact_id"))}, {"email": 1})
+                    result = notify.deliver(g.company, (c or {}).get("email"), f"Reminder: our visit on {fmt(v['at'])}",
+                                            f"Dear {lead.get('contact_name')},\n\nA reminder of our visit for {v['lead_title']} on "
+                                            f"{fmt(v['at'])} at {v['address']}.\n\nRegards,\n{g.company['name']}")
+                    # a marker row so the client is reminded once, and the result is on the lead's timeline
+                    db.notifications.insert_one({"company_id": g.cid, "user_id": None, "key": f"client-24:{vid}:{stamp}",
+                                                 "event": "visit_reminder", "lead_id": lid, "read_at": now, "created_at": now,
+                                                 "text": f"Client reminder: {result}"})
+                    sales.log(lid, "email", f"Visit reminder emailed to the client: {result}", outcome=result, auto=True)
+            if 0 < left <= 2:
+                notify.send("visit_reminder", staff, f"In under 2 hours: {what}", link, lid, key=f"visit-2:{vid}:{stamp}")
+            if (now - v["at"]).total_seconds() / 60 > (v.get("duration_min") or 60) + 120:
+                notify.send("visit_missed", staff + [lead.get("owner_id")] + notify.managers(),
+                            f"{what} was due {fmt(v['at'])} and is not marked done", link, lid, key=f"missed:{vid}:{stamp}")
+        elif not (v.get("report") or {}).get("submitted_at") and v.get("done_at") and now - v["done_at"] > timedelta(hours=24):
+            notify.send("report_late", notify.managers() + [lead.get("owner_id")] + staff,
+                        f"No report yet for the visit of {fmt(v['at'])} ({v['lead_title']})", link, lid, key=f"report:{vid}")
+
+
+CHECKS = [check_leads, check_followups, check_visits]
 
 
 def run_once(now=None):

@@ -13,14 +13,17 @@ def open_work(uid):
     """Work that would be orphaned if this user stopped logging in."""
     tasks = [(p, tk) for p in db.projects.find({"company_id": g.cid, "stages.tasks.assignee_id": uid})
              for s in p.get("stages", []) for tk in s.get("tasks", []) if tk.get("assignee_id") == uid and tk.get("status") != "done"]
-    return {"leads": db.leads.count_documents({"company_id": g.cid, "owner_id": uid, "status": "open"}),
+    return {"leads": db.leads.count_documents({"company_id": g.cid, "owner_id": uid, "status": {"$in": ["open", "on_hold"]}}),
             "followups": db.followups.count_documents({"company_id": g.cid, "owner_id": uid, "status": "open"}),
-            "tasks": len(tasks)}
+            "tasks": len(tasks),
+            "visits": db.lead_visits.count_documents({"company_id": g.cid, "staff.id": uid,
+                                                      "status": {"$in": ["scheduled", "confirmed"]}})}
 
 
 def hand_over(uid, to):
-    """Open leads and follow-ups move to `to`; open tasks move where `to` is on the project team, else unassigned."""
-    db.leads.update_many({"company_id": g.cid, "owner_id": uid, "status": "open"},
+    """Open leads and follow-ups move to `to`; open tasks move where `to` is on the project team, else unassigned;
+    on upcoming visits `to` takes the user's place."""
+    db.leads.update_many({"company_id": g.cid, "owner_id": uid, "status": {"$in": ["open", "on_hold"]}},
                          {"$set": {"owner_id": str(to["_id"]), "owner_name": to["name"]}})
     db.followups.update_many({"company_id": g.cid, "owner_id": uid, "status": "open"},
                              {"$set": {"owner_id": str(to["_id"]), "owner_name": to["name"]}})
@@ -31,6 +34,11 @@ def hand_over(uid, to):
                 if tk.get("assignee_id") == uid and tk.get("status") != "done":
                     tk["assignee_id"], tk["assignee_name"] = (str(to["_id"]), to["name"]) if on_team else (None, None)
         db.projects.update_one({"_id": p["_id"]}, {"$set": {"stages": p["stages"]}})
+    for v in db.lead_visits.find({"company_id": g.cid, "staff.id": uid, "status": {"$in": ["scheduled", "confirmed"]}}):
+        staff = [s for s in v["staff"] if s["id"] != uid]
+        if not any(s["id"] == str(to["_id"]) for s in staff):
+            staff.append({"id": str(to["_id"]), "name": to["name"]})
+        db.lead_visits.update_one({"_id": v["_id"]}, {"$set": {"staff": staff}})
 
 
 @bp.get("/users")
@@ -106,7 +114,8 @@ def update_user(_id):
             if any(work.values()):
                 if not d.get("handover_to"):
                     abort(409, f"{user['name']} still has {work['leads']} open lead(s), {work['followups']} open "
-                               f"follow-up(s) and {work['tasks']} open task(s). Choose who takes them over.")
+                               f"follow-up(s), {work['tasks']} open task(s) and {work['visits']} upcoming visit(s). "
+                               "Choose who takes them over.")
                 if d["handover_to"] == _id:
                     abort(400, "Hand the work over to someone else")
                 to = db.users.find_one({"_id": oid(d["handover_to"]), "company_id": g.cid, "kind": "staff",
@@ -120,6 +129,9 @@ def update_user(_id):
         if db.users.count_documents({"company_id": g.cid, "role": "owner", "active": {"$ne": False}}) <= 1:
             abort(409, "A company needs at least one active owner")
     updated = t.update("users", _id, changes)
+    if changes.get("active") is False and (g.company.get("sales") or {}).get("manager_id") == _id:
+        db.companies.update_one({"_id": g.company["_id"]}, {"$set": {"sales.manager_id": None}})
+        t.audit("update", "sales_settings", g.company["_id"], note=f"Sales manager {user['name']} deactivated; owners take over")
     if handover:
         hand_over(_id, handover[1])
         t.audit("update", "users", _id, note=f"Open work handed over to {handover[1]['name']}: {handover[0]}")

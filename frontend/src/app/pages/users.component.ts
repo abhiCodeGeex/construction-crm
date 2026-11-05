@@ -132,8 +132,8 @@ interface Summary { limits: { plan: string; users: number | null }; usage: { use
     <p-dialog header="Hand over open work" [modal]="true" [(visible)]="handDlg" [style]="{ width: '30rem' }" [breakpoints]="{ '640px': '95vw' }">
       @if (hand(); as h) {
         <div class="stack">
-          <p>{{ h.user.name }} still has <strong>{{ h.work.leads }}</strong> open lead(s), <strong>{{ h.work.followups }}</strong> open follow-up(s)
-            and <strong>{{ h.work.tasks }}</strong> open task(s). Choose who takes them over before deactivating.</p>
+          <p>{{ h.user.name }} still has <strong>{{ h.work.leads }}</strong> open lead(s), <strong>{{ h.work.followups }}</strong> open follow-up(s),
+            <strong>{{ h.work.tasks }}</strong> open task(s) and <strong>{{ h.work.visits }}</strong> upcoming visit(s). Choose who takes them over before deactivating.</p>
           <label class="field"><span>Hand over to</span>
             <p-select [options]="handTargets()" [(ngModel)]="h.to" optionLabel="name" optionValue="id" placeholder="Choose a colleague" fluid appendTo="body" /></label>
           <small class="muted">Leads and follow-ups move to this person. Tasks move to them on projects where they are on the team; elsewhere the task is left unassigned for the PM to reassign.</small>
@@ -233,7 +233,7 @@ export class UsersComponent implements OnInit {
     if (!activate && u.kind === 'staff') {
       try {
         const work = await firstValueFrom(this.http.get<any>(`/api/users/${u.id}/open-work`));
-        if (work.leads || work.followups || work.tasks) {
+        if (work.leads || work.followups || work.tasks || work.visits) {
           this.hand.set({ user: u, work, to: null });
           this.handDlg = true;
           return;

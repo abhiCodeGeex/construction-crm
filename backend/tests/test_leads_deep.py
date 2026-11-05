@@ -360,6 +360,206 @@ try:
         call("PUT", "/leads/settings", {"own_leads_only": False}, T["owner"])
     else:
         check("C+3 temp sales user", False, s2)
+
+    # ================= C+2.3 site visits =================
+    call("PUT", "/settings/email", {"host": "127.0.0.1", "port": 2526, "from_address": "crm@skyline.test", "use_tls": False}, T["owner"])
+    V = new_lead(location=None, contact_email=f"client{RUN}@example.test")
+    VB = f"/leads/{V['id']}/visits"
+    soon = lambda hours: (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
+    expect("C+2.3 visit needs staff", call("POST", VB, {"at": soon(30), "address": "Plot 4"}, T["sales"]), 400)
+    expect("C+2.3 visit needs a time", call("POST", VB, {"at": "tomorrow", "staff_ids": [U["pm"]], "address": "Plot 4"}, T["sales"]), 400)
+    expect("C+2.3 visit needs an address", call("POST", VB, {"at": soon(30), "staff_ids": [U["pm"]]}, T["sales"]), 400)
+    expect("C+2.3 staff must be active staff", call("POST", VB, {"at": soon(30), "staff_ids": ["x"], "address": "Plot 4"}, T["sales"]), 400)
+    v1 = expect("C+2.3 book a visit", call("POST", VB, {"at": soon(30), "staff_ids": [U["pm"], U["sales"]], "address": f"Plot 4 {RUN}",
+                                                        "duration_min": 90, "email_client": True}, T["sales"]), 201)
+    check("C+2.3 booked as scheduled", v1["status"] == "scheduled" and v1["duration_min"] == 90 and len(v1["staff"]) == 2)
+    check("C+2.3 staff told (not the person who booked)", any(x["event"] == "visit_assigned" and x["lead_id"] == V["id"] for x in bell("pm"))
+          and not any(x["event"] == "visit_assigned" and x["lead_id"] == V["id"] for x in bell("sales")))
+    time.sleep(0.5)
+    check("C+2.3 client emailed the booking", any(f"Plot 4 {RUN}" in x and f"client{RUN}@example.test" in x for x in mails))
+    tl = get(V["id"])["activities"]
+    check("C+2.3 booking and client email on the timeline", any(a["type"] == "visit" and "booked" in a["text"] for a in tl)
+          and any(a["type"] == "email" and a.get("outcome") == "sent" for a in tl))
+    expect("C+2.3 cannot be done before it happens", call("POST", f"/visits/{v1['id']}/status", {"status": "done"}, T["sales"]), 400)
+    expect("C+2.3 cancel needs a reason", call("POST", f"/visits/{v1['id']}/status", {"status": "cancelled"}, T["sales"]), 400)
+    cf = expect("C+2.3 client confirmed", call("POST", f"/visits/{v1['id']}/status", {"status": "confirmed"}, T["sales"]), 200)
+    check("C+2.3 status history", cf["status"] == "confirmed" and cf["history"][-1]["action"] == "confirmed")
+    expect("C+2.3 reschedule needs a reason", call("POST", f"/visits/{v1['id']}/reschedule", {"at": soon(50)}, T["sales"]), 400)
+    rs = expect("C+2.3 reschedule", call("POST", f"/visits/{v1['id']}/reschedule", {"at": soon(50), "reason": "Client asked for Saturday"}, T["sales"]), 200)
+    check("C+2.3 rescheduled keeps old -> new and goes back to scheduled", rs["status"] == "scheduled" and rs["history"][-1]["reason"] == "Client asked for Saturday"
+          and rs["history"][-1]["from"] != rs["history"][-1]["to"])
+    check("C+2.3 staff told of the new time", any(x["event"] == "visit_changed" and x["lead_id"] == V["id"] for x in bell("pm")))
+    ev = expect("C+2.3 change staff", call("PUT", f"/visits/{v1['id']}", {"staff_ids": [U["pm"], U["estimator"]]}, T["sales"]), 200)
+    check("C+2.3 new staff told", [s["name"] for s in ev["staff"]] and any(x["event"] == "visit_assigned" and x["lead_id"] == V["id"] for x in bell("estimator")))
+    check("C+2.3 staff change logged", "staff" in get(V["id"])["activities"][-1]["text"])
+    expect("C+2.3 report only after the visit", call("PUT", f"/visits/{v1['id']}/report", {"findings": "x"}, T["sales"]), 409)
+    past = expect("C+2.3 book a visit that already happened", call("POST", VB, {"at": soon(-3), "staff_ids": [U["sales"]], "address": "Plot 4"}, T["sales"]), 201)
+    ready_lead_stage(V["id"])
+    expect("C+2.3 into Site visit", call("POST", f"/leads/{V['id']}/stage", {"stage": "Site visit"}, T["sales"]), 200)
+    check("C+2.3 visit requirement open until done + reported", "Site visit done and its report submitted" in get(V["id"])["missing"])
+    dn = expect("C+2.3 mark done", call("POST", f"/visits/{past['id']}/status", {"status": "done"}, T["sales"]), 200)
+    check("C+2.3 done visit counts as activity", get(V["id"])["last_activity_at"] is not None)
+    check("C+2.3 done without report is not enough", "Site visit done and its report submitted" in get(V["id"])["missing"])
+    expect("C+2.3 cannot reopen a done visit", call("POST", f"/visits/{past['id']}/status", {"status": "confirmed"}, T["sales"]), 409)
+    expect("C+2.3 report needs findings", call("PUT", f"/visits/{past['id']}/report", {"findings": " "}, T["sales"]), 400)
+    expect("C+2.3 checklist items from the list", call("PUT", f"/visits/{past['id']}/report", {"findings": "ok", "site_checklist": [{"item": "Unicorns", "value": "yes"}]}, T["sales"]), 400)
+    expect("C+2.3 checklist answers yes / no / n.a.", call("PUT", f"/visits/{past['id']}/report", {"findings": "ok", "site_checklist": [{"item": "Demolition needed", "value": "maybe"}]}, T["sales"]), 400)
+    rp = expect("C+2.3 submit report", call("PUT", f"/visits/{past['id']}/report", {
+        "findings": "Old flooring, walls fine", "risks": "Seepage near kitchen", "recommendations": "Waterproof before tiling",
+        "site_checklist": [{"item": "Demolition needed", "value": "yes", "note": "kitchen only"}, {"item": "Power supply available", "value": "na"}],
+        "cost": {"travel": 800, "staff_hours": 3, "hourly_rate": 500, "other": 200}}, T["sales"]), 200)
+    check("C+2.3 report and cost stored", rp["report"]["submitted_at"] and rp["cost"]["total"] == 2500 and len(rp["site_checklist"]) == 2)
+    exp = list(mongo.lead_expenses.find({"company_id": CID, "lead_id": V["id"]}))
+    check("C+2.3 visit cost becomes pre-sales spend", len(exp) == 1 and exp[0]["amount"] == 2500, exp)
+    call("PUT", f"/visits/{past['id']}/report", {"findings": "Old flooring, walls fine", "cost": {"travel": 1000}}, T["sales"])
+    exp = list(mongo.lead_expenses.find({"company_id": CID, "lead_id": V["id"]}))
+    check("C+2.3 updated cost replaces the expense (no duplicate)", len(exp) == 1 and exp[0]["amount"] == 1000, exp)
+    check("C+2.3 report notification to the salesperson",
+          True if get(V["id"])["owner_id"] == U["sales"] else any(x["event"] == "visit_report" for x in bell("sales")))
+    check("C+2.3 visit requirement met once reported", "Site visit done and its report submitted" not in get(V["id"])["missing"])
+
+    # worker: reminders, missed, late report
+    soonv = expect("C+2.3 visit tomorrow", call("POST", VB, {"at": soon(20), "staff_ids": [U["pm"]], "address": "Plot 4"}, T["sales"]), 201)
+    nowv = expect("C+2.3 visit in an hour", call("POST", VB, {"at": soon(1), "staff_ids": [U["pm"]], "address": "Plot 4"}, T["sales"]), 201)
+    gone = expect("C+2.3 visit that nobody closed", call("POST", VB, {"at": soon(-5), "staff_ids": [U["pm"]], "address": "Plot 4"}, T["sales"]), 201)
+    late_r = expect("C+2.3 done visit without report", call("POST", VB, {"at": soon(-30), "staff_ids": [U["pm"]], "address": "Plot 4"}, T["sales"]), 201)
+    call("POST", f"/visits/{late_r['id']}/status", {"status": "done"}, T["sales"])
+    mongo.lead_visits.update_one({"_id": ObjectId(late_r["id"])}, {"$set": {"done_at": datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=25)}})
+    mails.clear()
+    worker()
+    worker()
+    pmb = bell("pm")
+    check("C+2.3 day-before reminder to staff", sum(1 for x in pmb if x["event"] == "visit_reminder" and x.get("key", "").startswith(f"visit-24:{soonv['id']}")) == 1)
+    check("C+2.3 2-hour reminder to staff", sum(1 for x in pmb if x["event"] == "visit_reminder" and x.get("key", "").startswith(f"visit-2:{nowv['id']}")) == 1)
+    time.sleep(0.5)
+    check("C+2.3 client reminded by email once", sum(1 for x in mails if "A reminder of our visit" in x) == 1, len(mails))
+    check("C+2.3 missed visit -> staff, salesperson, manager", any(x["event"] == "visit_missed" and gone["id"] in x.get("key", "") for x in bell("owner"))
+          and any(x["event"] == "visit_missed" and gone["id"] in x.get("key", "") for x in pmb))
+    check("C+2.3 late report -> manager", any(x["event"] == "report_late" and late_r["id"] in x.get("key", "") for x in bell("owner")))
+    nos = expect("C+2.3 no-show with reason", call("POST", f"/visits/{gone['id']}/status", {"status": "no_show", "reason": "Client not home"}, T["sales"]), 200)
+    check("C+2.3 no-show logged", "no-show" in get(V["id"])["activities"][-1]["text"])
+
+    # ================= C+2.3 measurements =================
+    MB = f"/leads/{V['id']}"
+    expect("C+2.3 room needs a name", call("POST", f"{MB}/rooms", {"length": 10, "width": 10}, T["sales"]), 400)
+    expect("C+2.3 room size positive", call("POST", f"{MB}/rooms", {"name": "Living", "length": -1, "width": 10}, T["sales"]), 400)
+    expect("C+2.3 opening kind", call("POST", f"{MB}/rooms", {"name": "Living", "length": 12, "width": 10, "openings": [{"kind": "portal", "width": 1, "height": 1}]}, T["sales"]), 400)
+    me = expect("C+2.3 measure a room", call("POST", f"{MB}/rooms", {"name": "Living", "length": 12, "width": 10, "height": 10, "openings": [
+        {"kind": "door", "width": 3, "height": 7}, {"kind": "window", "width": 4, "height": 4, "count": 2}]}, T["sales"]), 200)
+    lr = me["rooms"][0]
+    check("C+2.3 areas computed", (lr["floor_area"], lr["perimeter"], lr["wall_area"], lr["openings_area"], lr["net_wall_area"]) == (120, 44, 440, 53, 387), lr)
+    check("C+2.3 measurement logged", "Measured Living: 12 × 10 × 10 ft = 120 sqft floor" in get(V["id"])["activities"][-1]["text"], get(V["id"])["activities"][-1]["text"])
+    expect("C+2.3 duplicate room name", call("POST", f"{MB}/rooms", {"name": "living", "length": 5, "width": 5}, T["sales"]), 409)
+    k = expect("C+2.3 second room", call("POST", f"{MB}/rooms", {"name": "Kitchen", "length": 10, "width": 8}, T["sales"]), 200)
+    check("C+2.3 totals", k["totals"]["floor_area"] == 200)
+    kid = next(r["id"] for r in k["rooms"] if r["name"] == "Kitchen")
+    ed = expect("C+2.3 edit room", call("PUT", f"{MB}/rooms/{kid}", {"name": "Kitchen", "length": 11, "width": 8}, T["sales"]), 200)
+    check("C+2.3 edit logged old -> new", "length 10.0 → 11.0" in get(V["id"])["activities"][-1]["text"], get(V["id"])["activities"][-1]["text"])
+    expect("C+2.3 unit cannot change under measured rooms", call("PUT", f"{MB}/measurements/unit", {"unit": "m"}, T["sales"]), 409)
+    pl = expect("C+2.3 plot", call("PUT", f"{MB}/plot", {"area": 2400, "frontage": 40, "depth": 60, "floors": 3, "soil": "Red soil", "access": "12 m road"}, T["sales"]), 200)
+    check("C+2.3 plot stored and logged", pl["plot"]["area"] == 2400 and "Plot area — → 2400" in get(V["id"])["activities"][-1]["text"])
+    expect("C+2.3 delete room", call("DELETE", f"{MB}/rooms/{kid}", token=T["sales"]), 200)
+    check("C+2.3 measurements requirement met", "Measurements recorded" not in get(V["id"])["missing"])
+
+    # ================= C+3 lead files =================
+    import uuid as _uuid
+    boundary = _uuid.uuid4().hex
+    png = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000")
+    body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"site{RUN}.png\"\r\nContent-Type: image/png\r\n\r\n").encode() + png + f"\r\n--{boundary}--\r\n".encode()
+    req = urllib.request.Request(BASE + "/uploads", method="POST", data=body)
+    req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+    req.add_header("Authorization", f"Bearer {T['sales']}")
+    up = json.loads(urllib.request.urlopen(req).read())
+    FB = f"/leads/{V['id']}/files"
+    expect("C+3 file must be uploaded first", call("POST", FB, {"key": "nope", "folder": "photos"}, T["sales"]), 400)
+    expect("C+3 folder from the list", call("POST", FB, {"key": up["key"], "folder": "misc"}, T["sales"]), 400)
+    living = me["rooms"][0]["id"]
+    fa = expect("C+3 attach a site photo to a room", call("POST", FB, {"key": up["key"], "folder": "photos", "room_id": living, "caption": "Living, north wall"}, T["sales"]), 201)
+    check("C+3 file stored with room", fa["room"] == "Living" and fa["folder"] == "photos")
+    expect("C+3 same file twice", call("POST", FB, {"key": up["key"], "folder": "photos"}, T["sales"]), 409)
+    check("C+3 listed", any(f["id"] == fa["id"] for f in call("GET", FB, token=T["sales"])[1]["files"]))
+    check("C+3 file logged", "File added to photos" in get(V["id"])["activities"][-1]["text"])
+    expect("C+3 remove", call("DELETE", f"/lead_files/{fa['id']}", token=T["sales"]), 200)
+    check("C+3 removed from storage", not mongo.files.find_one({"key": up["key"]}))
+
+    # ================= hand-over of visits when a user leaves =================
+    if temp_users:
+        hv = expect("visit with the leaving user", call("POST", VB, {"at": soon(40), "staff_ids": [temp_users[0]], "address": "Plot 4"}, T["owner"]), 201)
+        r409 = call("PUT", f"/users/{temp_users[0]}", {"active": False}, T["owner"])
+        check("deactivation asks who takes the upcoming visit", r409[0] == 409 and "upcoming visit" in r409[1]["error"], r409)
+        expect("deactivate with hand-over", call("PUT", f"/users/{temp_users[0]}", {"active": False, "handover_to": U["pm"]}, T["owner"]), 200)
+        hv2 = mongo.lead_visits.find_one({"_id": ObjectId(hv["id"])})
+        check("visit handed over", [s["id"] for s in hv2["staff"]] == [U["pm"]], hv2["staff"])
+    # ================= C+2.2 decision-makers =================
+    SB = f"/leads/{V['id']}/stakeholders"
+    expect("C+2.2 role from the list", call("POST", SB, {"name": "Asha", "phone": "9000000000", "role": "Uncle"}, T["sales"]), 400)
+    expect("C+2.2 name with phone or email", call("POST", SB, {"name": "Asha", "role": "Co-owner"}, T["sales"]), 400)
+    expect("C+2.2 the enquirer is not added twice", call("POST", SB, {"contact_id": V["contact_id"], "role": "Co-owner"}, T["sales"]), 409)
+    st = expect("C+2.2 add a co-owner (new contact)", call("POST", SB, {"name": f"Spouse {RUN}", "phone": f"7{RUN[-7:]}11", "role": "Co-owner", "main": True}, T["sales"]), 201)
+    contacts.append(st[0]["contact_id"])
+    st = expect("C+2.2 add the architect", call("POST", SB, {"name": f"Architect {RUN}", "email": f"arch{RUN}@example.test", "role": "Architect", "main": True}, T["sales"]), 201)
+    contacts.append(st[1]["contact_id"])
+    check("C+2.2 only one main decision-maker", [p["main"] for p in st] == [False, True])
+    expect("C+2.2 same person twice", call("POST", SB, {"contact_id": st[0]["contact_id"], "role": "Other"}, T["sales"]), 409)
+    ed = expect("C+2.2 change role", call("PUT", f"{SB}/{st[0]['id']}", {"role": "Family member"}, T["sales"]), 200)
+    check("C+2.2 role change logged", "role Co-owner → Family member" in get(V["id"])["activities"][-1]["text"])
+    check("C+2.2 decision-maker contact cannot be deleted", call("DELETE", f"/contacts/{st[0]['contact_id']}", token=T["owner"])[0] == 409)
+
+    # ================= C+2.2 ballpark =================
+    expect("C+2.2 package rates are owner settings", call("PUT", "/leads/package-rates", {"package_rates": {"construction": []}}, T["sales"]), 403)
+    expect("C+2.2 package needs a positive rate", call("PUT", "/leads/package-rates", {"package_rates": {"construction": [{"name": "Basic", "rate": 0}]}}, T["owner"]), 400)
+    expect("C+2.2 no ballpark without rates", call("POST", f"/leads/{V['id']}/ballpark", {"package": "Basic"}, T["sales"]), 400)
+    expect("C+2.2 set package rates", call("PUT", "/leads/package-rates", {"package_rates": {"construction": [
+        {"name": "Basic", "rate": 1800, "unit": "sqft"}, {"name": "Premium", "rate": 2400, "unit": "sqft"}, {"name": "Luxury", "rate": 38000, "unit": "sqm"}]}}, T["owner"]), 200)
+    expect("C+2.2 needs the lead's area", call("POST", f"/leads/{V['id']}/ballpark", {"package": "Basic"}, T["sales"]), 400)
+    call("PUT", f"/leads/{V['id']}", {"area": 2000, "area_unit": "sqft", "budget": 4000000}, T["sales"])
+    bp = expect("C+2.2 ballpark", call("POST", f"/leads/{V['id']}/ballpark", {"package": "Premium"}, T["sales"]), 200)
+    check("C+2.2 area × rate", bp["amount"] == 4800000 and bp["budget_gap"] == -800000, bp)
+    check("C+2.2 budget gap logged", "budget is short by ₹8,00,000" in get(V["id"])["activities"][-1]["text"], get(V["id"])["activities"][-1]["text"])
+    bp2 = expect("C+2.2 ballpark in m² rate", call("POST", f"/leads/{V['id']}/ballpark", {"package": "Luxury"}, T["sales"]), 200)
+    check("C+2.2 unit converted", abs(bp2["amount"] - round(2000 / 10.7639 * 38000, 2)) < 1, bp2)
+    check("C+3 value falls back to the ballpark", get(V["id"])["value"] == bp2["amount"])
+    expect("C+2.2 package from the list", call("POST", f"/leads/{V['id']}/ballpark", {"package": "Gold"}, T["sales"]), 400)
+
+    # ================= C+2.4 brief =================
+    BB = f"/leads/{V['id']}/brief"
+    expect("C+2.4 complete needs the scope", call("PUT", BB, {"style": "Modern", "complete": True}, T["sales"]), 400)
+    expect("C+2.4 work type from the list", call("PUT", BB, {"scope": [{"room": "Kitchen", "work_types": ["Magic"]}]}, T["sales"]), 400)
+    expect("C+2.4 each room needs work", call("PUT", BB, {"scope": [{"room": "Kitchen", "work_types": []}]}, T["sales"]), 400)
+    b1 = expect("C+2.4 brief v1", call("PUT", BB, {"scope": [{"room": "Kitchen", "work_types": ["Modular kitchen", "Electrical"]}], "style": "Modern",
+                                                   "materials": "Quartz top", "must_haves": "Tall unit"}, T["sales"]), 200)
+    check("C+2.4 version 1", b1["version"] == 1 and not b1["complete"])
+    cf = expect("C+2.4 client confirms", call("POST", f"{BB}/confirm", {"how": "whatsapp"}, T["sales"]), 200)
+    check("C+2.4 confirmation stored", cf["client_confirmed"]["how"] == "whatsapp" and cf["client_confirmed"]["version"] == 1)
+    same = expect("C+2.4 same brief again", call("PUT", BB, {"scope": b1["scope"], "style": "Modern", "materials": "Quartz top", "must_haves": "Tall unit"}, T["sales"]), 200)
+    check("C+2.4 no new version without a change", same["version"] == 1)
+    b2 = expect("C+2.4 brief v2 complete", call("PUT", BB, {"scope": b1["scope"] + [{"room": "Living", "work_types": ["False ceiling"]}], "style": "Minimal",
+                                                            "materials": "Quartz top", "must_haves": "Tall unit", "complete": True}, T["sales"]), 200)
+    check("C+2.4 version 2 and confirmation reset", b2["version"] == 2 and b2["client_confirmed"] is None and b2["complete"])
+    txt = get(V["id"])["activities"][-1]["text"]
+    check("C+2.4 what changed is logged", "Brief v2 saved — changed: Style, Scope" in txt and "confirmation again" in txt and "marked complete" in txt, txt)
+    check("C+2.4 estimators told the brief is ready", any(x["event"] == "brief_ready" and x["lead_id"] == V["id"] for x in bell("estimator")))
+    br = call("GET", BB, token=T["sales"])[1]
+    check("C+2.4 versions kept", [v["version"] for v in br["versions"]] == [1, 2])
+    check("C+2.4 brief requirement met", "Brief marked complete" not in get(V["id"])["missing"])
+
+    # ================= C+2.4 client questionnaire (public) =================
+    qn = expect("C+2.4 questionnaire link", call("POST", f"/leads/{V['id']}/questionnaire", {}, T["sales"]), 200)
+    again = call("POST", f"/leads/{V['id']}/questionnaire", {}, T["sales"])[1]
+    check("C+2.4 same open link reused", again["token"] == qn["token"])
+    pq = expect("C+2.4 public questions", call("GET", f"/public/questionnaire/{qn['token']}"), 200)
+    check("C+2.4 questions for the service", pq["project"] == V["title"] and any(q["id"] == "floors" for q in pq["questions"]) and not pq["submitted"])
+    expect("C+2.4 unknown link", call("GET", "/public/questionnaire/nope"), 404)
+    expect("C+2.4 needs an answer", call("POST", f"/public/questionnaire/{qn['token']}", {"answers": {}}), 400)
+    expect("C+2.4 choice from the options", call("POST", f"/public/questionnaire/{qn['token']}", {"answers": {"finish": "Gold-plated"}}), 400)
+    expect("C+2.4 submit answers", call("POST", f"/public/questionnaire/{qn['token']}", {"answers": {"floors": "G+2", "finish": "Premium", "hack": "x"}}), 200)
+    expect("C+2.4 answers only once", call("POST", f"/public/questionnaire/{qn['token']}", {"answers": {"floors": "G+3"}}), 409)
+    br = call("GET", BB, token=T["sales"])[1]
+    check("C+2.4 answers on the lead (unknown questions dropped)", br["questionnaire"]["answers"] == {"floors": "G+2", "finish": "Premium"}, br["questionnaire"])
+    check("C+2.4 salesperson told", any(x["event"] == "questionnaire" and x["lead_id"] == V["id"] for x in bell("sales")))
+    check("C+2.4 answers logged", "answered the questionnaire" in get(V["id"])["activities"][-1]["text"])
+
+    call("PUT", "/settings/email", {"host": ""}, T["owner"])
 finally:
     smtp.shutdown()
     for lid in leads:
@@ -376,6 +576,9 @@ finally:
         mongo.contacts.count_documents({"company_id": CID, "name": {"$regex": f"Client {RUN}"}}) + \
         mongo.followups.count_documents({"company_id": CID, "title": {"$regex": RUN}})
     check("cleanup: nothing left", left == 0, left)
+    cascade = sum(mongo[c].count_documents({"company_id": CID, "lead_id": {"$in": leads}})
+                  for c in ("lead_visits", "lead_expenses", "lead_files", "notifications"))
+    check("deleting a lead removes its visits, expenses, files and notifications", cascade == 0, cascade)
 
 print(f"passed: {passed}  failed: {len(failures)}")
 for f in failures:

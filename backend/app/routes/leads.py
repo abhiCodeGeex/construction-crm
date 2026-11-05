@@ -439,6 +439,13 @@ def delete_lead(_id):
                              {"$set": {"status": "cancelled", "outcome": "Lead deleted"}})
     db.bids.update_many({"company_id": g.cid, "lead_id": _id}, {"$set": {"lead_id": None, "lead_title": None}})
     db.notifications.delete_many({"company_id": g.cid, "lead_id": _id})  # no bell entry may point at a deleted lead
+    # the lead's own records go with it; files leave storage too
+    from .lead_steps import delete_stored
+    for f in db.lead_files.find({"company_id": g.cid, "lead_id": _id, "project_id": None}):
+        delete_stored(f["key"])
+    db.lead_files.delete_many({"company_id": g.cid, "lead_id": _id, "project_id": None})
+    for coll in ("lead_visits", "lead_expenses"):
+        db[coll].delete_many({"company_id": g.cid, "lead_id": _id})
     return jsonify({"ok": True})
 
 
