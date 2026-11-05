@@ -2,6 +2,7 @@
 
     docker compose exec backend python tests/test_leads_deep.py
 """
+import io
 import json
 import os
 import socketserver
@@ -59,7 +60,7 @@ day = lambda n: (date.today() + timedelta(days=n)).isoformat()
 T = {r: login(f"{r}@skyline.test") for r in ("owner", "sales", "pm", "estimator", "accounts")}
 U = {u["email"].split("@")[0]: u["id"] for u in call("GET", "/users", token=T["owner"])[1] if u["kind"] == "staff"}
 CID = mongo.users.find_one({"email": "owner@skyline.test"})["company_id"]
-leads, contacts, temp_users, projects_made, rates_made = [], [], [], [], []
+leads, contacts, temp_users, projects_made, rates_made, bids_made = [], [], [], [], [], []
 n = 0
 company_before = mongo.companies.find_one({"_id": ObjectId(CID)}, {"sales": 1, "email_settings": 1})
 
@@ -508,6 +509,7 @@ try:
     # ================= C+2.2 ballpark =================
     expect("C+2.2 package rates are owner settings", call("PUT", "/leads/package-rates", {"package_rates": {"construction": []}}, T["sales"]), 403)
     expect("C+2.2 package needs a positive rate", call("PUT", "/leads/package-rates", {"package_rates": {"construction": [{"name": "Basic", "rate": 0}]}}, T["owner"]), 400)
+    call("PUT", "/leads/package-rates", {"package_rates": {"construction": []}}, T["owner"])  # restored by the cleanup
     expect("C+2.2 no ballpark without rates", call("POST", f"/leads/{V['id']}/ballpark", {"package": "Basic"}, T["sales"]), 400)
     expect("C+2.2 set package rates", call("PUT", "/leads/package-rates", {"package_rates": {"construction": [
         {"name": "Basic", "rate": 1800, "unit": "sqft"}, {"name": "Premium", "rate": 2400, "unit": "sqft"}, {"name": "Luxury", "rate": 38000, "unit": "sqm"}]}}, T["owner"]), 200)
@@ -702,8 +704,146 @@ try:
     check("C+2.7 hand-over logged", any("Handed over to" in a["text"] for a in get(V["id"])["activities"]))
 
     call("PUT", "/settings/email", {"host": ""}, T["owner"])
+
+    def multipart(path, filename, data, token, ctype="text/csv"):
+        bnd = _uuid.uuid4().hex
+        payload = (f"--{bnd}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: {ctype}\r\n\r\n").encode() \
+            + data + f"\r\n--{bnd}--\r\n".encode()
+        rq = urllib.request.Request(BASE + path, method="POST", data=payload, headers={"Content-Type": f"multipart/form-data; boundary={bnd}",
+                                                                                       "Authorization": f"Bearer {token}"})
+        try:
+            with urllib.request.urlopen(rq) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read() or b"{}")
+
+    def track(title_rx):
+        for x in mongo.leads.find({"company_id": CID, "title": {"$regex": title_rx}}):
+            if str(x["_id"]) not in leads:
+                leads.append(str(x["_id"]))
+                contacts.append(x["contact_id"])
+
+    # ================= C+2.1 assignment rules =================
+    expect("C+2.1 rules are owner settings", call("PUT", "/leads/assignment", {"rules": []}, T["sales"]), 403)
+    expect("C+2.1 rule needs people", call("PUT", "/leads/assignment", {"rules": [{"service": "construction", "user_ids": []}]}, T["owner"]), 400)
+    expect("C+2.1 set rules", call("PUT", "/leads/assignment", {"rules": [{"service": "construction", "user_ids": [U["sales"], U["pm"]]}]}, T["owner"]), 200)
+    a1, a2 = new_lead(token=T["owner"], owner_id="auto"), new_lead(token=T["owner"], owner_id="auto")
+    check("C+2.1 round-robin between the rule's people", {a1["owner_id"], a2["owner_id"]} == {U["sales"], U["pm"]}, (a1["owner_id"], a2["owner_id"]))
+    ai = new_lead(token=T["owner"], owner_id="auto", service="interior")
+    check("C+2.1 no matching rule -> unassigned", ai["owner_id"] is None)
+    expect("C+2.1 auto only when creating", call("PUT", f"/leads/{a1['id']}", {"owner_id": "auto"}, T["owner"]), 400)
+    key = call("GET", "/leads/meta", token=T["owner"])[1]["form_key"]
+    wf = call("POST", f"/public/lead-form/{key}", {"name": f"Web {RUN}", "phone": f"6{RUN[-7:]}55", "service": "construction"})
+    track(f"Web {RUN}")
+    wl = mongo.leads.find_one({"company_id": CID, "title": {"$regex": f"Web {RUN}"}})
+    check("C+2.1 website enquiry assigned by the rules", wf[0] == 201 and wl and wl["owner_id"] in (U["sales"], U["pm"])
+          and "assignment rules" in wl["activities"][0]["text"], wf)
+
+    # ================= C+2.9 merge =================
+    MA, MBl = new_lead(), new_lead(budget=3300000)
+    call("POST", "/followups", {"title": f"Merge fu {RUN}", "due": day(3), "related": {"type": "lead", "id": MBl["id"]}}, T["sales"])
+    call("POST", f"/leads/{MBl['id']}/visits", {"at": soon(60), "staff_ids": [U["sales"]], "address": "Merge site"}, T["sales"])
+    expect("C+2.9 not into itself", call("POST", f"/leads/{MA['id']}/merge", {"other_id": MA["id"]}, T["sales"]), 400)
+    mg = expect("C+2.9 merge", call("POST", f"/leads/{MA['id']}/merge", {"other_id": MBl["id"]}, T["sales"]), 200)
+    check("C+2.9 empty fields filled from the other lead", mg["budget"] == 3300000)
+    check("C+2.9 other enquirer kept as a decision-maker", any(p["contact_id"] == MBl["contact_id"] for p in mg.get("stakeholders") or []))
+    check("C+2.9 history moved and labelled", any(a["text"].startswith(f"[from {MBl['title']}]") for a in mg["activities"]) and mg["activities"][-1]["type"] == "merged")
+    check("C+2.9 follow-ups moved", any(f["title"] == f"Merge fu {RUN}" for f in call("GET", f"/followups?related_id={MA['id']}", token=T["sales"])[1]))
+    check("C+2.9 visits moved", any(v["address"] == "Merge site" for v in call("GET", f"/leads/{MA['id']}/visits", token=T["sales"])[1]["visits"]))
+    check("C+2.9 merged lead hidden", call("GET", f"/leads/{MBl['id']}", token=T["sales"])[0] == 404
+          and not any(x["id"] == MBl["id"] for x in call("GET", "/leads", token=T["sales"])[1]))
+    mongo.leads.update_one({"_id": ObjectId(MBl["id"])}, {"$set": {"status": "open"}})  # so the cleanup can delete it
+    mongo.leads.update_one({"_id": ObjectId(MA["id"])}, {"$set": {"stakeholders": []}})
+
+    # ================= C+2.1 import =================
+    csv_data = ("title,name,phone,email,service,source,budget,owner_email,temperature\n"
+                f"Imp ok {RUN},Imp Person {RUN},5{RUN[-7:]}01,,construction,Ads,2500000,pm@skyline.test,hot\n"
+                f"Imp bad {RUN},Imp Bad {RUN},5{RUN[-7:]}02,,spaceship,Ads,,,\n"
+                f"Imp dup {RUN},Dup {RUN},{f'8{RUN[-7:]}01'},,construction,Ads,,,\n"
+                f"Imp num {RUN},Num {RUN},5{RUN[-7:]}04,,construction,Ads,lots,,\n").encode()
+    dr = multipart("/leads/import?dry_run=1", "leads.csv", csv_data, T["sales"])
+    check("C+2.1 dry run reports each row", dr[0] == 200 and dr[1]["ok"] == 1 and dr[1]["failed"] == 3 and dr[1]["dry_run"], dr)
+    errs = {r["row"]: r.get("error", "") for r in dr[1]["rows"]}
+    check("C+2.1 row errors explained", "service" in errs[3].lower() and errs[4].startswith("duplicate") and "not a number" in errs[5], errs)
+    check("C+2.1 dry run saves nothing", not mongo.leads.find_one({"company_id": CID, "title": f"Imp ok {RUN}"}))
+    im = multipart("/leads/import", "leads.csv", csv_data, T["sales"])
+    track(f"Imp ok {RUN}")
+    il = mongo.leads.find_one({"company_id": CID, "title": f"Imp ok {RUN}"})
+    check("C+2.1 import creates the good rows", im[0] == 200 and im[1]["ok"] == 1 and il and il["owner_id"] == U["pm"] and il["temperature"] == "hot"
+          and "imported from leads.csv" in il["activities"][0]["text"], im)
+    from openpyxl import Workbook
+    wb = Workbook()
+    wb.active.append(["name", "phone", "service", "source"])
+    wb.active.append([f"Xls Person {RUN}", f"5{RUN[-7:]}09", "construction", "Walk-in"])
+    xb = io.BytesIO()
+    wb.save(xb)
+    ix = multipart("/leads/import", "leads.xlsx", xb.getvalue(), T["sales"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    track(f"Xls Person {RUN}")
+    check("C+2.1 Excel import (assignment rules when no owner)", ix[0] == 200 and ix[1]["ok"] == 1 and ix[1]["rows"][0]["owner"] is not None, ix)
+    expect("C+2.1 only csv / xlsx", multipart("/leads/import", "leads.txt", b"x", T["sales"]), 400)
+
+    # ================= C+3 bulk, export, views =================
+    B1, B2 = new_lead(), new_lead()
+    ba = expect("C+3 bulk reassign", call("POST", "/leads/bulk", {"ids": [B1["id"], B2["id"]], "action": "assign", "value": U["pm"]}, T["sales"]), 200)
+    check("C+3 bulk reassign done + logged + notified", len(ba["done"]) == 2 and get(B1["id"])["owner_id"] == U["pm"]
+          and "bulk" in get(B1["id"])["activities"][-1]["text"] and any(x["event"] == "lead_assigned" or x["event"] == "lead_reassigned" for x in bell("pm") if x["lead_id"] == B1["id"]))
+    bs = expect("C+3 bulk stage move follows the rules", call("POST", "/leads/bulk", {"ids": [B1["id"], B2["id"]], "action": "stage", "value": "Site visit"}, T["sales"]), 200)
+    check("C+3 unready leads reported, not moved", len(bs["failed"]) == 2 and "Not ready" in bs["failed"][0]["error"], bs)
+    call("POST", "/leads/bulk", {"ids": [B1["id"]], "action": "tag_add", "value": "festival"}, T["sales"])
+    call("POST", "/leads/bulk", {"ids": [B1["id"], B2["id"]], "action": "temperature", "value": "warm"}, T["sales"])
+    check("C+3 bulk tag and temperature", "festival" in get(B1["id"])["tags"] and get(B2["id"])["temperature"] == "warm")
+    expect("C+3 unknown bulk action", call("POST", "/leads/bulk", {"ids": [B1["id"]], "action": "explode"}, T["sales"]), 400)
+    rq = urllib.request.Request(BASE + "/leads/export?status=open", headers={"Authorization": f"Bearer {T['sales']}"})
+    csv_out = urllib.request.urlopen(rq).read().decode()
+    check("C+3 export CSV", csv_out.startswith("title,contact_name,service") and B1["title"] in csv_out)
+    sv = expect("C+3 save views", call("PUT", "/leads/views", {"views": [{"name": "My hot", "filters": {"temperature": "hot", "junk": 1}}]}, T["sales"]), 200)
+    check("C+3 views stored per user", call("GET", "/leads/views", token=T["sales"])[1] == [{"name": "My hot", "filters": {
+        "service": None, "owner_id": None, "source": None, "temperature": "hot", "q": None, "tag": None, "status": None}}])
+    call("PUT", "/leads/views", {"views": []}, T["sales"])
+
+    # ================= C+3 needs attention =================
+    NA = new_lead()
+    mongo.leads.update_one({"_id": ObjectId(NA["id"])}, {"$set": {"created_at": datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=3)}})
+    at_o = expect("C+3 needs attention (team)", call("GET", "/leads/attention", token=T["owner"]), 200)
+    check("C+3 not contacted listed", at_o["scope"] == "team" and any(x["id"] == NA["id"] for x in at_o["not_contacted"]))
+    at_s = call("GET", "/leads/attention", token=T["sales"])[1]
+    check("C+3 salesperson sees own only", at_s["scope"] == "mine" and all(x.get("owner_name") in (None, "Sales / BD (Skyline)") for x in at_s["not_contacted"]))
+
+    # ================= C+3 calendar =================
+    cv = expect("C+3 visit for the calendar", call("POST", f"/leads/{NA['id']}/visits", {"at": soon(26), "staff_ids": [U["sales"]], "address": f"Cal {RUN}"}, T["sales"]), 201)
+    cal = expect("C+3 my calendar", call("GET", f"/calendar?from={day(0)}&to={day(14)}", token=T["sales"]), 200)
+    check("C+3 visit and follow-ups on the calendar", any(e["kind"] == "visit" and f"Cal {RUN}" in e["detail"] for e in cal["events"])
+          and any(e["kind"] == "followup" for e in cal["events"]))
+    expect("C+3 team calendar is for managers", call("GET", "/calendar?scope=team", token=T["sales"]), 403)
+    check("C+3 owner sees the team calendar", any(f"Cal {RUN}" in e.get("detail", "") for e in call("GET", f"/calendar?scope=team&from={day(0)}&to={day(14)}", token=T["owner"])[1]["events"]))
+    expect("C+3 range limited", call("GET", f"/calendar?from={day(0)}&to={day(200)}", token=T["sales"]), 400)
+
+    # ================= C+3 bids =================
+    BD = expect("C+3 bid with owner, site walk, Q&A deadline", call("POST", "/bids", {"title": f"Tender {RUN}", "due_date": day(2), "decision": "bid",
+                                                                                    "owner_id": U["pm"], "site_walk_date": day(1), "qa_deadline": day(1)}, T["sales"]), 201)
+    bids_made.append(BD["id"])
+    check("C+3 bid owner stored", BD["owner_id"] == U["pm"] and BD["site_walk_date"] == day(1))
+    ad = expect("C+3 addendum", call("POST", f"/bids/{BD['id']}/addenda", {"note": "Revised BOQ issued"}, T["sales"]), 201)
+    check("C+3 addendum numbered", ad["addenda"][0]["no"] == 1)
+    worker()
+    check("C+3 bid due in 2 days -> owner and manager", any(x["event"] == "bid_due" and f"Tender {RUN}" in x["text"] for x in bell("pm"))
+          and any(x["event"] == "bid_due" and f"Tender {RUN}" in x["text"] for x in bell("owner")))
+    check("C+3 win rate per owner in the register", "by_owner" in call("GET", "/bids", token=T["sales"])[1])
+
+    # ================= C+3 reports =================
+    LC = new_lead()
+    call("POST", f"/leads/{LC['id']}/lose", {"reason": "Chose a competitor", "competitor": f"Rival2 {RUN}", "competitor_price": 1000}, T["sales"])
+    rp = expect("C+3 sales report", call("GET", "/reports/sales", token=T["owner"]), 200)
+    check("C+3 report sections", all(k in rp for k in ("funnel", "time_in_stage", "visit_to_win", "proposal_to_win", "avg_discount_pct", "competitors",
+                                                       "cost_by_source", "forecast", "response_target_met_pct", "leaderboard")), list(rp))
+    check("C+3 losses per competitor", any(c["competitor"] == f"Rival2 {RUN}" for c in rp["competitors"]))
+    check("C+3 funnel per stage with drop-off", rp["funnel"]["construction"][0]["stage"] == "Lead" and rp["funnel"]["construction"][0]["reached"] >= 1)
+    check("C+3 forecast by close month", any(f["month"] == day(30)[:7] for f in rp["forecast"]))
+    check("C+3 leaderboard", any(r["salesperson"] == "Sales / BD (Skyline)" for r in rp["leaderboard"]))
 finally:
     smtp.shutdown()
+    for bid_ in bids_made:
+        call("DELETE", f"/bids/{bid_}", token=T["owner"])
     for pid in projects_made:
         call("DELETE", f"/projects/{pid}", token=T["owner"])
         mongo.followups.delete_many({"company_id": CID, "related.id": pid})

@@ -153,7 +153,18 @@ def check_proposals(now):
                         f"/app/leads/{e['lead_id']}", e["lead_id"], key=f"appr-wait:{e['_id']}")
 
 
-CHECKS = [check_leads, check_followups, check_visits, check_proposals]
+def check_bids(now):
+    """Bids we are preparing: 7 days, 2 days and on the due date, to the bid owner and the sales manager."""
+    for b in db.bids.find({"company_id": g.cid, "status": "preparing", "decision": {"$ne": "no_bid"}}):
+        left = (datetime.fromisoformat(b["due_date"]).date() - now.date()).days
+        for mark in (7, 2, 0):
+            if left == mark:
+                who = [b.get("owner_id") or b.get("created_by")] + notify.managers()
+                text = f"Bid {b['title']} is due {'today' if mark == 0 else f'in {mark} days'} ({b['due_date']})"
+                notify.send("bid_due", who, text, "/app/leads", b.get("lead_id"), key=f"bid{mark}:{b['_id']}:{b['due_date']}")
+
+
+CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids]
 
 
 def run_once(now=None):

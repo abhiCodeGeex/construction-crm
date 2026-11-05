@@ -275,3 +275,15 @@ button.link { background: none; border: 0; padding: 0 .15rem; color: var(--brand
 .changes { margin: .25rem 0 0; padding-left: 1rem; font-size: .85rem; }
 .score { font-weight: 600; font-size: .8rem; padding: .05rem .4rem; border-radius: 6px; background: var(--surface-2, rgba(127,127,127,.12)); }
 .rule-card textarea { width: 100%; }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.cal-dow { font-size: .75rem; color: var(--muted, #888); padding: .2rem .3rem; }
+.cal-day { min-height: 6.2rem; border: 1px solid var(--border); border-radius: 6px; padding: .2rem; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.cal-day.other { opacity: .45; }
+.cal-day.today { border-color: var(--brand); }
+.cal-num { font-weight: 600; }
+.cal-ev { border: 0; border-radius: 4px; font: inherit; font-size: .72rem; text-align: left; padding: .1rem .25rem; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: inherit; background: rgba(127,127,127,.12); }
+.cal-ev.k-visit { background: color-mix(in srgb, #14b8a6 22%, transparent); }
+.cal-ev.k-bid { background: color-mix(in srgb, #f59e0b 22%, transparent); }
+.cal-ev.k-proposal { background: color-mix(in srgb, #ef4444 18%, transparent); }
+.totals td { padding: .12rem .4rem; }
+.w-6 { width: 6rem; }

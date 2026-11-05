@@ -12,11 +12,12 @@ import { TagModule } from 'primeng/tag';
 import { Api } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { CHANNEL_ICON, FollowupDialogComponent } from '../shared/followup-dialog.component';
+import { SalesCalendarComponent } from '../shared/sales-calendar.component';
 
 @Component({
   selector: 'app-followups',
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, SelectButtonModule, SelectModule, TableModule, TabsModule, TagModule,
-    FollowupDialogComponent],
+    FollowupDialogComponent, SalesCalendarComponent],
   template: `
     <div class="page-head">
       <div><h1>Follow-ups</h1><p class="muted">Chasing is where firms lose the most time and money. Overdue items are highlighted.</p></div>
@@ -29,7 +30,7 @@ import { CHANNEL_ICON, FollowupDialogComponent } from '../shared/followup-dialog
     </div>
 
     <p-tabs value="today">
-      <p-tablist><p-tab value="today"><i class="pi pi-sun mr"></i>Today</p-tab><p-tab value="all"><i class="pi pi-list mr"></i>All</p-tab></p-tablist>
+      <p-tablist><p-tab value="today"><i class="pi pi-sun mr"></i>Today</p-tab><p-tab value="all"><i class="pi pi-list mr"></i>All</p-tab><p-tab value="calendar"><i class="pi pi-calendar mr"></i>Calendar</p-tab></p-tablist>
       <p-tabpanels>
         <p-tabpanel value="today">
           @if (today(); as d) {
@@ -78,6 +79,7 @@ import { CHANNEL_ICON, FollowupDialogComponent } from '../shared/followup-dialog
             <ng-template #emptymessage><tr><td colspan="7" class="center muted">Nothing here</td></tr></ng-template>
           </p-table>
         </p-tabpanel>
+        <p-tabpanel value="calendar"><app-sales-calendar /></p-tabpanel>
       </p-tabpanels>
     </p-tabs>
     <app-followup-dialog (saved)="load()" />

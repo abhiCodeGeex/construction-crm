@@ -62,6 +62,59 @@ import { AuthService } from '../core/auth.service';
           <div class="bar-row"><span class="w-16">{{ r.reason }}</span><div class="bar red"><div [style.width.%]="r.count / maxLoss() * 100"></div></div><span class="w-3 right">{{ r.count }}</span></div>
         } @empty { <p class="muted">No lost leads in this period.</p> }
       </p-card>
+
+      <div class="stats mt">
+        <div class="stat-card"><div><small>Site visit → won</small><strong>{{ pct(s.visit_to_win) }}</strong><small class="muted">of closed leads with a visit</small></div></div>
+        <div class="stat-card"><div><small>Proposal → won</small><strong>{{ pct(s.proposal_to_win) }}</strong><small class="muted">of closed leads with a proposal</small></div></div>
+        <div class="stat-card"><div><small>Average discount</small><strong>{{ pct(s.avg_discount_pct) }}</strong><small class="muted">first proposal → accepted</small></div></div>
+        <div class="stat-card"><div><small>Contacted within {{ s.response_target_minutes }} min</small><strong>{{ pct(s.response_target_met_pct) }}</strong><small class="muted">response target met</small></div></div>
+      </div>
+
+      <div class="grid2 top mt">
+        @for (svc of services(); track svc) {
+          @if (s.funnel?.[svc]; as f) {
+            <p-card><ng-template #title>Funnel — {{ label[svc] }}</ng-template>
+              @for (st of f; track st.stage) {
+                <div class="bar-row"><span class="w-16">{{ st.stage }}</span><div class="bar"><div [style.width.%]="f[0].reached ? st.reached / f[0].reached * 100 : 0"></div></div>
+                  <span class="w-3 right">{{ st.reached }}</span><small class="muted w-6 right">{{ st.drop_off_pct != null ? '−' + st.drop_off_pct + '%' : '' }}</small></div>
+              }
+            </p-card>
+          }
+        }
+        <p-card><ng-template #title>Average time in each stage</ng-template>
+          <p-table [value]="s.time_in_stage" size="small">
+            <ng-template #body let-r><tr><td>{{ r.stage }}</td><td class="right">{{ r.avg_days }} days</td><td class="right muted">{{ r.leads }} lead(s)</td></tr></ng-template>
+            <ng-template #emptymessage><tr><td class="muted">No data</td></tr></ng-template>
+          </p-table>
+        </p-card>
+        <p-card><ng-template #title>Forecast by expected close month</ng-template>
+          <p-table [value]="s.forecast" size="small">
+            <ng-template #header><tr><th>Month</th><th class="right">Leads</th><th class="right">Value</th><th class="right">Weighted</th></tr></ng-template>
+            <ng-template #body let-r><tr><td>{{ r.month }}</td><td class="right">{{ r.leads }}</td><td class="right">{{ fmt(r.value) }}</td><td class="right"><strong>{{ fmt(r.weighted) }}</strong></td></tr></ng-template>
+            <ng-template #emptymessage><tr><td colspan="4" class="muted">Set expected close dates on leads to see the forecast.</td></tr></ng-template>
+          </p-table>
+        </p-card>
+        <p-card><ng-template #title>Losses to competitors</ng-template>
+          <p-table [value]="s.competitors" size="small">
+            <ng-template #body let-r><tr><td>{{ r.competitor }}</td><td class="right">{{ r.losses }} lost</td><td class="right">{{ fmt(r.value_lost) }}</td></tr></ng-template>
+            <ng-template #emptymessage><tr><td class="muted">No competitor recorded on lost leads.</td></tr></ng-template>
+          </p-table>
+        </p-card>
+        <p-card><ng-template #title>Cost to acquire and return per source</ng-template>
+          <p-table [value]="s.cost_by_source" size="small">
+            <ng-template #header><tr><th>Source</th><th class="right">Pre-sales spend</th><th class="right">Won</th><th class="right">Cost per win</th><th class="right">Return</th></tr></ng-template>
+            <ng-template #body let-r><tr><td>{{ r.source }}</td><td class="right">{{ fmt(r.spent) }}</td><td class="right">{{ r.won }}</td>
+              <td class="right">{{ fmt(r.cost_per_win) }}</td><td class="right">{{ r.roi != null ? r.roi + '×' : '—' }}</td></tr></ng-template>
+          </p-table>
+        </p-card>
+        <p-card><ng-template #title>Salesperson leaderboard</ng-template>
+          <p-table [value]="s.leaderboard" size="small">
+            <ng-template #header><tr><th>Salesperson</th><th class="right">Leads</th><th class="right">Won</th><th class="right">Conversion</th><th class="right">Won value</th><th class="right">Contacts (30 d)</th></tr></ng-template>
+            <ng-template #body let-r><tr><td>{{ r.salesperson }}</td><td class="right">{{ r.leads }}</td><td class="right">{{ r.won }}</td><td class="right">{{ pct(r.conversion) }}</td>
+              <td class="right">{{ fmt(r.won_value) }}</td><td class="right">{{ r.activities_30d }}</td></tr></ng-template>
+          </p-table>
+        </p-card>
+      </div>
     }
 
     @if (fu(); as fu) {

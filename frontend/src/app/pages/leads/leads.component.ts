@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, signal, viewChild } from '@angular
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { CheckboxModule } from 'primeng/checkbox';
 import { CardModule } from 'primeng/card';
@@ -30,16 +31,37 @@ import { WinLoseComponent } from './win-lose.component';
   template: `
     <div class="page-head">
       <div><h1>Leads & pipeline</h1><p class="muted">Every enquiry is captured once and tracked until it becomes a won project or a recorded loss.</p></div>
-      @if (canEdit()) { <p-button label="New lead" icon="pi pi-plus" (onClick)="openNew()" /> }
+      <div class="row gap">
+        <p-button label="Export" icon="pi pi-download" [text]="true" (onClick)="exportCsv()" />
+        @if (canEdit()) { <p-button label="Import" icon="pi pi-upload" [outlined]="true" (onClick)="openImport()" />
+          <p-button label="New lead" icon="pi pi-plus" (onClick)="openNew()" /> }
+      </div>
     </div>
 
     <p-tabs [(value)]="tab" [scrollable]="true">
       <p-tablist>
         <p-tab value="board"><i class="pi pi-th-large mr"></i>Pipeline</p-tab>
         <p-tab value="list"><i class="pi pi-list mr"></i>All leads</p-tab>
+        <p-tab value="attention" (click)="loadAttention()"><i class="pi pi-exclamation-triangle mr"></i>Needs attention</p-tab>
         <p-tab value="bids" (click)="loadBids()"><i class="pi pi-briefcase mr"></i>Bid / tender register</p-tab>
       </p-tablist>
       <p-tabpanels>
+        <!-- ============ NEEDS ATTENTION ============ -->
+        <p-tabpanel value="attention">
+          @if (attention(); as a) {
+            <p class="muted small">{{ a.scope === 'team' ? 'The whole team' : 'Your leads' }} — everything late or waiting right now.</p>
+            <div class="tpl-grid">
+              @for (g of attentionGroups; track g.key) {
+                <p-card>
+                  <ng-template #title><div class="row-between"><span>{{ g.label }}</span><p-tag [value]="'' + (a[g.key]?.length ?? 0)" [severity]="a[g.key]?.length ? 'danger' : 'secondary'" /></div></ng-template>
+                  @for (x of a[g.key]; track $index) {
+                    <div class="ms-row clickable" (click)="open(x)"><div class="grow"><strong>{{ x.title }}</strong><br /><small class="muted">{{ x.why }}{{ x.owner_name ? ' · ' + x.owner_name : '' }}</small></div></div>
+                  } @empty { <p class="muted small">Nothing.</p> }
+                </p-card>
+              }
+            </div>
+          }
+        </p-tabpanel>
         <!-- ============ BOARD ============ -->
         <p-tabpanel value="board">
           <div class="filters">
@@ -48,6 +70,8 @@ import { WinLoseComponent } from './win-lose.component';
             <p-select [options]="meta()?.sources ?? []" [(ngModel)]="source" placeholder="All sources" [showClear]="true" (onChange)="load()" />
             <p-select [options]="temps" [(ngModel)]="temperature" optionLabel="label" optionValue="value" placeholder="Any temperature" [showClear]="true" (onChange)="load()" />
             <p-iconfield><p-inputicon class="pi pi-search" /><input pInputText placeholder="Search" [(ngModel)]="q" (keyup.enter)="load()" /></p-iconfield>
+            <p-select [options]="views()" [(ngModel)]="view" optionLabel="name" placeholder="Saved views" [showClear]="true" (onChange)="applyView()" />
+            <p-button label="Save view" icon="pi pi-bookmark" size="small" [text]="true" (onClick)="saveView()" />
           </div>
           <div class="board">
             @for (col of columns(); track col.stage) {
@@ -90,11 +114,26 @@ import { WinLoseComponent } from './win-lose.component';
           <div class="filters">
             <p-selectbutton [allowEmpty]="false" [options]="statusOptions" [(ngModel)]="status" optionLabel="label" optionValue="value" (onChange)="loadAll()" />
           </div>
-          <p-table [value]="all()" size="small" [rowHover]="true" selectionMode="single" (onRowSelect)="open($event.data)" [paginator]="all().length > 20" [rows]="20">
-            <ng-template #header><tr><th>Lead</th><th>Service</th><th>Stage</th><th>Source</th><th>Salesperson</th><th class="right">Value</th><th class="right">Score</th><th>Close</th><th>Created</th></tr></ng-template>
+          @if (canEdit() && picked.length) {
+            <div class="gate row gap wrap">
+              <strong>{{ picked.length }} selected</strong>
+              <p-select [options]="meta()?.staff ?? []" [(ngModel)]="bk.owner" optionLabel="name" optionValue="id" placeholder="Reassign to" appendTo="body" />
+              <p-button label="Reassign" size="small" [outlined]="true" [disabled]="!bk.owner" (onClick)="runBulk('assign', bk.owner)" />
+              <p-select [options]="allStages()" [(ngModel)]="bk.stage" placeholder="Move to stage" appendTo="body" />
+              <p-button label="Move" size="small" [outlined]="true" [disabled]="!bk.stage" (onClick)="runBulk('stage', bk.stage)" />
+              <p-select [options]="temps" [(ngModel)]="bk.temp" optionLabel="label" optionValue="value" placeholder="Temperature" appendTo="body" />
+              <p-button label="Set" size="small" [outlined]="true" [disabled]="!bk.temp" (onClick)="runBulk('temperature', bk.temp)" />
+              <input pInputText [(ngModel)]="bk.tag" placeholder="Tag" style="width: 8rem" />
+              <p-button label="Add tag" size="small" [outlined]="true" [disabled]="!bk.tag?.trim()" (onClick)="runBulk('tag_add', bk.tag)" />
+              <p-button label="Remove tag" size="small" [text]="true" [disabled]="!bk.tag?.trim()" (onClick)="runBulk('tag_remove', bk.tag)" />
+              <p-button label="Clear" size="small" [text]="true" severity="secondary" (onClick)="picked = []" />
+            </div>
+          }
+          <p-table [value]="all()" size="small" [rowHover]="true" [(selection)]="picked" dataKey="id" [paginator]="all().length > 20" [rows]="20">
+            <ng-template #header><tr>@if (canEdit()) { <th style="width: 2.5rem"><p-tableHeaderCheckbox /></th> }<th>Lead</th><th>Service</th><th>Stage</th><th>Source</th><th>Salesperson</th><th class="right">Value</th><th class="right">Score</th><th>Close</th><th>Created</th></tr></ng-template>
             <ng-template #body let-l>
-              <tr [pSelectableRow]="l" class="clickable">
-                <td><strong>@if (l.temperature) { <span class="temp" [class]="l.temperature"></span> }{{ l.title }}</strong><br /><small class="muted">{{ l.contact_name }}</small></td>
+              <tr class="clickable">@if (canEdit()) { <td (click)="$event.stopPropagation()"><p-tableCheckbox [value]="l" /></td> }
+                <td (click)="open(l)"><strong>@if (l.temperature) { <span class="temp" [class]="l.temperature"></span> }{{ l.title }}</strong><br /><small class="muted">{{ l.contact_name }}</small></td>
                 <td><span class="svc" [style.--c]="color[l.service]">{{ svc[l.service] }}</span></td>
                 <td>@if (l.status === 'open') { {{ l.stage }} <small [class.c-bad]="l.over_limit" class="muted">{{ l.days_in_stage }}d</small> }
                   @else { <p-tag [value]="label(l.status)" [severity]="l.status === 'won' ? 'success' : l.status === 'on_hold' ? 'warn' : 'danger'" /> }</td>
@@ -119,7 +158,10 @@ import { WinLoseComponent } from './win-lose.component';
             <ng-template #header><tr><th>Bid / tender</th><th>Due</th><th>Decision</th><th>Status</th><th class="right">Value</th><th></th></tr></ng-template>
             <ng-template #body let-b>
               <tr>
-                <td><strong>{{ b.title }}</strong><br /><small class="muted">{{ b.reference || '' }} {{ b.client_name || '' }}</small>
+                <td><strong>{{ b.title }}</strong><br /><small class="muted">{{ b.reference || '' }} {{ b.client_name || '' }}{{ b.owner_name ? ' · ' + b.owner_name : '' }}
+                  {{ b.site_walk_date ? ' · site walk ' + (b.site_walk_date | date: 'd MMM') : '' }}{{ b.qa_deadline ? ' · Q&A by ' + (b.qa_deadline | date: 'd MMM') : '' }}
+                  {{ b.addenda?.length ? ' · ' + b.addenda.length + ' addend' + (b.addenda.length > 1 ? 'a' : 'um') : '' }}</small>
+                  @for (d of b.documents ?? []; track d.key) { <br /><a class="small" href="" (click)="$event.preventDefault(); api.openFile('/api/files/' + d.key)"><i class="pi pi-paperclip"></i> {{ d.name }}</a> }
                   @if (b.lead_id) { <br /><a class="small" href="" (click)="$event.preventDefault(); open({ id: b.lead_id })"><i class="pi pi-bullseye"></i> {{ b.lead_title }}</a> }</td>
                 <td [class.c-bad]="b.overdue">{{ b.due_date | date: 'mediumDate' }} @if (b.overdue) { <p-tag value="Overdue" severity="danger" /> }</td>
                 <td>@switch (b.decision) { @case ('bid') { <p-tag value="Bid" severity="info" /> } @case ('no_bid') { <p-tag value="No bid" severity="secondary" /> } @default { <p-tag value="Pending" severity="warn" /> } }</td>
@@ -136,7 +178,8 @@ import { WinLoseComponent } from './win-lose.component';
                     <p-button label="Lost" icon="pi pi-times" severity="danger" size="small" [text]="true" (onClick)="wl().open('lost', b, meta(), true)" /> }
                   @if (b.status === 'won' && !b.project_id) {
                     <p-button label="Start project" icon="pi pi-building" severity="success" size="small" [text]="true" (onClick)="wl().open('won', b, meta(), true, contacts())" /> }
-                  @if (b.status !== 'won' && b.status !== 'lost') { <p-button icon="pi pi-pencil" [text]="true" [rounded]="true" (onClick)="openBid(b)" /> }
+                  @if (b.status !== 'won' && b.status !== 'lost') { <p-button icon="pi pi-pencil" [text]="true" [rounded]="true" (onClick)="openBid(b)" />
+                    <p-button icon="pi pi-file-plus" [text]="true" [rounded]="true" ariaLabel="Add addendum" (onClick)="adf = { b, note: '' }; addDlg = true" /> }
                   @else if (!(b.status === 'won' && b.project_id)) { <p-button icon="pi pi-trash" [text]="true" [rounded]="true" severity="danger" (onClick)="bf = b; deleteBid()" /> } }</td>
               </tr>
             </ng-template>
@@ -165,7 +208,7 @@ import { WinLoseComponent } from './win-lose.component';
         <div class="grid3">
           <label class="field"><span>Service</span><p-select name="s" [options]="serviceOptions()" [(ngModel)]="f.service" optionLabel="label" optionValue="value" fluid appendTo="body" /></label>
           <label class="field"><span>Source</span><p-select name="src" [options]="meta()?.sources ?? []" [(ngModel)]="f.source" fluid appendTo="body" /></label>
-          <label class="field"><span>Salesperson</span><p-select name="o" [options]="meta()?.staff ?? []" [(ngModel)]="f.owner_id" optionLabel="name" optionValue="id" fluid appendTo="body" /></label>
+          <label class="field"><span>Salesperson</span><p-select name="o" [options]="ownerChoices()" [(ngModel)]="f.owner_id" optionLabel="name" optionValue="id" fluid appendTo="body" /></label>
         </div>
         @if (f.source === 'Referral') {
           <label class="field"><span>Referred by</span><p-select name="rb" [options]="contacts()" [(ngModel)]="f.referred_by" optionLabel="name" optionValue="id" [filter]="true" fluid appendTo="body" /></label>
@@ -216,6 +259,14 @@ import { WinLoseComponent } from './win-lose.component';
         @if (bf.decision === 'no_bid') { <label class="field"><span>Why not bid?</span><input pInputText name="dr" [(ngModel)]="bf.decision_reason" fluid /></label> }
         @if (bf.decision === 'bid') { <div class="field"><span>Status</span><p-selectbutton [allowEmpty]="false" name="st" [options]="bidStatuses" [(ngModel)]="bf.status" optionLabel="label" optionValue="value" />
           <small class="muted">Once submitted, record the result with <strong>Won</strong> or <strong>Lost</strong> in the register.</small></div> }
+        <div class="grid3">
+          <label class="field"><span>Bid owner</span><p-select name="bo" [options]="meta()?.staff ?? []" [(ngModel)]="bf.owner_id" optionLabel="name" optionValue="id" fluid appendTo="body" /></label>
+          <label class="field"><span>Site walk</span><input pInputText type="date" name="sw" [(ngModel)]="bf.site_walk_date" fluid /></label>
+          <label class="field"><span>Q&A deadline</span><input pInputText type="date" name="qa" [(ngModel)]="bf.qa_deadline" fluid /></label>
+        </div>
+        <div class="field"><span>Tender documents</span>
+          <div class="row gap wrap">@for (d of bf.documents ?? []; track d.key; let i = $index) { <span class="chip static">{{ d.name }} <a href="" (click)="$event.preventDefault(); bf.documents.splice(i, 1)">×</a></span> }
+            <label class="p-button p-button-sm p-button-text"><i class="pi pi-upload mr"></i>Add<input type="file" hidden (change)="addBidDoc($event)" /></label></div></div>
         <label class="field"><span>Notes</span><textarea pTextarea name="nt" rows="2" [(ngModel)]="bf.notes" fluid></textarea></label>
         <div class="row gap right">
           @if (bf.id) { <p-button label="Delete" severity="danger" [text]="true" (onClick)="deleteBid()" /> }
@@ -224,12 +275,40 @@ import { WinLoseComponent } from './win-lose.component';
       </form>
     </p-dialog>
 
+    <p-dialog header="Tender addendum" [modal]="true" [(visible)]="addDlg" [style]="{ width: '28rem' }">
+      <div class="stack">
+        <label class="field"><span>What changed</span><input pInputText [(ngModel)]="adf.note" placeholder="e.g. revised BOQ, new due date" fluid /></label>
+        <input type="file" (change)="adf.file = $any($event.target).files?.[0]" />
+        <div class="row right"><p-button label="Add addendum" (onClick)="addAddendum()" [disabled]="!adf.note?.trim()" /></div>
+      </div>
+    </p-dialog>
+
+    <p-dialog header="Import leads" [modal]="true" [(visible)]="impDlg" [style]="{ width: '44rem' }" [breakpoints]="{ '760px': '96vw' }">
+      <div class="stack">
+        <p class="muted small">CSV or Excel (.xlsx) with a header row. Columns: name, phone, email, service, source, budget, area, location, project_type, timeline,
+          notes, owner_email, temperature (title optional). Rows matching an open lead's phone or email are skipped. Without owner_email the assignment rules decide.</p>
+        <div class="row gap"><p-button label="Download template" icon="pi pi-download" [text]="true" (onClick)="api.download('/leads/import/template', 'lead-import-template.csv')" />
+          <input type="file" accept=".csv,.xlsx" (change)="impFile = $any($event.target).files?.[0]; impResult.set(null)" /></div>
+        @if (impResult(); as r) {
+          <p-message [severity]="r.failed ? 'warn' : 'success'" text="{{ r.dry_run ? 'Check' : 'Imported' }}: {{ r.ok }} ok, {{ r.failed }} with problems" />
+          <p-table [value]="r.rows" size="small" [scrollable]="true" scrollHeight="40vh">
+            <ng-template #body let-x><tr><td>Row {{ x.row }}</td><td>{{ x.title || '' }}</td><td [class.c-bad]="!x.ok">{{ x.ok ? (r.dry_run ? 'ready' : 'created' + (x.owner ? ' → ' + x.owner : '')) : x.error }}</td></tr></ng-template>
+          </p-table>
+        }
+        <div class="row gap right">
+          <p-button label="Check file" [outlined]="true" (onClick)="runImport(true)" [disabled]="!impFile" />
+          <p-button label="Import" icon="pi pi-upload" (onClick)="runImport(false)" [disabled]="!impFile || !impResult()?.dry_run || !impResult()?.ok" />
+        </div>
+      </div>
+    </p-dialog>
+
     <app-win-lose (done)="load(); tab === 'bids' && loadBids()" />
   `,
 })
 export class LeadsComponent implements OnInit {
   auth = inject(AuthService);
-  private api = inject(Api);
+  api = inject(Api);
+  private toast = inject(MessageService);
   router = inject(Router);
   meta = signal<any>(null);
   board = signal<any[]>([]);
@@ -271,12 +350,29 @@ export class LeadsComponent implements OnInit {
   bidStatuses = [{ label: 'Preparing', value: 'preparing' }, { label: 'Submitted', value: 'submitted' }];
   label = label;
   leadOptions = signal<any[]>([]);
+  attention = signal<any>(null);
+  views = signal<any[]>([]);
+  impResult = signal<any>(null);
+  ownerChoices = computed(() => [{ id: 'auto', name: 'Auto — assignment rules' }, ...(this.meta()?.staff ?? [])]);
+  allStages = computed(() => [...new Set(Object.values(this.meta()?.pipelines ?? {}).flat() as string[])]);
+  attentionGroups = [{ key: 'not_contacted', label: 'Not contacted in time' }, { key: 'stuck', label: 'Stuck in a stage' },
+    { key: 'overdue_followups', label: 'Overdue follow-ups' }, { key: 'missed_visits', label: 'Missed visits' }, { key: 'late_reports', label: 'Visit reports late' },
+    { key: 'proposals', label: 'Proposals expiring / unanswered' }, { key: 'approvals', label: 'Approvals waiting' }, { key: 'hot_idle', label: 'Hot leads idle' },
+    { key: 'unassigned', label: 'Unassigned' }];
+  view: any = null;
+  picked: any[] = [];
+  bk: any = {};
+  impDlg = false;
+  impFile: File | null = null;
+  addDlg = false;
+  adf: any = {};
   wl = viewChild.required(WinLoseComponent);
 
   async ngOnInit() {
     const m = await this.api.get('/leads/meta');
     this.meta.set(m);
     this.service = m.services[0];
+    this.loadViews();
     await this.load();
   }
 
@@ -358,7 +454,8 @@ export class LeadsComponent implements OnInit {
   async openBid(b?: any) {
     if (!this.contacts().length && this.auth.can('contacts')) this.contacts.set(await this.api.get('/contacts'));
     this.bf = b ? { ...b } : { title: '', reference: '', due_date: new Date().toISOString().slice(0, 10), value: null, client_id: null,
-      service: this.service, decision: 'pending', status: 'preparing', decision_reason: '', lead_id: null, notes: '' };
+      service: this.service, decision: 'pending', status: 'preparing', decision_reason: '', lead_id: null, notes: '',
+      owner_id: this.auth.user()?.id, site_walk_date: '', qa_deadline: '', documents: [] };
     const open = await this.api.get('/leads?status=open');
     if (this.bf.lead_id && !open.some((l: any) => l.id === this.bf.lead_id)) open.unshift({ id: this.bf.lead_id, title: this.bf.lead_title });
     this.leadOptions.set(open);
@@ -374,7 +471,8 @@ export class LeadsComponent implements OnInit {
   async saveBid() {
     const b = this.bf;
     const body = { title: b.title, reference: b.reference, due_date: b.due_date, value: b.value, client_id: b.client_id, service: b.service,
-      lead_id: b.lead_id || null, notes: b.notes, decision: b.decision, decision_reason: b.decision_reason,
+      lead_id: b.lead_id || null, notes: b.notes, decision: b.decision, decision_reason: b.decision_reason, owner_id: b.owner_id,
+      site_walk_date: b.site_walk_date || null, qa_deadline: b.qa_deadline || null, documents: (b.documents ?? []).map((d: any) => d.key),
       status: b.decision === 'bid' ? b.status : 'preparing' };
     if (b.id) await this.api.put(`/bids/${b.id}`, body, 'Bid saved');
     else await this.api.post('/bids', body, 'Bid added');
@@ -386,5 +484,72 @@ export class LeadsComponent implements OnInit {
     await this.api.del(`/bids/${this.bf.id}`, 'Bid deleted');
     this.bidDlg = false;
     await this.loadBids();
+  }
+
+  async addBidDoc(ev: Event) {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const up = await this.api.upload(file);
+    this.bf.documents = [...(this.bf.documents ?? []), { key: up.key, name: up.name }];
+  }
+
+  async addAddendum() {
+    const body: any = { note: this.adf.note };
+    if (this.adf.file) body.file_key = (await this.api.upload(this.adf.file)).key;
+    await this.api.post(`/bids/${this.adf.b.id}/addenda`, body, 'Addendum added');
+    this.addDlg = false;
+    await this.loadBids();
+  }
+
+  async loadAttention() {
+    this.attention.set(await this.api.get('/leads/attention'));
+  }
+
+  async loadViews() {
+    this.views.set(await this.api.get('/leads/views'));
+  }
+
+  applyView() {
+    const f = this.view?.filters ?? {};
+    if (f.service) this.service = f.service;
+    this.owner = f.owner_id ?? null;
+    this.source = f.source ?? null;
+    this.temperature = f.temperature ?? null;
+    this.q = f.q ?? '';
+    this.load();
+  }
+
+  async saveView() {
+    const name = prompt('Name this view (the current filters are saved)')?.trim();
+    if (!name) return;
+    const views = [...this.views().filter((v) => v.name !== name),
+      { name, filters: { service: this.service, owner_id: this.owner, source: this.source, temperature: this.temperature, q: this.q } }];
+    this.views.set(await this.api.put('/leads/views', { views }, 'View saved'));
+  }
+
+  async exportCsv() {
+    await this.api.download(`/leads/export${this.tab === 'list' && this.status ? '?status=' + this.status : ''}`, 'leads.csv');
+  }
+
+  openImport() {
+    this.impFile = null;
+    this.impResult.set(null);
+    this.impDlg = true;
+  }
+
+  async runImport(dry: boolean) {
+    if (!this.impFile) return;
+    this.impResult.set(await this.api.postFile(`/leads/import${dry ? '?dry_run=1' : ''}`, this.impFile));
+    if (!dry) await this.load();
+  }
+
+  async runBulk(action: string, value: any) {
+    const r = await this.api.post('/leads/bulk', { ids: this.picked.map((l) => l.id), action, value });
+    const msg = `${r.done.length} updated` + (r.failed.length ? `, ${r.failed.length} not: ${r.failed.map((f: any) => `${f.title} — ${f.error}`).join(' | ')}` : '');
+    this.toast.add({ severity: r.failed.length ? 'warn' : 'success', summary: 'Bulk update', detail: msg, life: r.failed.length ? 9000 : 3000 });
+    this.picked = [];
+    await this.load();
   }
 }

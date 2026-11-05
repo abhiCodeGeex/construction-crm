@@ -337,8 +337,10 @@ for x in created_leads:
 for f in call("GET", "/followups", token=T["owner"])[1]:
     if RUN in f["title"]:
         call("DELETE", f"/followups/{f['id']}", token=T["owner"])
-for c in set(created_contacts):
-    call("DELETE", f"/contacts/{c}", token=T["owner"])
+left_contacts = set(created_contacts)
+for _ in range(3):  # a referrer can only go once the contacts it referred are gone (relationship history, §3)
+    left_contacts = {c for c in left_contacts if call("DELETE", f"/contacts/{c}", token=T["owner"])[0] not in (200, 404)}
+check("cleanup: no test contacts left", not left_contacts, left_contacts)
 check("cleanup: no test leads left", not any(RUN in x["title"] or RUN in (x.get("contact_name") or "") for x in call("GET", "/leads", token=T["owner"])[1]))
 
 print(f"passed: {passed}  failed: {len(failures)}")

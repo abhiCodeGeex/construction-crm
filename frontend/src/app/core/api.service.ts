@@ -51,6 +51,29 @@ export class Api {
     }
   }
 
+  /** Save an authenticated download (CSV export, import template) under `filename`. */
+  async download(url: string, filename: string) {
+    const blob = await firstValueFrom(this.http.get('/api' + url, { responseType: 'blob' }));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  /** Multipart POST of one file to an API endpoint (e.g. the lead import); shows errors like other writes. */
+  async postFile<T = any>(url: string, file: File): Promise<T> {
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      return await firstValueFrom(this.http.post<T>('/api' + url, form));
+    } catch (e) {
+      this.toast.add({ severity: 'error', summary: 'Not imported', detail: errorText(e), life: 5000 });
+      (e as any)[HANDLED] = true;
+      throw e;
+    }
+  }
+
   /** Files need the bearer token, so they are fetched and opened as a blob. */
   async openFile(url: string) {
     const blob = await firstValueFrom(this.http.get(url, { responseType: 'blob' }));

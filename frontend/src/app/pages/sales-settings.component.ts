@@ -62,6 +62,22 @@ import { CHANNEL_LABEL } from '../shared/followup-dialog.component';
         @if (canEdit()) { <div class="row right mt"><p-button label="Save sales rules" icon="pi pi-check" (onClick)="saveRules()" /></div> }
       </p-card>
 
+      <p-card styleClass="mt"><ng-template #title>Assignment rules — who gets a new lead</ng-template>
+        <p class="muted small">Used for website enquiries, imports without an owner and new leads set to “Auto”. The first matching rule wins and
+          its people take turns (round-robin). No match → the lead stays unassigned and the sales manager is told.</p>
+        @for (r of assign; track $index; let i = $index) {
+          <div class="row gap wrap mb-xs">
+            <span class="muted small">{{ i + 1 }}.</span>
+            <p-select [options]="svcOptions()" [(ngModel)]="r.service" optionLabel="label" optionValue="value" placeholder="Any service" [showClear]="true" [disabled]="!canEdit()" appendTo="body" />
+            @if (m.branches?.length) { <p-select [options]="m.branches" [(ngModel)]="r.branch" placeholder="Any branch" [showClear]="true" [disabled]="!canEdit()" appendTo="body" /> }
+            <p-multiselect [options]="m.staff" [(ngModel)]="r.user_ids" optionLabel="name" optionValue="id" placeholder="Salespeople" display="chip" [disabled]="!canEdit()" appendTo="body" class="grow" />
+            @if (canEdit()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="assign.splice(i, 1)" /> }
+          </div>
+        } @empty { <p class="muted small">No rules — new website leads arrive unassigned.</p> }
+        @if (canEdit()) { <div class="row-between mt-xs"><p-button label="Add rule" icon="pi pi-plus" size="small" [text]="true" (onClick)="assign.push({ service: null, branch: null, user_ids: [] })" />
+          <p-button label="Save assignment rules" icon="pi pi-check" (onClick)="saveAssign()" /></div> }
+      </p-card>
+
       <p-card styleClass="mt"><ng-template #title>Package rates — for the ballpark on a lead (area × rate)</ng-template>
         <div class="tpl-grid">
           @for (svc of m.services; track svc) {
@@ -178,6 +194,8 @@ export class SalesSettingsComponent implements OnInit {
   rules: Record<string, Record<string, any>> = {};
   em: any = {};
   pkgs: Record<string, any[]> = {};
+  assign: any[] = [];
+  svcOptions = computed(() => (this.meta()?.services ?? []).map((s: string) => ({ value: s, label: SERVICE_LABEL[s] })));
   rateUnits = [{ label: 'per sq ft', value: 'sqft' }, { label: 'per m²', value: 'sqm' }];
   origin = location.origin;
   reqOptions = computed(() => Object.entries(this.meta()?.requirements ?? {}).map(([value, label]) => ({ value, label })));
@@ -198,10 +216,16 @@ export class SalesSettingsComponent implements OnInit {
       const r = m.stage_rules[s][st];
       return [st, { checklist_text: (r.checklist || []).join('\n'), requires: [...(r.requires || [])], max_days: r.max_days ?? null, probability: r.probability ?? null }];
     }))]));
+    this.assign = ((await this.api.get('/leads/assignment')).rules ?? []).map((r: any) => ({ ...r, user_ids: [...r.user_ids] }));
     const rates = await this.api.get('/leads/package-rates');
     this.pkgs = Object.fromEntries(m.services.map((s: string) => [s, (rates[s] ?? []).map((p: any) => ({ ...p }))]));
     this.templates.set(await this.api.get('/message_templates'));
     if (this.auth.can('settings')) this.em = { port: 587, use_tls: true, ...(await this.api.get('/settings/email')) };
+  }
+
+  async saveAssign() {
+    await this.api.put('/leads/assignment', { rules: this.assign }, 'Assignment rules saved');
+    await this.load();
   }
 
   async savePkgs() {

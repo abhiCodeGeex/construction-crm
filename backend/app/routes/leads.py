@@ -124,6 +124,10 @@ def clean(d, existing=None, new_contact=None):
         if not isinstance(out["tags"], list):
             abort(400, "Tags must be a list")
         out["tags"] = list(dict.fromkeys(str(x).strip() for x in out["tags"] if str(x).strip()))
+    if out.get("owner_id") == "auto":
+        if existing:
+            abort(400, "Choose the salesperson")
+        out.pop("owner_id")  # create_lead applies the assignment rules
     if out.get("owner_id"):
         out["owner_name"] = staff(out["owner_id"])["name"]
     elif "owner_id" in out:
@@ -348,6 +352,9 @@ def create_lead():
             abort(409, f"An open lead already exists for this enquirer: {dup['title']}|{dup['_id']}")
     if "owner_id" not in d:
         data["owner_id"], data["owner_name"] = g.uid, g.user.get("name")
+    elif d.get("owner_id") == "auto":  # assignment rules (Settings -> Sales); no matching rule leaves it unassigned
+        from .lead_tools import auto_owner
+        data["owner_id"], data["owner_name"] = auto_owner(data["service"], data.get("branch"))
     stage = pipeline(data["service"])[0]
     who = f", assigned to {data.get('owner_name')}" if data.get("owner_id") else ", unassigned"
     data.update(status="open", stage=stage, stage_entered_at=t.now(), first_response_at=None,
@@ -764,6 +771,21 @@ def clean_bid(d, existing=None):
     for k in ("reference", "notes", "decision_reason"):
         if k in d:
             out[k] = d[k]
+    if "owner_id" in d or existing is None:  # who prepares the bid (defaults to its author)
+        oid_ = d.get("owner_id") or (existing or {}).get("owner_id") or g.uid
+        out["owner_id"], out["owner_name"] = oid_, staff(oid_, "Bid owner")["name"]
+    for k, label in (("site_walk_date", "Site walk date"), ("qa_deadline", "Q&A deadline")):
+        if k in d:
+            try:
+                out[k] = date.fromisoformat(str(d[k])[:10]).isoformat() if d[k] else None
+            except ValueError:
+                abort(400, f"{label} must be a date (YYYY-MM-DD)")
+    if "documents" in d:
+        docs = []
+        for key in d["documents"] or []:
+            f = db.files.find_one({"company_id": g.cid, "key": key}) or abort(400, "Upload the tender document first")
+            docs.append({"key": key, "name": f["name"]})
+        out["documents"] = docs
     if m.get("due_date") in (None, ""):
         abort(400, "Bid due date is required")
     try:
@@ -835,9 +857,35 @@ def list_bids():
     rows = t.find("bids", q, sort=[("due_date", 1)])
     decided = [b for b in t.find("bids", {"status": {"$in": ["won", "lost"]}})]
     won = sum(1 for b in decided if b["status"] == "won")
+    per = {}
+    for b in decided:
+        r = per.setdefault(b.get("owner_name") or "—", {"owner": b.get("owner_name") or "—", "won": 0, "decided": 0})
+        r["decided"] += 1
+        r["won"] += b["status"] == "won"
     return jsonify({"bids": [present_bid(b) for b in rows],
                     "hit_rate": round(won / len(decided) * 100, 1) if decided else None,
-                    "won": won, "decided": len(decided)})
+                    "won": won, "decided": len(decided),
+                    "by_owner": [{**r, "hit_rate": round(r["won"] / r["decided"] * 100, 1)} for r in per.values()]})
+
+
+@bp.post("/bids/<_id>/addenda")
+@api("leads")
+def add_addendum(_id):
+    """A tender addendum (changed drawings, dates or scope) received after the bid was opened."""
+    b = t.get("bids", _id)
+    if b.get("status") in ("won", "lost"):
+        abort(409, f"This bid is {b['status']}")
+    d = request.get_json(force=True) or {}
+    note = (d.get("note") or "").strip() or abort(400, "Describe the addendum")
+    f = db.files.find_one({"company_id": g.cid, "key": d["file_key"]}) if d.get("file_key") else None
+    if d.get("file_key") and not f:
+        abort(400, "Upload the addendum file first")
+    add = {"id": t.sid(), "no": len(b.get("addenda") or []) + 1, "note": note, "at": t.now(), "by": g.user.get("name"),
+           "file": {"key": f["key"], "name": f["name"]} if f else None}
+    upd = t.update("bids", _id, {}, raw={"$push": {"addenda": add}})
+    if b.get("lead_id"):
+        log(b["lead_id"], "note", f"Bid {b['title']}: addendum {add['no']} — {note}")
+    return jsonify(present_bid(upd)), 201
 
 
 @bp.post("/bids")
@@ -990,6 +1038,8 @@ def public_form_submit(key):
     contact = t.insert("contacts", {"name": name, "kind": "person", "types": ["client"], "phone": phone or None,
                                     "email": email or None, "compliance": []})
     stage = (c.get("pipelines") or {}).get(service, PIPELINE)[0]
+    from .lead_tools import auto_owner
+    owner_id, owner_name = auto_owner(service, None, c)
     lead = t.insert("leads", {
         "title": f"{name} – {d.get('project_type') or service} enquiry", "contact_id": str(contact["_id"]),
         "contact_name": name, "phone_key": norm_phone(phone), "email_key": email or None, "service": service,
@@ -997,9 +1047,9 @@ def public_form_submit(key):
         "location": (d.get("location") or "")[:200] or None,
         "timeline": d.get("timeline") if d.get("timeline") in LEAD_TIMELINES else None,
         "budget": d.get("budget") if isinstance(d.get("budget"), (int, float)) and d["budget"] >= 0 else None,
-        "area_unit": "sqft", "source": "Website form", "owner_id": None, "owner_name": None, "status": "open",
+        "area_unit": "sqft", "source": "Website form", "owner_id": owner_id, "owner_name": owner_name, "status": "open",
         "stage": stage, "stage_entered_at": t.now(), "notes": note or None, "first_response_at": None,
-        "activities": [history_entry("created", "Lead created (Website form), unassigned")],
+        "activities": [history_entry("created", "Lead created (Website form), " + (f"assigned to {owner_name} by the assignment rules" if owner_id else "unassigned"))],
         "stage_history": [{"stage": stage, "at": t.now(), "by": "Website form"}]})
     notify_assignment(lead)
     return jsonify({"ok": True}), 201
@@ -1059,4 +1109,99 @@ def sales_report():
         "loss_reasons": [{"reason": k, "count": v} for k, v in sorted(reasons.items(), key=lambda x: -x[1])],
         "bids": {"decided": len(decided), "won": sum(1 for b in decided if b["status"] == "won"),
                  "hit_rate": round(sum(1 for b in decided if b["status"] == "won") / len(decided) * 100, 1) if decided else None},
+        **deep_report(leads),
     })
+
+
+def deep_report(leads):
+    """C+3 reports: funnel with drop-off, time in stage, visit -> win, proposal -> win, average discount, losses
+    per competitor, cost to acquire and ROI per source, monthly weighted forecast, response target, leaderboard."""
+    now = t.now()
+    ids = [str(x["_id"]) for x in leads]
+    pct = lambda a, b: round(a / b * 100, 1) if b else None
+    funnel = {}
+    for s in [s for s in SERVICES if s in g.company.get("modules", [])]:
+        stages = pipeline(s)
+        reached = [0] * len(stages)
+        for x in [x for x in leads if x["service"] == s]:
+            hit = {h["stage"] for h in x.get("stage_history") or []}
+            top = max([stages.index(st) for st in hit if st in stages] or [0])
+            if x["status"] == "won":
+                top = len(stages) - 1
+            for i in range(top + 1):
+                reached[i] += 1
+        funnel[s] = [{"stage": st, "reached": reached[i],
+                      "drop_off_pct": pct(reached[i] - reached[i + 1], reached[i]) if i + 1 < len(stages) else None}
+                     for i, st in enumerate(stages)]
+    spans = {}
+    for x in leads:
+        hist = x.get("stage_history") or []
+        for i, h in enumerate(hist):
+            if h["stage"] in ("Won", "Lost"):
+                continue
+            end = hist[i + 1]["at"] if i + 1 < len(hist) else (now if x["status"] == "open" else None)
+            if end:
+                spans.setdefault(h["stage"], []).append((end - h["at"]).total_seconds() / 86400)
+    closed = {str(x["_id"]): x for x in leads if x["status"] in ("won", "lost")}
+    visited = set(db.lead_visits.distinct("lead_id", {"company_id": g.cid, "lead_id": {"$in": ids}, "status": "done"}))
+    proposed = set(db.proposals.distinct("lead_id", {"company_id": g.cid, "lead_id": {"$in": ids}, "sent_at": {"$ne": None}}))
+    rate = lambda group: pct(sum(1 for i in group if i in closed and closed[i]["status"] == "won"), sum(1 for i in group if i in closed))
+    discounts = []
+    for x in leads:
+        if x["status"] == "won" and x.get("accepted_proposal_id"):
+            sent = list(db.proposals.find({"company_id": g.cid, "lead_id": str(x["_id"]), "sent_at": {"$ne": None}}).sort("sent_at", 1))
+            acc = next((p for p in sent if str(p["_id"]) == x["accepted_proposal_id"]), None)
+            if sent and acc and sent[0]["value"]:
+                discounts.append((sent[0]["value"] - acc["value"]) / sent[0]["value"] * 100)
+    comp = {}
+    for x in leads:
+        if x["status"] == "lost" and x.get("competitor"):
+            r = comp.setdefault(x["competitor"], {"competitor": x["competitor"], "losses": 0, "value_lost": 0.0})
+            r["losses"] += 1
+            r["value_lost"] += sales.lead_value(x)
+    spend = {}
+    for e in db.lead_expenses.find({"company_id": g.cid, "lead_id": {"$in": ids}}):
+        spend[e["lead_id"]] = spend.get(e["lead_id"], 0) + e["amount"]
+    by_source = {}
+    for x in leads:
+        r = by_source.setdefault(x["source"], {"source": x["source"], "spent": 0.0, "won": 0, "won_value": 0.0})
+        r["spent"] += spend.get(str(x["_id"]), 0)
+        if x["status"] == "won":
+            r["won"] += 1
+            r["won_value"] += x.get("won_value") or 0
+    cost = [{**r, "spent": round(r["spent"], 2), "cost_per_win": round(r["spent"] / r["won"], 2) if r["won"] else None,
+             "roi": round(r["won_value"] / r["spent"], 1) if r["spent"] else None} for r in by_source.values()]
+    forecast = {}
+    for x in leads:
+        if x["status"] == "open" and x.get("expected_close"):
+            m = x["expected_close"][:7]
+            r = forecast.setdefault(m, {"month": m, "leads": 0, "value": 0.0, "weighted": 0.0})
+            r["leads"] += 1
+            r["value"] += sales.lead_value(x)
+            r["weighted"] += sales.lead_value(x) * sales.probability(x) / 100
+    target = sales.settings()["response_minutes"]
+    responded = [x for x in leads if x.get("first_response_at")]
+    board = {}
+    since = now - timedelta(days=30)
+    for x in leads:
+        k = x.get("owner_name") or "Unassigned"
+        r = board.setdefault(k, {"salesperson": k, "leads": 0, "won": 0, "lost": 0, "won_value": 0.0, "activities_30d": 0})
+        r["leads"] += 1
+        r["won"] += x["status"] == "won"
+        r["lost"] += x["status"] == "lost"
+        r["won_value"] += (x.get("won_value") or 0) if x["status"] == "won" else 0
+        r["activities_30d"] += sum(1 for a in x.get("activities") or [] if a.get("at") and a["at"] >= since
+                                   and a["type"] in ("call", "email", "whatsapp", "meeting", "visit"))
+    return {
+        "funnel": funnel,
+        "time_in_stage": [{"stage": k, "avg_days": round(sum(v) / len(v), 1), "leads": len(v)} for k, v in spans.items()],
+        "visit_to_win": rate(visited), "proposal_to_win": rate(proposed),
+        "avg_discount_pct": round(sum(discounts) / len(discounts), 1) if discounts else None,
+        "competitors": sorted([{**r, "value_lost": round(r["value_lost"], 2)} for r in comp.values()], key=lambda r: -r["losses"]),
+        "cost_by_source": sorted(cost, key=lambda r: -r["spent"]),
+        "forecast": [{**r, "value": round(r["value"], 2), "weighted": round(r["weighted"], 2)} for r in sorted(forecast.values(), key=lambda r: r["month"])],
+        "response_target_minutes": target,
+        "response_target_met_pct": pct(sum(1 for x in responded if (x["first_response_at"] - x["created_at"]).total_seconds() <= target * 60), len(responded)),
+        "leaderboard": sorted([{**r, "won_value": round(r["won_value"], 2), "conversion": pct(r["won"], r["won"] + r["lost"])}
+                               for r in board.values()], key=lambda r: -r["won_value"]),
+    }

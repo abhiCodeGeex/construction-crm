@@ -176,11 +176,14 @@ def demo_leads():
             body["referred_by"] = consultant
         lead = call(sales, "POST", "/leads", body)
         if stage != lead["stage"]:
-            call(sales, "POST", f"/leads/{lead['id']}/stage", {"stage": stage})
+            # demo leads start part-way through the pipeline; the owner override is logged on each one
+            call(owner, "POST", f"/leads/{lead['id']}/stage", {"stage": stage, "override_reason": "Demo data: earlier steps happened before the CRM"})
         ids.append(lead["id"])
-    call(sales, "POST", f"/leads/{ids[0]}/activities", {"type": "call", "text": "Discussed G+1 plan and budget", "outcome": "Site visit booked"})
+    call(sales, "POST", f"/leads/{ids[0]}/activities", {"type": "call", "text": "Discussed G+1 plan and budget; site visit wanted",
+                                                        "outcome": "Reached", "next_due": day(1)})
     call(sales, "POST", f"/leads/{ids[1]}/activities", {"type": "whatsapp", "text": "Shared portfolio of 3BHK interiors"})
-    call(sales, "POST", f"/leads/{ids[2]}/activities", {"type": "meeting", "text": "Menu-board and seating layout discussed; wants quote revision"})
+    call(sales, "POST", f"/leads/{ids[2]}/activities", {"type": "meeting", "text": "Menu-board and seating layout discussed",
+                                                        "outcome": "Wants a quote revision", "next_due": day(2)})
     call(sales, "POST", "/followups", {"title": "Confirm site visit time", "due": day(0), "priority": "high", "channel": "call",
                                        "related": {"type": "lead", "id": ids[0]}})
     call(sales, "POST", "/followups", {"title": "Send revised quote", "due": day(-2), "priority": "high", "channel": "email",
@@ -205,6 +208,38 @@ def demo_leads():
     call(sales, "POST", "/bids", {"title": "Hospital wing – design & build", "service": "construction", "due_date": day(5),
                                   "decision": "no_bid", "decision_reason": "Outside our capacity this quarter"})
 
+def demo_rates():
+    """Phase C+ demo: package rates (ballpark) and a starter rate library, added once if the company has none."""
+    from app import create_app
+
+    company = db.companies.find_one({"name": "Skyline Design & Build"})
+    cid = str(company["_id"])
+    api = create_app().test_client()
+    owner = {"Authorization": "Bearer " + api.post("/api/auth/login", json={"email": "owner@skyline.test", "password": DEMO_PASSWORD}).json["token"]}
+
+    def call(method, path, body=None):
+        r = api.open(f"/api{path}", method=method, json=body, headers=owner)
+        assert r.status_code < 300, (path, r.status_code, r.json)
+        return r.json
+
+    if not (company.get("sales") or {}).get("package_rates"):
+        call("PUT", "/leads/package-rates", {"package_rates": {
+            "interior": [{"name": "Basic", "rate": 1200, "unit": "sqft"}, {"name": "Premium", "rate": 1800, "unit": "sqft"},
+                         {"name": "Luxury", "rate": 2800, "unit": "sqft"}],
+            "construction": [{"name": "Basic", "rate": 1800, "unit": "sqft"}, {"name": "Premium", "rate": 2400, "unit": "sqft"},
+                             {"name": "Luxury", "rate": 3500, "unit": "sqft"}],
+            "architecture": [{"name": "Basic", "rate": 80, "unit": "sqft"}, {"name": "Premium", "rate": 120, "unit": "sqft"}]}})
+    if not db.rate_library.count_documents({"company_id": cid}):
+        for kind, name, unit, rate, cat in [("material", "Gypsum false ceiling board", "sq ft", 85, "False ceiling"),
+                                            ("labour", "False ceiling labour", "sq ft", 30, "False ceiling"),
+                                            ("material", "Vitrified tiles 600×600", "sq ft", 95, "Flooring"),
+                                            ("labour", "Tile laying", "sq ft", 28, "Flooring"),
+                                            ("material", "Interior emulsion (2 coats)", "sq ft", 18, "Painting"),
+                                            ("labour", "Painting labour", "sq ft", 12, "Painting"),
+                                            ("product", "Modular kitchen — standard (per running ft)", "rft", 4500, "Modular kitchen")]:
+            call("POST", "/rates", {"kind": kind, "name": name, "unit": unit, "rate": rate, "category": cat})
+
+
 if __name__ == "__main__":
     ensure_indexes()
     run()
@@ -212,4 +247,5 @@ if __name__ == "__main__":
         demo()
         demo_projects()
         demo_leads()
+        demo_rates()
         print("demo users ready")

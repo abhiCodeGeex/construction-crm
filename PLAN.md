@@ -212,7 +212,7 @@ Source: the leads review (sections A–E agreed with the owner), built on requir
 | 2 | Site visits (appointments, reminders, report, cost), measurements, site checklist, lead files | **Done** |
 | 3 | Brief + client questionnaire, decision-makers, ballpark from package rates | **Done** |
 | 4 | Rate library, estimates + approval, expenses, receipts, proposals tracking, negotiation, competitors, won carry-over to the project | **Done** |
-| 5 | Assignment rules, merge, import, bulk, export, saved views, calendar, Needs attention, bid additions, reports | Next |
+| 5 | Assignment rules, merge, import, bulk, export, saved views, calendar, Needs attention, bid additions, reports | **Done** |
 
 ## C+1. Rules for every step
 | Rule | Implementation | Test |
@@ -254,3 +254,14 @@ Source: the leads review (sections A–E agreed with the owner), built on requir
 | Reports | Funnel with drop-off, time in stage, visit→win, proposal→win, average discount, losses per competitor, cost to acquire + ROI per source, monthly weighted forecast, response target met %, salesperson leaderboard |
 | Settings | Stage rules, package rates, rate library, response target, approval limits, assignment rules, sales manager, visibility, email (SMTP) |
 | Scheduled checks | A `worker` service runs every minute: reminders, escalations, expiry, on-hold resume, re-engage, bid due dates |
+
+## C+4. Not in C+ (and where it goes)
+| Item | Where |
+|---|---|
+| Proposal document builder, the client's proposal link, "viewed" tracking, e-signature, contract + payment schedule | Phase D (C+ tracks every proposal version, its answer and expiry) |
+| Sending WhatsApp / SMS (email already works through the company's SMTP) | Phase G |
+| Call recording and automatic logging of WhatsApp chats | Needs a telephony / WhatsApp Business provider (requirements §17, Phase 2) |
+| Automatic follow-up sequences (day 1, 3, 7) | Requirements §16 puts them in Phase 2; C+ creates the follow-ups each step needs |
+| Google / Outlook calendar sync | Integration (§15); the in-app calendar is in C+ |
+| Real costs updating the rate library | Phase E (§12 "learn from it") |
+| AI follow-up drafts | Phase 3 |
