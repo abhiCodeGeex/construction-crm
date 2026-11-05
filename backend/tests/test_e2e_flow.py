@@ -227,6 +227,9 @@ check("stages with all tasks done are 100% and done", sp["Pre-construction"] == 
       and sp["Construction documents"] == (100, "done"), sp)
 check("project progress rises", 0 < p["progress"] < 100, p["progress"])
 ms = [m for s in p["stages"] if s["name"] == "Foundation" for m in s["milestones"]]
+fnd = next(s for s in p["stages"] if s["name"] == "Foundation")
+for c in fnd["checklist"]:  # B+2: a stage closes only once its closing checklist is ticked
+    ok(f"tick {c['text']}", call("PUT", f"/projects/{PID}/stages/{fnd['id']}/checklist/{c['id']}", {"done": True}, T["pm"]))
 for m in ms:
     ok(f"achieve milestone {m['name']}", call("PUT", f"/projects/{PID}/milestones/{m['id']}", {"status": "achieved"}, T["pm"]))
 dash = call("GET", f"/projects/{PID}/dashboard", token=T["pm"])[1]

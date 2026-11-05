@@ -273,6 +273,14 @@ try:
     check("§5 signing row due, stage rows upcoming, date row upcoming", rows["Advance"]["state"] == "due" and rows[f"On {cs[1]}"]["state"] == "upcoming"
           and rows["Retention release"]["state"] == "upcoming", {k: v.get("state") for k, v in rows.items()})
     mid = rows[f"On {cs[1]}"]["milestone_id"]
+    stg = next(s for s in pj["stages"] if any(m["id"] == mid for m in s["milestones"]))
+    expect("stage not ready cannot be closed", call("PUT", f"/projects/{w['project_id']}/milestones/{mid}", {"status": "achieved"}, T["pm"]), 409)
+    call("PUT", f"/projects/{w['project_id']}/stages/{stg['id']}", {"progress": 100}, T["pm"])  # B+2: get the stage ready
+    for c in stg["checklist"]:
+        call("PUT", f"/projects/{w['project_id']}/stages/{stg['id']}/checklist/{c['id']}", {"done": True}, T["pm"])
+    if stg["client_signoff_required"]:
+        expect("client sign-off", call("POST", f"/projects/{w['project_id']}/stages/{stg['id']}/signoff",
+                                       {"name": "Client", "method": "Email"}, T["pm"]), 201)
     expect("achieve the milestone", call("PUT", f"/projects/{w['project_id']}/milestones/{mid}", {"status": "achieved"}, T["pm"]), 200)
     rows = {r["name"]: r for r in call("GET", f"/projects/{w['project_id']}/contract", token=T["pm"])[1]["payment_schedule"]}
     check("§5 row due once its milestone is achieved", rows[f"On {cs[1]}"]["state"] == "due")

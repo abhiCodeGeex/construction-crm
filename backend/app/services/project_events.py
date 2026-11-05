@@ -42,7 +42,8 @@ def _milestones(p):
 
 
 def stage_changes(old, new):
-    """Compare the project before and after a write and notify what changed."""
+    """Compare the project before and after a write: timeline entries, then who is told."""
+    log_stage_changes(old, new)
     pid, name, url = str(new["_id"]), new["name"], link(new)
     before = _tasks(old)
     for tid, (stage, tk) in _tasks(new).items():
@@ -69,6 +70,7 @@ def stage_changes(old, new):
 
 
 def added_to_team(p, entry):
+    log(p["_id"], "team", f"{entry['name']} added as {entry['project_role']} ({entry['access']} access)")
     if entry.get("user_id"):
         notify.send("project_added", [entry["user_id"]],
                     f"You were added to {p['name']} as {entry['project_role']} ({entry['access']} access)",
@@ -76,6 +78,88 @@ def added_to_team(p, entry):
 
 
 def issue_raised(p, issue):
+    log(p["_id"], "issue", f"{issue['severity'].capitalize()} issue raised: {issue['title']}"
+        + (f" (owner {issue['owner_name']})" if issue.get("owner_name") else ""), issue_id=str(issue["_id"]))
     who = [issue.get("owner_id")] + (managers(p) if issue["severity"] == "high" else [])
     notify.send("issue_raised", who, f"{issue['severity'].capitalize()} issue on {p['name']}: {issue['title']}",
                 link(p), project_id=str(p["_id"]), level="warn" if issue["severity"] == "high" else "info")
+
+
+# ---------------- activity log (B+2 / B+3) ----------------
+# kinds group the project timeline's filters
+ACTIVITY_GROUPS = {
+    "Tasks": ["task"],
+    "Stages & milestones": ["stage", "milestone", "checklist", "signoff"],
+    "Schedule & delays": ["schedule", "baseline", "delay"],
+    "Team": ["team"],
+    "Issues": ["issue"],
+    "Comments & files": ["comment", "file"],
+    "Meetings": ["meeting"],
+    "Edits": ["edit"],
+}
+
+
+def log(pid, kind, text, **extra):
+    db.project_activity.insert_one({"company_id": g.cid, "project_id": str(pid), "kind": kind, "text": text,
+                                    "at": _now(), "by": (getattr(g, "user", None) or {}).get("name"),
+                                    "by_id": getattr(g, "uid", None), **extra})
+
+
+def _now():
+    from ..tenancy import now
+    return now()
+
+
+def log_stage_changes(old, new):
+    """Timeline entries for what changed in stages, tasks and milestones (one write can change several)."""
+    pid = str(new["_id"])
+    before, after = _tasks(old), _tasks(new)
+    for tid, (stage, tk) in after.items():
+        prev = before.get(tid, (None, None))[1]
+        if prev is None:
+            log(pid, "task", f"Task added: {tk['title']} ({stage['name']}, {tk.get('start')} → {tk.get('end')})"
+                + (f", assigned to {tk['assignee_name']}" if tk.get("assignee_name") else ""), task_id=tid)
+            continue
+        if tk["status"] != prev["status"]:
+            log(pid, "task", f"{tk['title']}: {prev['status'].replace('_', ' ')} → {tk['status'].replace('_', ' ')}"
+                + (f" ({tk['notes']})" if tk["status"] == "blocked" and tk.get("notes") else ""), task_id=tid)
+        if tk.get("assignee_id") != prev.get("assignee_id"):
+            log(pid, "task", f"{tk['title']}: assigned to {tk.get('assignee_name') or 'nobody'}"
+                + (f" (was {prev.get('assignee_name')})" if prev.get("assignee_name") else ""), task_id=tid)
+        if (tk.get("start"), tk.get("end")) != (prev.get("start"), prev.get("end")):
+            log(pid, "schedule", f"{tk['title']}: {prev.get('start')} → {prev.get('end')} moved to "
+                f"{tk.get('start')} → {tk.get('end')}", task_id=tid)
+        if tk.get("title") != prev.get("title"):
+            log(pid, "task", f"Task renamed: {prev.get('title')} → {tk['title']}", task_id=tid)
+    for tid, (stage, tk) in before.items():
+        if tid not in after:
+            log(pid, "task", f"Task deleted: {tk['title']} ({stage['name']})", task_id=tid)
+    old_stages = {s["id"]: s for s in old.get("stages", [])}
+    new_ids = set()
+    for s in new.get("stages", []):
+        new_ids.add(s["id"])
+        was = old_stages.get(s["id"])
+        if not was:
+            log(pid, "stage", f"Stage added: {s['name']} ({s.get('start')} → {s.get('end')})", stage_id=s["id"])
+            continue
+        if s.get("status") != was.get("status") and s.get("status") in ("done", "on_hold") \
+                or was.get("status") == "on_hold" and s.get("status") != "on_hold":
+            log(pid, "stage", f"{s['name']}: {was.get('status', '').replace('_', ' ')} → {s.get('status', '').replace('_', ' ')}",
+                stage_id=s["id"])
+        if s.get("name") != was.get("name"):
+            log(pid, "stage", f"Stage renamed: {was.get('name')} → {s['name']}", stage_id=s["id"])
+    for sid, s in old_stages.items():
+        if sid not in new_ids:
+            log(pid, "stage", f"Stage deleted: {s['name']}", stage_id=sid)
+    old_ms = _milestones(old)
+    for mid, (stage, ms) in _milestones(new).items():
+        was = old_ms.get(mid, (None, None))[1]
+        if was is None:
+            if old.get("stages"):  # not when the project is created
+                log(pid, "milestone", f"Milestone added: {ms['name']} (due {ms.get('due')})", milestone_id=mid)
+        elif ms["status"] != was["status"]:
+            log(pid, "milestone", f"{ms['name']}: {'achieved' if ms['status'] == 'achieved' else 'reopened'}"
+                + (f" — owner override: {ms['override_reason']}" if ms["status"] == "achieved" and ms.get("override_reason") else ""),
+                milestone_id=mid)
+        elif ms.get("due") != was.get("due"):
+            log(pid, "schedule", f"{ms['name']}: due {was.get('due')} → {ms.get('due')}", milestone_id=mid)

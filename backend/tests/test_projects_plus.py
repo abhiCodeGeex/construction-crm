@@ -182,6 +182,8 @@ try:
     check("stage complete told only once", len(bell("pm", event="stage_done", project_id=pid)) == 1)
 
     ms = st["milestones"][0]
+    for c in st["checklist"]:  # B+2: the stage closes once its closing checklist is ticked
+        call("PUT", f"/projects/{pid}/stages/{st['id']}/checklist/{c['id']}", {"done": True}, T["owner"])
     expect("milestone achieved", call("PUT", f"/projects/{pid}/milestones/{ms['id']}", {"status": "achieved"}, T["owner"]), 200)
     check("milestone achieved: managers told", len(bell("pm", event="milestone_achieved", project_id=pid)) == 1)
 

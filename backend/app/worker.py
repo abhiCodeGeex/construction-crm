@@ -229,8 +229,35 @@ def check_compliance(now):
                                 f"({'today' if left == 0 else f'in {left} day(s)'})", url, key=f"{key}:{mark}")
 
 
+def check_meetings(now):
+    """Staff attendees: a reminder in the 2 hours before a planned meeting."""
+    for m in db.project_meetings.find({"company_id": g.cid, "status": "planned", "at": {"$gt": now, "$lte": now + timedelta(hours=2)}}):
+        p = db.projects.find_one({"_id": oid(m["project_id"])}, {"name": 1})
+        if not p:
+            continue
+        notify.send("meeting_reminder", [s["user_id"] for s in m.get("staff", [])],
+                    f"{m['title']} ({p['name']}) at {m['at'].strftime('%H:%M')}" + (f", {m['place']}" if m.get("place") else ""),
+                    f"/app/projects/{m['project_id']}", project_id=m["project_id"], key=f"meet-2h:{m['_id']}:{m['at'].isoformat()}")
+
+
+def check_health(now):
+    """When a running project's health turns red, its managers and the Owners are told (once per turn to red)."""
+    from .services.project_health import health
+    for p in db.projects.find({"company_id": g.cid, "status": {"$in": ["planning", "active"]}}):
+        h = health(p, now.date().isoformat())
+        if h["grade"] == p.get("health_grade"):
+            continue
+        db.projects.update_one({"_id": p["_id"]}, {"$set": {"health_grade": h["grade"], "health_since": now}})
+        if h["grade"] == "red":
+            worst = sorted(h["parts"], key=lambda x: x["points"] - x["max"])[:2]
+            notify.send("project_at_risk", project_events.managers(p) + project_events.owners(),
+                        f"{p['name']} is off track (health {h['score']}/100): " + "; ".join(x["why"] for x in worst),
+                        project_events.link(p), project_id=str(p["_id"]), key=f"risk:{p['_id']}:{now.date().isoformat()}",
+                        level="warn")
+
+
 CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
-          check_compliance]
+          check_compliance, check_meetings, check_health]
 
 
 def run_once(now=None):

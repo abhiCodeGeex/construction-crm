@@ -10,7 +10,7 @@ from .. import tenancy as t
 from ..config import Config
 from ..db import db, serialize
 from ..security import api, auth_required, AREAS, ROLE_PERMS, ROLE_LABELS, INTERNAL_ROLES, effective_perms
-from ..services.defaults import SERVICES, TEMPLATE_PRESETS, template_stages
+from ..services.defaults import SERVICES, TEMPLATE_PRESETS, template_stages, gate_defaults
 from ..services.subscription import limits, usage
 
 bp = Blueprint("admin", __name__)
@@ -35,7 +35,15 @@ def clean_template(dat, existing=None):
             abort(400, "Every stage needs a name")
         if not isinstance(days, int) or not 1 <= days <= 3650:
             abort(400, f"{n}: duration must be 1-3650 days")
-        clean.append({"name": n, "duration_days": days})
+        default = gate_defaults(service)
+        checklist = s.get("checklist", default["checklist"])
+        if not isinstance(checklist, list) or len(checklist) > 20:
+            abort(400, f"{n}: the closing checklist is a list of at most 20 items")
+        checklist = [str(x).strip()[:200] for x in checklist if str(x).strip()]
+        if len({x.lower() for x in checklist}) != len(checklist):
+            abort(400, f"{n}: checklist items must be different")
+        clean.append({"name": n, "duration_days": days, "checklist": checklist,
+                      "client_signoff": bool(s.get("client_signoff", default["client_signoff"]))})
     if len({s["name"].lower() for s in clean}) != len(clean):
         abort(400, "Stage names must be unique within a template")
     return {"name": name, "service": service, "stages": clean}
@@ -61,7 +69,7 @@ def create_template():
     dat = request.get_json(force=True) or {}
     if dat.get("preset"):
         preset = TEMPLATE_PRESETS.get(dat["preset"]) or abort(400, "Unknown preset")
-        dat = {"name": preset["name"], "service": preset["service"], "stages": template_stages(preset["stages"])}
+        dat = {"name": preset["name"], "service": preset["service"], "stages": template_stages(preset["stages"], preset["service"])}
     doc = clean_template(dat)
     if t.find("stage_templates", {"name": doc["name"], "service": doc["service"]}):
         abort(409, f"A {doc['service']} template called {doc['name']} already exists")

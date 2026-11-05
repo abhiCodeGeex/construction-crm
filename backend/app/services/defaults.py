@@ -77,8 +77,15 @@ COMPLIANCE_TYPES = ["insurance", "licence", "certificate", "other"]
 DESIGN_SERVICES = ("architecture", "interior")
 
 
-def template_stages(names):
-    return [{"name": n, "duration_days": DEFAULT_STAGE_DAYS} for n in names]
+def template_stages(names, service=None):
+    """Template stages from plain names; each gets the service's default closing checklist and sign-off rule."""
+    gate = gate_defaults(service)
+    return [{"name": n, "duration_days": DEFAULT_STAGE_DAYS, **gate} for n in names]
+
+
+def gate_defaults(service):
+    g_ = STAGE_GATE_DEFAULTS.get(service) or {"checklist": [], "client_signoff": False}
+    return {"checklist": list(g_["checklist"]), "client_signoff": g_["client_signoff"]}
 
 # ---------------- Phase C ----------------
 LOSS_REASONS = ["Price too high", "Chose a competitor", "Project postponed or cancelled", "No response from client",
@@ -239,3 +246,49 @@ TEMPLATE_TEXT = {
                           "products selected for each room.",
                  "terms": "Products are ordered after your approval and deposit. Lead times are as advised by the suppliers."},
 }
+
+# ---------------- Phase B+ (projects in depth) ----------------
+# what must be true before a stage can be closed (its "<stage> complete" milestone achieved); editable per
+# template stage in Settings -> Stage templates and per stage on the project
+STAGE_GATE_DEFAULTS = {
+    "architecture": {"checklist": ["Drawings issued to the client", "Client comments addressed"], "client_signoff": True},
+    "construction": {"checklist": ["Quality inspection passed", "Site photos uploaded", "Snags for this stage closed"],
+                     "client_signoff": False},
+    "interior": {"checklist": ["Items installed as per the selection", "Client walkthrough done",
+                               "Snags for this stage closed"], "client_signoff": True},
+}
+SIGNOFF_METHODS = ["In person", "Email", "WhatsApp", "Phone", "Signed document"]
+TASK_PRIORITIES = ["low", "normal", "high", "urgent"]
+
+# why a planned date moved later (required once a baseline is set); `party` = who caused it (waiting-on-whom)
+DELAY_REASONS = {
+    "client_change": ("Client changed something", "client"),
+    "client_decision": ("Waiting for a client decision", "client"),
+    "client_payment": ("Client payment late", "client"),
+    "authority": ("Authority approval pending", "authority"),
+    "consultant": ("Consultant drawings / input late", "consultant"),
+    "material": ("Material not delivered", "vendor"),
+    "subcontractor": ("Subcontractor delay", "subcontractor"),
+    "labour": ("Labour shortage", "us"),
+    "planning": ("Our planning or estimate", "us"),
+    "rework": ("Rework / quality issue", "us"),
+    "weather": ("Weather", "none"),
+    "site": ("Site condition found", "none"),
+    "other": ("Other", "other"),
+}
+# who a blocked task or open item is waiting on
+WAITING_PARTIES = {"client": "Client", "consultant": "Architect / consultant", "vendor": "Vendor / supplier",
+                   "subcontractor": "Subcontractor", "authority": "Authority / inspector", "us": "Our team"}
+LINK_TYPES = {"FS": "Finish → start", "SS": "Start → start", "FF": "Finish → finish"}
+WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+DEFAULT_WORKING_DAYS = [0, 1, 2, 3, 4, 5]  # Monday-Saturday (common on Indian sites); editable in Settings
+
+NOTIFY_EVENTS.update({
+    "mentioned": ("You were mentioned in a comment", True),
+    "task_comment": ("New comment on your task", False),
+    "meeting_scheduled": ("Meeting scheduled", False),
+    "meeting_reminder": ("Meeting in 2 hours", False),
+    "meeting_minutes": ("Meeting minutes published", False),
+    "project_at_risk": ("Project health turned red", False),
+    "signoff_recorded": ("Client sign-off recorded", False),
+})

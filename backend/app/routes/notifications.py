@@ -36,7 +36,8 @@ def read_all():
     return jsonify({"ok": True})
 
 
-PROJECT_EVENTS = {"project_pm", "project_added", "task_assigned", "task_due", "task_overdue", "task_blocked",
+PROJECT_EVENTS = {"project_pm", "project_added", "task_assigned", "task_due", "task_overdue", "task_blocked", "mentioned",
+                  "task_comment", "meeting_scheduled", "meeting_reminder", "meeting_minutes", "project_at_risk", "signoff_recorded",
                   "stage_done", "milestone_achieved", "milestone_late", "issue_raised"}
 
 

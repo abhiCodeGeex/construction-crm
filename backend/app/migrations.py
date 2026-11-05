@@ -128,6 +128,49 @@ def m009_projects_plus():
     db.password_resets.create_index("expires_at", expireAfterSeconds=0)  # Mongo removes used-up links itself
 
 
+def m010_stage_gates():
+    """B+2: every stage closes through its '<stage> complete' milestone (the gate) with a closing checklist and,
+    where the service needs it, the client's sign-off. Template stages get the service defaults; open stages of
+    existing projects get them too (stages already done keep an empty checklist and need no sign-off)."""
+    from .services.defaults import gate_defaults
+    from .tenancy import sid
+    for tpl in db.stage_templates.find({}):
+        gate = gate_defaults(tpl.get("service"))
+        stages = [{**gate, **s} if isinstance(s, dict) else s for s in tpl.get("stages", [])]
+        db.stage_templates.update_one({"_id": tpl["_id"]}, {"$set": {"stages": stages}})
+    for p in db.projects.find({}):
+        changed = False
+        for s in p.get("stages", []):
+            if "checklist" not in s:
+                done = s.get("status") == "done"
+                gate = gate_defaults(s.get("service"))
+                s["checklist"] = [] if done else [{"id": sid(), "text": x, "done": False,
+                                                    "done_by": None, "done_at": None} for x in gate["checklist"]]
+                s["client_signoff_required"] = False if done else gate["client_signoff"]
+                s.setdefault("signoff", None)
+                changed = True
+            gm = next((m for m in s.get("milestones", []) if m.get("name") == f"{s['name']} complete"), None)
+            if gm and not gm.get("gate"):
+                gm["gate"] = True
+                changed = True
+            for tk in s.get("tasks", []):
+                for k, v in (("priority", "normal"), ("checklist", []), ("files", [])):
+                    if k not in tk:
+                        tk[k] = v
+                        changed = True
+        if changed:
+            db.projects.update_one({"_id": p["_id"]}, {"$set": {"stages": p["stages"]}})
+    db.project_comments.create_index([("company_id", 1), ("project_id", 1), ("task_id", 1)])
+    db.project_activity.create_index([("company_id", 1), ("project_id", 1), ("at", -1)])
+
+
+def m011_plan_meetings():
+    """B+3 / B+4: indexes for delays and meetings."""
+    db.project_delays.create_index([("company_id", 1), ("project_id", 1), ("at", -1)])
+    db.project_meetings.create_index([("company_id", 1), ("project_id", 1), ("at", -1)])
+    db.project_meetings.create_index([("company_id", 1), ("status", 1), ("at", 1)])
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -138,6 +181,8 @@ MIGRATIONS = [
     ("007_leads_deep", m007_leads_deep),
     ("008_phase_d", m008_phase_d),
     ("009_projects_plus", m009_projects_plus),
+    ("010_stage_gates", m010_stage_gates),
+    ("011_plan_meetings", m011_plan_meetings),
 ]
 
 

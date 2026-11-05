@@ -9,7 +9,9 @@ from .. import tenancy as t
 from ..db import db, oid, serialize
 from ..security import api, portal, can
 from ..services.defaults import (SERVICES, PROJECT_ROLES, PROJECT_STATUSES, PROJECT_TYPES, TASK_STATUSES,
-                                 DESIGN_SERVICES, DEFAULT_STAGE_DAYS)
+                                 DESIGN_SERVICES, DEFAULT_STAGE_DAYS, TASK_PRIORITIES, gate_defaults, LINK_TYPES,
+                                 DELAY_REASONS, WAITING_PARTIES)
+from ..services import workdays
 from ..services import project_events
 from ..services.subscription import check_project_limit
 
@@ -127,12 +129,13 @@ def normalize(p):
     """Derived values, recomputed on every write so they never drift:
     stage window grows to contain its tasks; stage progress = done tasks / tasks; stage status follows progress."""
     tasks = all_tasks(p)
+    cal = workdays.calendar()
     for s in p.get("stages", []):
         ts = s.get("tasks", [])
         for tk in ts:
-            tk["depends_on"] = [x for x in (tk.get("depends_on") or []) if x in tasks and x != tk["id"]]
-            ends = [tasks[x][1].get("end") for x in tk["depends_on"] if tasks[x][1].get("end")]
-            tk["conflict"] = bool(tk.get("start") and ends and tk["start"] <= max(ends))
+            tk["links"] = links_of(tk, tasks)
+            tk["depends_on"] = [ln["task_id"] for ln in tk["links"]]
+            tk["conflict"] = any(link_conflict(tk, tasks[ln["task_id"]][1], ln, cal) for ln in tk["links"])
             tk["progress"] = 100 if tk["status"] == "done" else tk.get("progress", 0)
         starts = [x for x in [s.get("start")] + [tk.get("start") for tk in ts] if x]
         ends = [x for x in [s.get("end")] + [tk.get("end") for tk in ts] if x]
@@ -144,6 +147,29 @@ def normalize(p):
             s["status"] = "done" if s.get("progress") == 100 else "in_progress" if s.get("progress", 0) > 0 or \
                 any(tk["status"] in ("in_progress", "done") for tk in ts) else "not_started"
     return p
+
+
+def links_of(tk, tasks):
+    """Task links {task_id, type FS|SS|FF, lag working days}. Tasks saved before B+3 only had depends_on (FS)."""
+    raw = tk.get("links")
+    if raw is None:
+        raw = [{"task_id": x, "type": "FS", "lag": 0} for x in (tk.get("depends_on") or [])]
+    out, seen = [], set()
+    for ln in raw:
+        if ln.get("task_id") in tasks and ln["task_id"] != tk["id"] and ln["task_id"] not in seen:
+            seen.add(ln["task_id"])
+            out.append({"task_id": ln["task_id"], "type": ln.get("type") or "FS", "lag": int(ln.get("lag") or 0)})
+    return out
+
+
+def link_conflict(tk, pred, ln, cal):
+    """True when the dates break the link: FS start must be after pred end (+lag), SS start on/after pred start
+    (+lag), FF end on/after pred end (+lag). Lags are working days."""
+    if ln["type"] == "SS":
+        return bool(tk.get("start") and pred.get("start") and tk["start"] < workdays.add_working(pred["start"], ln["lag"], cal))
+    if ln["type"] == "FF":
+        return bool(tk.get("end") and pred.get("end") and tk["end"] < workdays.add_working(pred["end"], ln["lag"], cal))
+    return bool(tk.get("start") and pred.get("end") and tk["start"] <= workdays.add_working(pred["end"], ln["lag"], cal))
 
 
 def project_progress(p):
@@ -174,10 +200,39 @@ def present(p, full=True):
     data["my_access"] = "edit" if can_edit(p) else "view"
     data["my_project_role"] = m.get("project_role") if m else None
     data["can_edit_design"] = any(can_edit_stage(p, s) for s in p.get("stages", []))
+    if full:
+        counts = {r["_id"]: r["n"] for r in db.project_comments.aggregate([
+            {"$match": {"company_id": g.cid, "project_id": str(p["_id"])}}, {"$group": {"_id": "$task_id", "n": {"$sum": 1}}}])}
+        bl = baseline(p)
+        data["baseline"] = {k: bl[k] for k in ("id", "at", "by", "note", "project_end")} if bl else None
+        if bl:
+            data["baseline"]["slip_days"] = workdays.shift(bl.get("project_end"), p.get("planned_end"))
+        for s in data.get("stages", []):
+            if bl and s["id"] in bl["stages"]:
+                b = bl["stages"][s["id"]]
+                s["baseline"] = {**b, "slip_days": workdays.shift(b["end"], s.get("end"))}
+            for tk in s.get("tasks", []):
+                if bl and tk["id"] in bl["tasks"]:
+                    b = bl["tasks"][tk["id"]]
+                    tk["baseline"] = {**b, "slip_days": workdays.shift(b["end"], tk.get("end"))}
+            gm = next((m for m in s.get("milestones", []) if m.get("gate")), None)
+            s.setdefault("checklist", [])
+            s["gate"] = {"milestone_id": gm and gm["id"], "closed": bool(gm and gm["status"] == "achieved"),
+                         "missing": gate_missing(p, s) if gm and gm["status"] != "achieved" else []}
+            for tk in s.get("tasks", []):
+                tk["comment_count"] = counts.get(tk["id"], 0)
+                tk.setdefault("priority", "normal")
+                tk.setdefault("checklist", [])
+                tk.setdefault("files", [])
     if g.hide_costs:
         data.pop("budget_total", None)
         data.pop("value", None)
     if not full:
+        if p.get("status") in ("planning", "active", "on_hold"):
+            from ..services.project_health import health
+            h = health(p)
+            data["health"] = {"score": h["score"], "grade": h["grade"], "label": h["label"],
+                              "late_days": h["forecast"]["late_days"]}
         data.pop("stages", None)
         data["stage_count"] = len(p.get("stages", []))
         data["late"] = any(s.get("status") != "done" and s.get("end") and s["end"] < date.today().isoformat()
@@ -194,12 +249,44 @@ def build_stages(services, start):
         for st in (tpl or {}).get("stages", []):
             dur = int(st.get("duration_days") or DEFAULT_STAGE_DAYS)
             end = add_days(cursor, dur - 1)
+            gate = gate_defaults(service)
             stages.append({"id": t.sid(), "name": st["name"], "service": service, "start": cursor, "end": end,
                            "status": "not_started", "progress": 0, "budget": 0, "tasks": [],
-                           "milestones": [{"id": t.sid(), "name": f"{st['name']} complete", "due": end,
-                                           "status": "pending", "achieved_at": None}]})
+                           "checklist": checklist_items(st.get("checklist", gate["checklist"])),
+                           "client_signoff_required": bool(st.get("client_signoff", gate["client_signoff"])), "signoff": None,
+                           "milestones": [gate_milestone(st["name"], end)]})
             cursor = add_days(end, 1)
     return stages
+
+
+def checklist_items(texts):
+    return [{"id": t.sid(), "text": x, "done": False, "done_by": None, "done_at": None} for x in texts]
+
+
+def gate_milestone(stage_name, due):
+    """Each stage's '<stage> complete' milestone is its gate: achieving it closes the stage (B+2 rules)."""
+    return {"id": t.sid(), "name": f"{stage_name} complete", "due": due, "status": "pending", "achieved_at": None,
+            "gate": True}
+
+
+def gate_missing(p, s):
+    """What is still open before this stage can be closed. Empty list = ready."""
+    out = []
+    open_tasks = [tk["title"] for tk in s.get("tasks", []) if tk["status"] != "done"]
+    if open_tasks:
+        out.append(f"{len(open_tasks)} task(s) not done: {', '.join(open_tasks[:3])}{'…' if len(open_tasks) > 3 else ''}")
+    if not s.get("tasks") and s.get("progress", 0) < 100:
+        out.append(f"Progress is {s.get('progress', 0)}% (no tasks: set it to 100%)")
+    items = [c["text"] for c in s.get("checklist", []) if not c["done"]]
+    if items:
+        out.append("Checklist not ticked: " + ", ".join(items))
+    if s.get("client_signoff_required") and not s.get("signoff"):
+        out.append("Client sign-off not recorded")
+    high = db.project_issues.count_documents({"company_id": g.cid, "project_id": str(p["_id"]), "stage_id": s["id"],
+                                             "status": "open", "severity": "high"})
+    if high:
+        out.append(f"{high} high-severity issue(s) open on this stage")
+    return out
 
 
 def staff_name(uid):
@@ -376,7 +463,15 @@ def update_project(_id):
         p["stages"] = p.get("stages", []) + build_stages(added, p.get("start") or date.today().isoformat())
         normalize(p)
         changes["stages"] = p["stages"]
-    return jsonify(present(t.update("projects", _id, changes)))
+    saved = t.update("projects", _id, changes)
+    labels = {"name": "name", "status": "status", "client_id": "client", "start": "start date", "target_end": "target end",
+              "value": "value", "site": "site address", "services": "services", "branch": "branch", "area": "area",
+              "description": "description", "project_type": "type", "referred_by": "referred by"}
+    diff = [labels[k] for k in changes if k in labels and changes[k] != p.get(k)]
+    if diff:
+        extra = f" ({p.get('status')} → {changes['status']})" if "status" in changes and changes["status"] != p.get("status") else ""
+        project_events.log(_id, "edit", "Project details changed: " + ", ".join(diff) + extra)
+    return jsonify(present(saved))
 
 
 @bp.delete("/projects/<_id>")
@@ -388,6 +483,8 @@ def delete_project(_id):
     t.delete("projects", _id)
     db.project_issues.delete_many({"company_id": g.cid, "project_id": _id})
     db.notifications.delete_many({"company_id": g.cid, "project_id": _id})  # no bell entry may point at it
+    for coll in ("project_comments", "project_activity", "project_meetings", "project_delays"):
+        db[coll].delete_many({"company_id": g.cid, "project_id": _id})
     # nothing may keep pointing at the deleted project: follow-ups close, the won lead and bid keep their result
     db.followups.update_many({"company_id": g.cid, "related.type": "project", "related.id": _id, "status": "open"},
                              {"$set": {"status": "cancelled", "outcome": "Project deleted"}})
@@ -460,6 +557,7 @@ def update_member(_id, mid):
         if m.get("user_id") == g.uid and dat["access"] == "view" and g.role != "owner":
             abort(409, "You cannot remove your own edit access")
         m["access"] = dat["access"]
+    project_events.log(_id, "team", f"{m['name']}: now {m['project_role']} ({m['access']} access)")
     return jsonify(present(t.update("projects", _id, {"team": p["team"]})))
 
 
@@ -479,6 +577,7 @@ def remove_member(_id, mid):
             for tk in s.get("tasks", []):
                 if tk.get("assignee_id") == m["user_id"]:
                     tk["assignee_id"], tk["assignee_name"] = None, None
+    project_events.log(_id, "team", f"{m['name']} removed from the team ({m['project_role']})")
     return jsonify(present(t.update("projects", _id, {"team": team, "stages": p.get("stages", [])})))
 
 
@@ -507,6 +606,8 @@ def clean_stage(dat, p, stage=None):
         if dat["status"] not in ("on_hold", "active"):
             abort(400, "Stage status is calculated from tasks; you can only put it on hold or resume it")
         out["status"] = "on_hold" if dat["status"] == "on_hold" else "not_started"
+    if "client_signoff_required" in dat:
+        out["client_signoff_required"] = bool(dat["client_signoff_required"])
     if "progress" in dat:
         if stage and stage.get("tasks"):
             abort(400, "Progress is calculated from this stage's tasks")
@@ -523,11 +624,16 @@ def add_stage(_id):
     p = load(_id)
     dat = request.get_json(force=True) or {}
     stage = {"id": t.sid(), "status": "not_started", "progress": 0, "budget": 0, "tasks": [], "milestones": [],
-             **clean_stage(dat, p)}
+             "signoff": None, **clean_stage(dat, p)}
     require_edit(p, stage)
+    gate = gate_defaults(stage["service"])
+    checklist = dat.get("checklist", gate["checklist"]) or []
+    if not isinstance(checklist, list):
+        abort(400, "The closing checklist is a list of items")
+    stage["checklist"] = checklist_items([str(x).strip()[:200] for x in checklist if str(x).strip()])
+    stage.setdefault("client_signoff_required", gate["client_signoff"])
     if dat.get("milestone", True):
-        stage["milestones"].append({"id": t.sid(), "name": f"{stage['name']} complete", "due": stage["end"],
-                                    "status": "pending", "achieved_at": None})
+        stage["milestones"].append(gate_milestone(stage["name"], stage["end"]))
     p["stages"].append(stage)
     return jsonify(present(save_stages(_id, p))), 201
 
@@ -541,7 +647,10 @@ def update_stage(_id, sid):
     dat = request.get_json(force=True) or {}
     if "service" in dat and dat["service"] != stage["service"]:
         abort(400, "A stage cannot move to another service")
+    old_end = stage.get("end")
     stage.update(clean_stage(dat, p, stage))
+    delay = require_delay_reason(p, "stage", stage, old_end, stage.get("end"), dat)
+    record_delay(delay)
     return jsonify(present(save_stages(_id, p)))
 
 
@@ -594,14 +703,28 @@ def clean_task(dat, p, task=None):
             out["assignee_name"] = staff_name(dat["assignee_id"])["name"]
         else:
             out["assignee_id"], out["assignee_name"] = None, None
-    if "depends_on" in dat:
-        deps = list(dict.fromkeys(dat.get("depends_on") or []))
+    if "links" in dat or "depends_on" in dat:
+        raw = dat.get("links")
+        if raw is None:
+            raw = [{"task_id": x, "type": "FS", "lag": 0} for x in (dat.get("depends_on") or [])]
         known = all_tasks(p)
-        if any(x not in known for x in deps):
-            abort(400, "Dependency refers to a task that does not exist on this project")
-        if task and task["id"] in deps:
-            abort(400, "A task cannot depend on itself")
-        out["depends_on"] = deps
+        links, seen = [], set()
+        for ln in raw:
+            tid = ln.get("task_id")
+            if tid not in known:
+                abort(400, "Dependency refers to a task that does not exist on this project")
+            if task and tid == task["id"]:
+                abort(400, "A task cannot depend on itself")
+            if (ln.get("type") or "FS") not in LINK_TYPES:
+                abort(400, "Link type must be FS (finish → start), SS (start → start) or FF (finish → finish)")
+            lag = ln.get("lag") or 0
+            if not isinstance(lag, int) or not -60 <= lag <= 365:
+                abort(400, "Lag is a whole number of working days (-60 to 365)")
+            if tid not in seen:
+                seen.add(tid)
+                links.append({"task_id": tid, "type": ln.get("type") or "FS", "lag": lag})
+        out["links"] = links
+        out["depends_on"] = [ln["task_id"] for ln in links]
     if "status" in dat:
         if dat["status"] not in TASK_STATUSES:
             abort(400, "Invalid task status")
@@ -613,16 +736,96 @@ def clean_task(dat, p, task=None):
         out["progress"] = int(v)
     if "notes" in dat:
         out["notes"] = dat["notes"]
+    if "waiting_on" in dat:
+        w = dat.get("waiting_on") or None
+        if w:
+            if w.get("party") not in WAITING_PARTIES:
+                abort(400, f"Waiting on must be one of: {', '.join(WAITING_PARTIES.values())}")
+            out["waiting_on"] = {"party": w["party"], "contact_id": w.get("contact_id") or None,
+                                 "note": (w.get("note") or "").strip()[:300] or None,
+                                 "since": ((task or {}).get("waiting_on") or {}).get("since") or date.today().isoformat()}
+            if w.get("contact_id"):
+                out["waiting_on"]["contact_name"] = contact_doc(w["contact_id"])["name"]
+        else:
+            out["waiting_on"] = None
+    if "priority" in dat:
+        if dat["priority"] not in TASK_PRIORITIES:
+            abort(400, "Priority must be low, normal, high or urgent")
+        out["priority"] = dat["priority"]
     return out
 
 
+def check_checklist(task):
+    """A task with a checklist is done only when every item is ticked."""
+    if task["status"] == "done":
+        left = [c["text"] for c in task.get("checklist", []) if not c["done"]]
+        if left:
+            abort(409, f"Tick the checklist first ({len(left)} open: {', '.join(left[:3])})")
+
+
 def check_predecessors(p, task):
-    """Finish-to-start: a task cannot start until every task it depends on is done."""
-    if task["status"] in ("in_progress", "done"):
-        tasks = all_tasks(p)
-        waiting = [tasks[x][1]["title"] for x in task.get("depends_on", []) if tasks[x][1]["status"] != "done"]
-        if waiting:
-            abort(409, f"Waiting on: {', '.join(waiting)}")
+    """FS: cannot start until the other task is done. SS: cannot start until the other task has started.
+    FF: cannot be done until the other task is done."""
+    if task["status"] not in ("in_progress", "done"):
+        return
+    tasks = all_tasks(p)
+    waiting = []
+    for ln in links_of(task, tasks):
+        other = tasks[ln["task_id"]][1]
+        if ln["type"] == "FS" and other["status"] != "done":
+            waiting.append(f"{other['title']} to finish")
+        elif ln["type"] == "SS" and other["status"] not in ("in_progress", "done"):
+            waiting.append(f"{other['title']} to start")
+        elif ln["type"] == "FF" and task["status"] == "done" and other["status"] != "done":
+            waiting.append(f"{other['title']} to finish first")
+    if waiting:
+        abort(409, f"Waiting on: {', '.join(waiting)}")
+
+
+def baseline(p):
+    return (p.get("baselines") or [None])[-1]
+
+
+def require_delay_reason(p, kind, item, old_end, new_end, dat):
+    """Once a baseline is set, a date moved later needs a reason; it is kept as a delay (who caused it)."""
+    if not (baseline(p) and old_end and new_end and new_end > old_end):
+        return None
+    reason = dat.get("delay_reason")
+    if reason not in DELAY_REASONS:
+        abort(409, f"{item.get('title') or item.get('name')} moves {old_end} → {new_end}: choose why "
+                   f"(delay reason), because the plan has a baseline")
+    return {"project_id": str(p["_id"]), "kind": kind, "item_id": item["id"], "title": item.get("title") or item.get("name"),
+            "from": old_end, "to": new_end, "days": workdays.shift(old_end, new_end), "reason": reason,
+            "reason_label": DELAY_REASONS[reason][0], "party": DELAY_REASONS[reason][1],
+            "note": (dat.get("delay_note") or "").strip()[:300] or None}
+
+
+def record_delay(row):
+    if row:
+        doc = {**row, "company_id": g.cid, "by": g.user.get("name"), "by_id": g.uid, "at": t.now()}
+        db.project_delays.insert_one(doc)
+        project_events.log(row["project_id"], "delay", f"Delay: {row['title']} {row['from']} → {row['to']} "
+                           f"(+{row['days']} working days) — {row['reason_label']}" + (f": {row['note']}" if row["note"] else ""),
+                           item_id=row["item_id"])
+
+
+def shift_dependents(p, task, delta):
+    """Move every task that depends on this one (and theirs, and so on) by the same number of working days."""
+    if not delta:
+        return []
+    cal = workdays.calendar()
+    tasks = all_tasks(p)
+    moved, queue = [], [task["id"]]
+    while queue:
+        cur = queue.pop(0)
+        for tid, (_, tk) in tasks.items():
+            if tid in moved or tid == task["id"] or cur not in (tk.get("depends_on") or []):
+                continue
+            tk["start"] = workdays.add_working(tk["start"], delta, cal) if tk.get("start") else tk.get("start")
+            tk["end"] = workdays.add_working(tk["end"], delta, cal) if tk.get("end") else tk.get("end")
+            moved.append(tid)
+            queue.append(tid)
+    return [tasks[x][1]["title"] for x in moved]
 
 
 @bp.post("/projects/<_id>/stages/<sid>/tasks")
@@ -632,7 +835,7 @@ def add_task(_id, sid):
     stage = find_stage(p, sid)
     require_edit(p, stage)
     task = {"id": t.sid(), "status": "todo", "progress": 0, "depends_on": [], "assignee_id": None,
-            "assignee_name": None}
+            "assignee_name": None, "priority": "normal", "checklist": [], "files": []}
     task.update(clean_task(request.get_json(force=True) or {}, p))
     check_predecessors(p, task)
     stage.setdefault("tasks", []).append(task)
@@ -648,14 +851,29 @@ def update_task(_id, tid):
     dat = request.get_json(force=True) or {}
     if not can_edit_stage(p, stage):
         # assignees may update the status / progress / notes of their own task
-        if task.get("assignee_id") != g.uid or set(dat) - {"status", "progress", "notes"}:
+        if task.get("assignee_id") != g.uid or set(dat) - {"status", "progress", "notes", "waiting_on"}:
             abort(403, "You can only update the status of tasks assigned to you")
+    old_start, old_end = task.get("start"), task.get("end")
     task.update(clean_task(dat, p, task))
     if dat.get("status") == "done":
         task["progress"] = 100
+    if task["status"] == "blocked" and not task.get("waiting_on"):
+        task["waiting_on"] = {"party": "us", "contact_id": None, "note": task.get("notes"), "since": date.today().isoformat()}
+    if task["status"] != "blocked" and "status" in dat:
+        task["waiting_on"] = None  # unblocked: no longer waiting
+    delay = require_delay_reason(p, "task", task, old_end, task.get("end"), dat)
+    check_checklist(task)
     check_predecessors(p, task)
     _check_cycle(p)
-    return jsonify(present(save_stages(_id, p)))
+    moved = []
+    if dat.get("shift_dependents") and (task.get("start"), task.get("end")) != (old_start, old_end):
+        base = (old_start, task.get("start")) if task.get("start") != old_start else (old_end, task.get("end"))
+        moved = shift_dependents(p, task, workdays.shift(*base))
+    record_delay(delay)
+    saved = save_stages(_id, p)
+    if moved:
+        project_events.log(_id, "schedule", f"Moved with {task['title']}: {', '.join(moved)}", task_id=tid)
+    return jsonify(present(saved))
 
 
 @bp.delete("/projects/<_id>/tasks/<tid>")
@@ -665,6 +883,7 @@ def delete_task(_id, tid):
     stage, task = find_task(p, tid)
     require_edit(p, stage)
     stage["tasks"] = [x for x in stage["tasks"] if x["id"] != tid]
+    db.project_comments.delete_many({"company_id": g.cid, "project_id": _id, "task_id": tid})
     for s in p["stages"]:  # drop the deleted task from other tasks' dependencies
         for tk in s.get("tasks", []):
             tk["depends_on"] = [x for x in tk.get("depends_on", []) if x != tid]
@@ -713,7 +932,22 @@ def update_milestone(_id, mid):
     p = load(_id)
     stage, ms = find_ms(p, mid)
     require_edit(p, stage)
-    ms.update(clean_milestone(request.get_json(force=True) or {}, ms))
+    dat = request.get_json(force=True) or {}
+    closing = ms.get("gate") and dat.get("status") == "achieved" and ms["status"] != "achieved"
+    old_due = ms.get("due")
+    ms.update(clean_milestone(dat, ms))
+    record_delay(require_delay_reason(p, "milestone", ms, old_due, ms.get("due"), dat))
+    if closing:
+        missing = gate_missing(p, stage)
+        reason = (dat.get("override_reason") or "").strip()
+        if missing and not reason:
+            abort(409, f"{stage['name']} cannot be closed yet: " + "; ".join(missing))
+        if missing and g.role != "owner":
+            abort(403, "Only the Owner can close a stage that is not ready (with a reason)")
+        ms["override_reason"] = reason if missing else None
+        ms["closed_by"] = g.user.get("name")
+    elif dat.get("status") == "pending":
+        ms["override_reason"], ms["closed_by"] = None, None
     return jsonify(present(save_stages(_id, p)))
 
 
@@ -795,8 +1029,10 @@ def add_issue(_id):
         if not any(m.get("user_id") == dat["owner_id"] for m in p.get("team", [])):
             abort(400, "Issue owner must be on the project team")
         owner = staff_name(dat["owner_id"])["name"]
+    if dat.get("stage_id"):
+        find_stage(p, dat["stage_id"])
     doc = t.insert("project_issues", {
-        "project_id": _id, "title": dat["title"].strip(), "description": dat.get("description"),
+        "project_id": _id, "stage_id": dat.get("stage_id") or None, "title": dat["title"].strip(), "description": dat.get("description"),
         "severity": dat.get("severity", "medium"), "status": "open", "owner_id": dat.get("owner_id"),
         "owner_name": owner, "due": d(dat.get("due"), "Due date"), "raised_by": g.user.get("name")})
     project_events.issue_raised(p, doc)
@@ -826,6 +1062,15 @@ def update_issue(_id, iid):
         if dat["severity"] not in ISSUE_SEVERITIES:
             abort(400, "Severity must be low, medium or high")
         changes["severity"] = dat["severity"]
+    if "waiting_on" in dat:
+        w = dat.get("waiting_on") or None
+        if w and w.get("party") not in WAITING_PARTIES:
+            abort(400, f"Waiting on must be one of: {', '.join(WAITING_PARTIES.values())}")
+        changes["waiting_on"] = {"party": w["party"], "note": (w.get("note") or "").strip()[:300] or None,
+                                 "since": (issue.get("waiting_on") or {}).get("since") or date.today().isoformat()} if w else None
+    if changes.get("status") and changes["status"] != issue["status"]:
+        project_events.log(_id, "issue", f"Issue {'closed' if changes['status'] == 'closed' else 'reopened'}: {issue['title']}",
+                           issue_id=iid)
     return jsonify(serialize(t.update("project_issues", iid, changes)))
 
 
@@ -871,6 +1116,15 @@ def home():
                                          "end": tk.get("end"), "late": bool(tk.get("end") and tk["end"] < today)})
         data.update(projects=counts, my_tasks=sorted(my_tasks, key=lambda r: r["end"] or "9999")[:10],
                     milestones=next_milestones([p for p in projects if p.get("status") in OPEN_STATUSES], 8))
+        from ..services.project_health import health
+        risk = []
+        for p in projects:
+            if p.get("status") in ("planning", "active"):
+                h = health(p)
+                if h["grade"] != "green":
+                    risk.append({"id": str(p["_id"]), "name": p["name"], "score": h["score"], "grade": h["grade"],
+                                 "label": h["label"], "why": next((x["why"] for x in sorted(h["parts"], key=lambda x: x["points"] - x["max"])), "")})
+        data["projects_at_risk"] = sorted(risk, key=lambda r: r["score"])[:8]
     if can("followups"):
         mine = {"company_id": g.cid, "owner_id": g.uid, "status": "open"}
         data["followups"] = {"overdue": db.followups.count_documents({**mine, "due": {"$lt": today}}),
@@ -917,6 +1171,11 @@ def portal_project(_id):
                "status": s["status"], "progress": s.get("progress", 0),
                "milestones": [{"name": m["name"], "due": m["due"], "status": m["status"]} for m in s.get("milestones", [])]}
               for s in p.get("stages", [])]
+    waiting_on_you = []
+    if any(m.get("contact_id") == g.contact_id and m.get("project_role") == "Client" for m in p.get("team", [])):
+        from ..services.project_health import waiting
+        waiting_on_you = [{"title": r["title"], "since": r["since"], "days": r["days"], "note": r["note"]}
+                          for r in waiting(p)["rows"] if r["party"] == "client"]
     return jsonify({"id": _id, "code": p.get("code"), "name": p["name"], "status": p.get("status"),
                     "services": p.get("services"), "site": p.get("site"), "progress": project_progress(p),
-                    "planned_end": p.get("planned_end"), "team": team, "stages": stages})
+                    "planned_end": p.get("planned_end"), "team": team, "stages": stages, "waiting_on_you": waiting_on_you})
