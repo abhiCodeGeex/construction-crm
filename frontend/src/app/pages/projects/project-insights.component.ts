@@ -92,7 +92,7 @@ export class ProjectActivityComponent implements OnInit {
               <ng-template #title>Delays since the baseline</ng-template>
               @for (x of delays().by_party; track x.party) { <div class="ms-row"><span class="grow">{{ x.label }}</span><b>{{ x.days }} working day(s)</b></div> }
               <p-table [value]="delays().rows" size="small" styleClass="mt-xs">
-                <ng-template #body let-d><tr><td class="small">{{ d.title }}<br /><span class="muted">{{ d.from }} → {{ d.to }} · {{ d.reason_label }}{{ d.note ? ': ' + d.note : '' }}</span></td>
+                <ng-template #body let-d><tr><td class="small">{{ d.title }}<br /><span class="muted">{{ d.from | date: 'd MMM' }} → {{ d.to | date: 'd MMM y' }} · {{ d.reason_label }}{{ d.note ? ': ' + d.note : '' }}</span></td>
                   <td class="right small nowrap">+{{ d.days }} d</td></tr></ng-template>
               </p-table>
             </p-card>

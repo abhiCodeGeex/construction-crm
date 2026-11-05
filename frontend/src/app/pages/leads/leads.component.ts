@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CheckboxModule } from 'primeng/checkbox';
 import { CardModule } from 'primeng/card';
 import { DialogModule } from 'primeng/dialog';
@@ -26,7 +27,7 @@ import { WinLoseComponent } from './win-lose.component';
 
 @Component({
   selector: 'app-leads',
-  imports: [FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, DialogModule, DragDropModule, IconFieldModule, InputIconModule, InputNumberModule,
+  imports: [TooltipModule, FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, DialogModule, DragDropModule, IconFieldModule, InputIconModule, InputNumberModule,
     InputTextModule, MessageModule, SelectButtonModule, SelectModule, TableModule, TabsModule, TagModule, TextareaModule, WinLoseComponent],
   template: `
     <div class="page-head">
@@ -178,9 +179,9 @@ import { WinLoseComponent } from './win-lose.component';
                     <p-button label="Lost" icon="pi pi-times" severity="danger" size="small" [text]="true" (onClick)="wl().open('lost', b, meta(), true)" /> }
                   @if (b.status === 'won' && !b.project_id) {
                     <p-button label="Start project" icon="pi pi-building" severity="success" size="small" [text]="true" (onClick)="wl().open('won', b, meta(), true, contacts())" /> }
-                  @if (b.status !== 'won' && b.status !== 'lost') { <p-button icon="pi pi-pencil" [text]="true" [rounded]="true" (onClick)="openBid(b)" />
+                  @if (b.status !== 'won' && b.status !== 'lost') { <p-button icon="pi pi-pencil" [text]="true" [rounded]="true" (onClick)="openBid(b)" ariaLabel="Edit" pTooltip="Edit"/>
                     <p-button icon="pi pi-file-plus" [text]="true" [rounded]="true" ariaLabel="Add addendum" (onClick)="adf = { b, note: '' }; addDlg = true" /> }
-                  @else if (!(b.status === 'won' && b.project_id)) { <p-button icon="pi pi-trash" [text]="true" [rounded]="true" severity="danger" (onClick)="bf = b; deleteBid()" /> } }</td>
+                  @else if (!(b.status === 'won' && b.project_id)) { <p-button icon="pi pi-trash" [text]="true" [rounded]="true" severity="danger" (onClick)="bf = b; deleteBid()" ariaLabel="Delete" pTooltip="Delete"/> } }</td>
               </tr>
             </ng-template>
             <ng-template #emptymessage><tr><td colspan="6" class="center muted">No bids yet</td></tr></ng-template>
@@ -192,22 +193,23 @@ import { WinLoseComponent } from './win-lose.component';
     <!-- new lead -->
     <p-dialog header="New lead" [modal]="true" [(visible)]="leadDlg" [style]="{ width: '44rem' }" [breakpoints]="{ '760px': '96vw' }">
       <form class="stack" (ngSubmit)="create()">
-        <label class="field"><span>Lead title</span><input pInputText name="t" [(ngModel)]="f.title" placeholder="e.g. Sharma duplex – new build" fluid /></label>
-        <div class="field"><span>Enquirer</span>
+        <label class="field req"><span>Lead title</span><input pInputText name="t" [(ngModel)]="f.title" placeholder="e.g. Sharma duplex – new build" fluid /></label>
+        <div class="field req"><span>Enquirer</span>
           <p-selectbutton [allowEmpty]="false" name="ck" [options]="contactModes" [(ngModel)]="contactMode" optionLabel="label" optionValue="value" /></div>
         @if (contactMode === 'new') {
           <div class="grid3">
-            <input pInputText name="cn" [(ngModel)]="f.contact_name" placeholder="Name" fluid />
+            <input pInputText name="cn" [(ngModel)]="f.contact_name" placeholder="Name *" fluid />
             <input pInputText name="cp" [(ngModel)]="f.contact_phone" placeholder="Phone" fluid />
             <input pInputText name="ce" [(ngModel)]="f.contact_email" placeholder="Email" fluid />
           </div>
+          <small class="muted">A name and a phone number or an email are needed.</small>
           <label class="check"><p-checkbox name="cc" [(ngModel)]="f.contact_is_company" [binary]="true" /> The enquirer is a company (not a person)</label>
         } @else {
           <p-select name="cid" [options]="contacts()" [(ngModel)]="f.contact_id" optionLabel="name" optionValue="id" [filter]="true" placeholder="Choose contact" fluid appendTo="body" />
         }
         <div class="grid3">
-          <label class="field"><span>Service</span><p-select name="s" [options]="serviceOptions()" [(ngModel)]="f.service" optionLabel="label" optionValue="value" fluid appendTo="body" /></label>
-          <label class="field"><span>Source</span><p-select name="src" [options]="meta()?.sources ?? []" [(ngModel)]="f.source" fluid appendTo="body" /></label>
+          <label class="field req"><span>Service</span><p-select name="s" [options]="serviceOptions()" [(ngModel)]="f.service" optionLabel="label" optionValue="value" fluid appendTo="body" /></label>
+          <label class="field req"><span>Source</span><p-select name="src" [options]="meta()?.sources ?? []" [(ngModel)]="f.source" fluid appendTo="body" /></label>
           <label class="field"><span>Salesperson</span><p-select name="o" [options]="ownerChoices()" [(ngModel)]="f.owner_id" optionLabel="name" optionValue="id" fluid appendTo="body" /></label>
         </div>
         @if (f.source === 'Referral') {
@@ -241,17 +243,17 @@ import { WinLoseComponent } from './win-lose.component';
     </p-dialog>
 
     <!-- bid -->
-    <p-dialog [header]="bf.id ? 'Edit bid' : 'New bid'" [modal]="true" [(visible)]="bidDlg" [style]="{ width: '36rem' }">
+    <p-dialog [header]="bf.id ? 'Edit bid' : 'New bid'" [modal]="true" [(visible)]="bidDlg" [style]="{ width: '36rem' }" [breakpoints]="{ '640px': '96vw' }">
       <form class="stack" (ngSubmit)="saveBid()">
-        <label class="field"><span>Bid / tender</span><input pInputText name="t" [(ngModel)]="bf.title" fluid /></label>
+        <label class="field req"><span>Bid / tender</span><input pInputText name="t" [(ngModel)]="bf.title" fluid /></label>
         <div class="grid3">
           <label class="field"><span>Reference</span><input pInputText name="r" [(ngModel)]="bf.reference" fluid /></label>
-          <label class="field"><span>Due date</span><input pInputText type="date" name="d" [(ngModel)]="bf.due_date" fluid /></label>
+          <label class="field req"><span>Due date</span><input pInputText type="date" name="d" [(ngModel)]="bf.due_date" fluid /></label>
           <label class="field"><span>Value</span><p-inputnumber name="v" [(ngModel)]="bf.value" [min]="0" fluid /></label>
         </div>
         <div class="grid2">
           <label class="field"><span>Client</span><p-select name="c" [options]="contacts()" [(ngModel)]="bf.client_id" optionLabel="name" optionValue="id" [filter]="true" [showClear]="true" [disabled]="!!bf.lead_id" [placeholder]="bf.lead_id ? 'From the lead' : ''" fluid appendTo="body" /></label>
-          <label class="field"><span>Service</span><p-select name="s" [options]="serviceOptions()" [(ngModel)]="bf.service" optionLabel="label" optionValue="value" [showClear]="true" [disabled]="!!bf.lead_id" fluid appendTo="body" /></label>
+          <label class="field"><span>Service <small class="muted">(needed to record a win)</small></span><p-select name="s" [options]="serviceOptions()" [(ngModel)]="bf.service" optionLabel="label" optionValue="value" [showClear]="true" [disabled]="!!bf.lead_id" fluid appendTo="body" /></label>
         </div>
         <label class="field"><span>Linked lead <small class="muted">(optional — the bid takes its client and service, and the lead is won or lost with the bid)</small></span>
           <p-select name="ld" [options]="leadOptions()" [(ngModel)]="bf.lead_id" (onChange)="onLead()" optionLabel="title" optionValue="id" [filter]="true" [showClear]="true" placeholder="No lead" fluid appendTo="body" /></label>
@@ -275,7 +277,7 @@ import { WinLoseComponent } from './win-lose.component';
       </form>
     </p-dialog>
 
-    <p-dialog header="Tender addendum" [modal]="true" [(visible)]="addDlg" [style]="{ width: '28rem' }">
+    <p-dialog header="Tender addendum" [modal]="true" [(visible)]="addDlg" [style]="{ width: '28rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack">
         <label class="field"><span>What changed</span><input pInputText [(ngModel)]="adf.note" placeholder="e.g. revised BOQ, new due date" fluid /></label>
         <input type="file" (change)="adf.file = $any($event.target).files?.[0]" />
@@ -293,7 +295,8 @@ import { WinLoseComponent } from './win-lose.component';
           <p-message [severity]="r.failed ? 'warn' : 'success'" text="{{ r.dry_run ? 'Check' : 'Imported' }}: {{ r.ok }} ok, {{ r.failed }} with problems" />
           <p-table [value]="r.rows" size="small" [scrollable]="true" scrollHeight="40vh">
             <ng-template #body let-x><tr><td>Row {{ x.row }}</td><td>{{ x.title || '' }}</td><td [class.c-bad]="!x.ok">{{ x.ok ? (r.dry_run ? 'ready' : 'created' + (x.owner ? ' → ' + x.owner : '')) : x.error }}</td></tr></ng-template>
-          </p-table>
+            <ng-template #emptymessage><tr><td colspan="20" class="muted center small">The file has no rows to import.</td></tr></ng-template>
+      </p-table>
         }
         <div class="row gap right">
           <p-button label="Check file" [outlined]="true" (onClick)="runImport(true)" [disabled]="!impFile" />

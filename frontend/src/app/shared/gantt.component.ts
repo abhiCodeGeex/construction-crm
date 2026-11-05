@@ -1,4 +1,5 @@
 import { Component, computed, input, output, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { SERVICE_COLOR } from '../core/api.service';
 
 interface Row {
@@ -31,6 +32,7 @@ function addDays(day: string, n: number) {
  *  (grey line under each bar) and drag to edit: drag a task bar to move it, drag its right edge to change its end. */
 @Component({
   selector: 'app-gantt',
+  imports: [DatePipe],
   template: `
     @if (layout(); as L) {
       <div class="gantt-wrap">
@@ -49,7 +51,7 @@ function addDays(day: string, n: number) {
               <rect x="0" y="0" [attr.width]="L.width" [attr.height]="rowH" [class.zebra]="i % 2 === 0" class="row-bg" />
               <text [attr.x]="r.kind === 'stage' ? 8 : 22" [attr.y]="rowH / 2 + 4" class="label">{{ trim(r.label) }}</text>
               @if (r.bx !== null) {
-                <rect [attr.x]="r.bx" [attr.y]="rowH - 5" [attr.width]="r.bw" height="3" rx="1.5" class="baseline"><title>Baseline {{ r.baseline?.start }} → {{ r.baseline?.end }}</title></rect>
+                <rect [attr.x]="r.bx" [attr.y]="rowH - 5" [attr.width]="r.bw" height="3" rx="1.5" class="baseline"><title>Baseline {{ r.baseline?.start | date: 'd MMM' }} → {{ r.baseline?.end | date: 'd MMM y' }}</title></rect>
               }
               @if (r.x !== null) {
                 <g [class.draggable]="r.editable">
@@ -67,10 +69,10 @@ function addDays(day: string, n: number) {
               @for (m of r.ms; track m.id) {
                 <g [attr.transform]="'translate(' + m.x + ',' + rowH / 2 + ')'">
                   <rect x="-6" y="-6" width="12" height="12" transform="rotate(45)" [class.achieved]="m.status === 'achieved'" class="diamond" />
-                  <title>{{ m.name }} · {{ m.due }}</title>
+                  <title>{{ m.name }} · {{ m.due | date: 'd MMM y' }}</title>
                 </g>
               }
-              <title>{{ r.label }} · {{ r.start }} → {{ r.end }} · {{ r.progress }}%{{ r.baseline?.slip_days ? ' · ' + (r.baseline!.slip_days > 0 ? '+' : '') + r.baseline!.slip_days + ' working days vs baseline' : '' }}</title>
+              <title>{{ r.label }} · {{ r.start | date: 'd MMM' }} → {{ r.end | date: 'd MMM y' }} · {{ r.progress }}%{{ r.baseline?.slip_days ? ' · ' + (r.baseline!.slip_days > 0 ? '+' : '') + r.baseline!.slip_days + ' working days vs baseline' : '' }}</title>
             </g>
           }
           @for (a of L.arrows; track a.key) {

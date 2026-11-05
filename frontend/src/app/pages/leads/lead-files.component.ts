@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, input, output, signal } from '@ang
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CardModule } from 'primeng/card';
 import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
@@ -14,13 +15,13 @@ import { AuthService } from '../../core/auth.service';
 /** Lead files (C+3): photos, client drawings, brief, proposals and other files, by folder and room. */
 @Component({
   selector: 'app-lead-files',
-  imports: [FormsModule, DatePipe, ButtonModule, CardModule, InputTextModule, SelectModule, SelectButtonModule, TableModule, TagModule],
+  imports: [TooltipModule, FormsModule, DatePipe, ButtonModule, CardModule, InputTextModule, SelectModule, SelectButtonModule, TableModule, TagModule],
   template: `
     <p-card>
       <ng-template #title>Files</ng-template>
       @if (editable()) {
         <div class="row gap wrap mb">
-          <p-select [options]="folderOpts()" [(ngModel)]="folder" optionLabel="label" optionValue="value" />
+          <p-select placeholder="Folder" [options]="folderOpts()" [(ngModel)]="folder" optionLabel="label" optionValue="value" />
           <p-select [options]="rooms()" [(ngModel)]="roomId" optionLabel="name" optionValue="id" placeholder="Room (optional)" [showClear]="true" />
           <input pInputText [(ngModel)]="caption" placeholder="Caption (optional)" class="grow" />
           <label class="p-button p-button-sm p-button-outlined"><i class="pi pi-upload mr"></i>Upload
@@ -35,7 +36,7 @@ import { AuthService } from '../../core/auth.service';
           <td><p-tag [value]="label(f.folder)" severity="secondary" /></td><td>{{ f.room || '—' }}</td>
           <td><small>{{ f.created_at | date: 'd MMM y' }} · {{ (f.size / 1024 / 1024).toFixed(1) }} MB</small></td>
           <td class="right">@if (editable() && (f.created_by === auth.user()?.id || auth.user()?.role === 'owner')) {
-            <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="remove(f)" /> }</td></tr></ng-template>
+            <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="remove(f)" ariaLabel="Delete" pTooltip="Delete"/> }</td></tr></ng-template>
         <ng-template #emptymessage><tr><td colspan="5" class="muted center">No files</td></tr></ng-template>
       </p-table>
     </p-card>

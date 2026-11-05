@@ -2,6 +2,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CheckboxModule } from 'primeng/checkbox';
 import { DrawerModule } from 'primeng/drawer';
 import { InputTextModule } from 'primeng/inputtext';
@@ -20,7 +21,7 @@ export const PRIORITY_SEVERITY: Record<string, 'secondary' | 'info' | 'warn' | '
 /** One task in depth (B+2): checklist, files and photos, comments with @mentions, who it is waiting on. */
 @Component({
   selector: 'app-task-panel',
-  imports: [FormsModule, DatePipe, ButtonModule, CheckboxModule, DrawerModule, InputTextModule, MenuModule, ProgressBarModule, TagModule, TextareaModule],
+  imports: [TooltipModule, FormsModule, DatePipe, ButtonModule, CheckboxModule, DrawerModule, InputTextModule, MenuModule, ProgressBarModule, TagModule, TextareaModule],
   template: `
     <p-drawer [(visible)]="visible" position="right" [style]="{ width: '34rem' }" styleClass="task-drawer" (onHide)="closed.emit()">
       <ng-template #header><strong>{{ task()?.title }}</strong></ng-template>
@@ -29,7 +30,7 @@ export const PRIORITY_SEVERITY: Record<string, 'secondary' | 'info' | 'warn' | '
           <div class="row gap wrap">
             <p-tag [value]="statusText[t.status] ?? t.status" [severity]="sev[t.status]" />
             <p-tag [value]="'Priority: ' + t.priority" [severity]="prio[t.priority]" />
-            <span class="small muted">{{ stageName() }} · {{ t.start }} → {{ t.end }}</span>
+            <span class="small muted">{{ stageName() }} · {{ t.start | date: 'd MMM' }} → {{ t.end | date: 'd MMM y' }}</span>
             @if (t.baseline?.slip_days) { <p-tag [value]="(t.baseline.slip_days > 0 ? '+' : '') + t.baseline.slip_days + ' d vs baseline'" [severity]="t.baseline.slip_days > 0 ? 'danger' : 'success'" /> }
           </div>
           <div class="small">Assigned to <b>{{ t.assignee_name || 'nobody' }}</b></div>
@@ -48,12 +49,12 @@ export const PRIORITY_SEVERITY: Record<string, 'secondary' | 'info' | 'warn' | '
               <div class="check-row">
                 <p-checkbox [binary]="true" [ngModel]="c.done" (onChange)="tick(c, $event.checked)" [disabled]="!canWork()" />
                 <span class="grow" [class.strike]="c.done">{{ c.text }} @if (c.done && c.done_by) { <small class="muted">· {{ c.done_by }}</small> }</span>
-                @if (canWork()) { <p-button icon="pi pi-times" [text]="true" size="small" severity="secondary" (onClick)="removeItem(c)" /> }
+                @if (canWork()) { <p-button icon="pi pi-times" [text]="true" size="small" severity="secondary" (onClick)="removeItem(c)" ariaLabel="Remove" pTooltip="Remove"/> }
               </div>
             } @empty { <p class="small muted">No checklist. Break the task into steps; it can be marked done once every step is ticked.</p> }
             @if (canWork()) {
               <form class="row gap mt-xs" (ngSubmit)="addItem()"><input pInputText name="ni" [(ngModel)]="newItem" placeholder="Add a step" class="grow" />
-                <p-button type="submit" icon="pi pi-plus" [disabled]="!newItem.trim()" /></form>
+                <p-button type="submit" icon="pi pi-plus" [disabled]="!newItem.trim()" ariaLabel="Add" pTooltip="Add"/></form>
             }
           </section>
 
@@ -66,7 +67,7 @@ export const PRIORITY_SEVERITY: Record<string, 'secondary' | 'info' | 'warn' | '
               <div class="file-row"><i class="pi" [class.pi-image]="isImage(f.name)" [class.pi-file]="!isImage(f.name)"></i>
                 <a href="" class="grow" (click)="$event.preventDefault(); api.openFile('/api/files/' + f.key)">{{ f.name }}</a>
                 <small class="muted">{{ f.caption ? f.caption + ' · ' : '' }}{{ f.by }} · {{ f.at | date: 'd MMM' }}</small>
-                @if (f.by_id === auth.user()?.id || canEdit()) { <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="removeFile(f)" /> }
+                @if (f.by_id === auth.user()?.id || canEdit()) { <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="removeFile(f)" ariaLabel="Delete" pTooltip="Delete"/> }
               </div>
             } @empty { <p class="small muted">No files yet — drawings, site photos, delivery notes.</p> }
           </section>
@@ -76,7 +77,7 @@ export const PRIORITY_SEVERITY: Record<string, 'secondary' | 'info' | 'warn' | '
             <b>Comments</b>
             @for (c of comments(); track c.id) {
               <div class="comment"><div class="row-between"><small><b>{{ c.by }}</b> · {{ c.at | date: 'd MMM, h:mm a' }}</small>
-                @if (c.by_id === auth.user()?.id || auth.user()?.role === 'owner') { <p-button icon="pi pi-trash" [text]="true" size="small" severity="secondary" (onClick)="removeComment(c)" /> }</div>
+                @if (c.by_id === auth.user()?.id || auth.user()?.role === 'owner') { <p-button icon="pi pi-trash" [text]="true" size="small" severity="secondary" (onClick)="removeComment(c)" ariaLabel="Delete" pTooltip="Delete"/> }</div>
                 <div class="pre" [innerHTML]="highlight(c.text)"></div></div>
             } @empty { <p class="small muted">No comments yet.</p> }
             <div class="stack mt-xs">
@@ -119,7 +120,7 @@ export class TaskPanelComponent {
   sev = STATUS_SEVERITY;
   prio = PRIORITY_SEVERITY;
   label = label;
-  statusText: Record<string, string> = { todo: 'To do', in_progress: 'In progress', blocked: 'Blocked', done: 'Done' };
+  statusText: Record<string, string | undefined> = { todo: 'To do', in_progress: 'In progress', blocked: 'Blocked', done: 'Done' };
 
   stage = computed(() => (this.project()?.stages ?? []).find((s: any) => (s.tasks ?? []).some((t: any) => t.id === this.taskId())));
   task = computed(() => this.stage()?.tasks.find((t: any) => t.id === this.taskId()) ?? null);

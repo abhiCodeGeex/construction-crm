@@ -4,6 +4,7 @@ import { MessageService } from 'primeng/api';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CardModule } from 'primeng/card';
 import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
@@ -22,7 +23,7 @@ const P_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'secon
 /** Lead steps 5b-6 (C+2): proposal versions and the client's answer, negotiation rounds with discount approval, competitors. */
 @Component({
   selector: 'app-lead-proposals',
-  imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, SelectModule, SelectButtonModule, TableModule, TagModule],
+  imports: [TooltipModule, FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, SelectModule, SelectButtonModule, TableModule, TagModule],
   template: `
     <div class="stack">
       @if (auth.can('proposals')) {
@@ -45,7 +46,7 @@ const P_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'secon
                 <p-button icon="pi pi-pencil" [text]="true" [rounded]="true" ariaLabel="Open" [routerLink]="['/app/proposals', p.id]" />
                 @if (p.link) { <p-button icon="pi pi-link" [text]="true" [rounded]="true" ariaLabel="Copy client link" (onClick)="copy(origin + p.link)" /> }
                 @if (canProp()) {
-                @if (p.status === 'draft') { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="del(p)" /> }
+                @if (p.status === 'draft') { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="del(p)" ariaLabel="Delete" pTooltip="Delete"/> }
                 @if (p.status === 'sent') { <p-button label="Accepted" size="small" [text]="true" severity="success" (onClick)="ac = { p, signed_by: lead().contact_name }; acDlg = true" />
                   <p-button label="Rejected" size="small" [text]="true" severity="danger" (onClick)="openReject(p)" /> }
                 @if (p.status === 'revision_requested' || p.status === 'rejected' || p.status === 'expired') { <p-button label="Revise" size="small" [text]="true" (onClick)="revise(p)" /> } }</td></tr></ng-template>
@@ -84,21 +85,21 @@ const P_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'secon
           <ng-template #title>Competitors</ng-template>
           @for (c of lead().competitors ?? []; track c.id) {
             <div class="ms-row"><i class="pi pi-flag"></i><div class="grow"><strong>{{ c.name }}</strong>{{ c.price ? ' · ' + fmt(c.price) : '' }}<br /><small class="muted">{{ c.notes }}</small></div>
-              @if (editable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="delComp(c)" /> }</div>
+              @if (editable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="delComp(c)" ariaLabel="Delete" pTooltip="Delete"/> }</div>
           } @empty { <p class="muted small">No competitor noted.</p> }
           @if (editable()) {
             <div class="row gap wrap mt-xs">
               <input pInputText [(ngModel)]="cf.name" placeholder="Competitor" />
               <p-inputnumber [(ngModel)]="cf.price" [min]="0" placeholder="Their price" [inputStyle]="{ width: '8rem' }" />
               <input pInputText [(ngModel)]="cf.notes" placeholder="What they offer" class="grow" />
-              <p-button icon="pi pi-plus" (onClick)="addComp()" [disabled]="!cf.name?.trim()" />
+              <p-button icon="pi pi-plus" (onClick)="addComp()" [disabled]="!cf.name?.trim()" ariaLabel="Add" pTooltip="Add"/>
             </div>
           }
         </p-card>
       </div>
     </div>
 
-    <p-dialog header="New proposal" [modal]="true" [(visible)]="newDlg" [style]="{ width: '32rem' }">
+    <p-dialog header="New proposal" [modal]="true" [(visible)]="newDlg" [style]="{ width: '32rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack">
         <p-selectbutton [options]="typeOptions()" [(ngModel)]="pf.type" optionLabel="label" optionValue="value" [allowEmpty]="false" />
         @if (pf.type === 'construction') {
@@ -116,7 +117,7 @@ const P_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'secon
       </div>
     </p-dialog>
 
-    <p-dialog header="Accepted by the client" [modal]="true" [(visible)]="acDlg" [style]="{ width: '28rem' }">
+    <p-dialog header="Accepted by the client" [modal]="true" [(visible)]="acDlg" [style]="{ width: '28rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack">
         <p class="small muted">For an acceptance signed on paper or confirmed by phone. A signed copy can be attached. The contract is created with the payment schedule.</p>
         <label class="field"><span>Accepted by</span><input pInputText [(ngModel)]="ac.signed_by" fluid /></label>
@@ -126,7 +127,7 @@ const P_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'secon
       </div>
     </p-dialog>
 
-    <p-dialog header="Client's answer" [modal]="true" [(visible)]="rejDlg" [style]="{ width: '28rem' }">
+    <p-dialog header="Client's answer" [modal]="true" [(visible)]="rejDlg" [style]="{ width: '28rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack">
         <p-selectbutton [options]="rejOpts" [(ngModel)]="rj.result" optionLabel="label" optionValue="value" [allowEmpty]="false" />
         <p-select [options]="rejectReasons()" [(ngModel)]="rj.reason" placeholder="Reason" fluid appendTo="body" />
@@ -135,7 +136,7 @@ const P_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'secon
       </div>
     </p-dialog>
 
-    <p-dialog header="Refuse the discount" [modal]="true" [(visible)]="refDlg" [style]="{ width: '26rem' }">
+    <p-dialog header="Refuse the discount" [modal]="true" [(visible)]="refDlg" [style]="{ width: '26rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack"><input pInputText [(ngModel)]="nr2.note" placeholder="Why" />
         <div class="row right"><p-button label="Refuse" severity="danger" (onClick)="decide(nr2.r, false, nr2.note)" [disabled]="!nr2.note?.trim()" /></div></div>
     </p-dialog>

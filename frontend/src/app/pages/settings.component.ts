@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CardModule } from 'primeng/card';
 import { CheckboxModule } from 'primeng/checkbox';
 import { TextareaModule } from 'primeng/textarea';
@@ -22,7 +23,7 @@ import { AuthService } from '../core/auth.service';
 
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, TextareaModule, DialogModule, InputNumberModule, InputTextModule, MessageModule, SelectButtonModule,
+  imports: [TooltipModule, FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, TextareaModule, DialogModule, InputNumberModule, InputTextModule, MessageModule, SelectButtonModule,
     SelectModule, TableModule, TabsModule, TagModule, ToggleSwitchModule, SalesSettingsComponent, ProposalSettingsComponent],
   template: `
     <div class="page-head"><div><h1>Company settings</h1><p class="muted">Company setup, stage templates, role permissions and the audit log.</p></div></div>
@@ -70,11 +71,12 @@ import { AuthService } from '../core/auth.service';
                 <p-table [value]="setup.branches" size="small">
                   <ng-template #header><tr><th>Name</th><th>City</th><th>GSTIN</th><th></th></tr></ng-template>
                   <ng-template #body let-b let-i="rowIndex">
-                    <tr><td><input pInputText [(ngModel)]="b.name" [disabled]="!canEdit()" /></td><td><input pInputText [(ngModel)]="b.city" [disabled]="!canEdit()" /></td>
-                      <td><input pInputText [(ngModel)]="b.gstin" [disabled]="!canEdit()" /></td>
-                      <td>@if (canEdit()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="setup.branches.splice(i, 1)" /> }</td></tr>
+                    <tr><td><input placeholder="Branch name" pInputText [(ngModel)]="b.name" [disabled]="!canEdit()" /></td><td><input placeholder="City" pInputText [(ngModel)]="b.city" [disabled]="!canEdit()" /></td>
+                      <td><input placeholder="GSTIN" pInputText [(ngModel)]="b.gstin" [disabled]="!canEdit()" /></td>
+                      <td>@if (canEdit()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="setup.branches.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }</td></tr>
                   </ng-template>
-                </p-table>
+                  <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No branches yet — add your head office.</td></tr></ng-template>
+      </p-table>
                 @if (canEdit()) { <p-button label="Add branch" icon="pi pi-plus" size="small" [text]="true" (onClick)="setup.branches.push({ name: '', city: '' })" /> }
               </p-card>
               <p-card><ng-template #title>Currency, tax & numbering</ng-template>
@@ -98,9 +100,9 @@ import { AuthService } from '../core/auth.service';
                     }
                   </div>
                   @for (h of cal.holidays; track $index; let i = $index) {
-                    <div class="row gap"><input pInputText type="date" [(ngModel)]="h.date" [disabled]="!canEdit()" />
+                    <div class="row gap"><input aria-label="Holiday date" title="Holiday date" pInputText type="date" [(ngModel)]="h.date" [disabled]="!canEdit()" />
                       <input pInputText [(ngModel)]="h.name" placeholder="Holiday name" class="grow" [disabled]="!canEdit()" />
-                      @if (canEdit()) { <p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="cal.holidays.splice(i, 1)" /> }</div>
+                      @if (canEdit()) { <p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="cal.holidays.splice(i, 1)" ariaLabel="Remove" pTooltip="Remove"/> }</div>
                   }
                   @if (canEdit()) {
                     <div class="row-between"><p-button label="Add holiday" icon="pi pi-plus" size="small" [text]="true" (onClick)="cal.holidays.push({ date: '', name: '' })" />
@@ -187,12 +189,13 @@ import { AuthService } from '../core/auth.service';
               <tr><td class="nowrap"><small>{{ a.at | date: 'short' }}</small></td><td>{{ a.user_name || '—' }}</td><td class="cap">{{ a.action }}</td>
                 <td>{{ a.collection }} @if (a.note) { <small class="muted">· {{ a.note }}</small> }</td><td><small class="muted">{{ changed(a) }}</small></td></tr>
             </ng-template>
-          </p-table>
+            <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No changes recorded yet.</td></tr></ng-template>
+      </p-table>
         </p-tabpanel>
       </p-tabpanels>
     </p-tabs>
 
-    <p-dialog [header]="tf.id ? 'Edit template' : 'New template'" [modal]="true" [(visible)]="tplDlg" [style]="{ width: '36rem' }">
+    <p-dialog [header]="tf.id ? 'Edit template' : 'New template'" [modal]="true" [(visible)]="tplDlg" [style]="{ width: '36rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack">
         <div class="grid2">
           <label class="field"><span>Name</span><input pInputText [(ngModel)]="tf.name" fluid /></label>
@@ -201,13 +204,13 @@ import { AuthService } from '../core/auth.service';
         <p-table [value]="tf.stages" size="small">
           <ng-template #header><tr><th>#</th><th>Stage <small class="muted">· closing checklist, one per line</small></th><th>Days</th><th></th></tr></ng-template>
           <ng-template #body let-s let-i="rowIndex">
-            <tr><td>{{ i + 1 }}</td><td><input pInputText [(ngModel)]="s.name" fluid />
+            <tr><td>{{ i + 1 }}</td><td><input placeholder="Stage name" pInputText [(ngModel)]="s.name" fluid />
               <textarea pTextarea rows="2" [ngModel]="(s.checklist ?? []).join('\n')" (ngModelChange)="s.checklist = splitLines($event)" placeholder="Checks before this stage can close" class="mt-xs" fluid></textarea>
               <label class="check small"><p-checkbox [binary]="true" [(ngModel)]="s.client_signoff" /> Needs the client's sign-off</label></td>
-              <td><p-inputnumber [(ngModel)]="s.duration_days" [min]="1" [max]="3650" [showButtons]="false" inputStyleClass="w-5" /></td>
-              <td class="nowrap"><p-button icon="pi pi-arrow-up" [text]="true" size="small" [disabled]="i === 0" (onClick)="swap(i, i - 1)" />
-                <p-button icon="pi pi-arrow-down" [text]="true" size="small" [disabled]="i === tf.stages.length - 1" (onClick)="swap(i, i + 1)" />
-                <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="tf.stages.splice(i, 1)" /></td></tr>
+              <td><p-inputnumber placeholder="Days" [(ngModel)]="s.duration_days" [min]="1" [max]="3650" [showButtons]="false" inputStyleClass="w-5" /></td>
+              <td class="nowrap"><p-button icon="pi pi-arrow-up" [text]="true" size="small" [disabled]="i === 0" (onClick)="swap(i, i - 1)" ariaLabel="Move up" pTooltip="Move up"/>
+                <p-button icon="pi pi-arrow-down" [text]="true" size="small" [disabled]="i === tf.stages.length - 1" (onClick)="swap(i, i + 1)" ariaLabel="Move down" pTooltip="Move down"/>
+                <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="tf.stages.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/></td></tr>
           </ng-template>
         </p-table>
         <p-button label="Add stage" icon="pi pi-plus" size="small" [text]="true" (onClick)="tf.stages.push({ name: '', duration_days: 14, checklist: [], client_signoff: false })" />

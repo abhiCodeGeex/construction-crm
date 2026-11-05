@@ -60,7 +60,7 @@ import { NAV } from '../core/nav';
                 <i class="pi pi-circle" [class.c-bad]="t.late"></i>
                 <div class="grow"><strong>{{ t.title }}</strong><br /><small class="muted">{{ t.project }} · {{ t.stage }}</small></div>
                 <p-tag [value]="label(t.status)" [severity]="sev[t.status]" />
-                <small [class.c-bad]="t.late">{{ t.end }}</small></a>
+                <small [class.c-bad]="t.late">{{ t.end | date: 'd MMM y' }}</small></a>
             } @empty { <p class="muted">Nothing assigned to you.</p> }
           </p-card>
           <p-card><ng-template #title>Upcoming milestones</ng-template>

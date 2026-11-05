@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, input, output, signal } from '@ang
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CardModule } from 'primeng/card';
 import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
@@ -20,7 +21,7 @@ const EST_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'sec
 /** Lead step 5a (C+2) and pre-sales money (C+3): internal estimates with approval, rate library, expenses, receipts. */
 @Component({
   selector: 'app-lead-money',
-  imports: [FormsModule, DatePipe, DecimalPipe, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, MessageModule,
+  imports: [TooltipModule, FormsModule, DatePipe, DecimalPipe, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, MessageModule,
     SelectModule, TableModule, TagModule],
   template: `
     <div class="stack">
@@ -57,7 +58,7 @@ const EST_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'sec
           <p-table [value]="money_()?.expenses ?? []" size="small">
             <ng-template #body let-x><tr><td>{{ x.category }}<br /><small class="muted">{{ x.note }}</small></td><td><small>{{ x.date | date: 'd MMM' }}</small></td>
               <td class="right">{{ fmt(x.amount) }}</td>
-              <td class="right">@if (editable() && !x.visit_id) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="delExpense(x)" /> }
+              <td class="right">@if (editable() && !x.visit_id) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="delExpense(x)" ariaLabel="Delete" pTooltip="Delete"/> }
                 @if (x.visit_id) { <small class="muted">visit</small> }</td></tr></ng-template>
             <ng-template #emptymessage><tr><td class="muted center">Nothing spent yet</td></tr></ng-template>
           </p-table>
@@ -65,9 +66,9 @@ const EST_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'sec
             <div class="row gap wrap mt-xs">
               <p-select [options]="money_()?.categories ?? []" [(ngModel)]="xf.category" placeholder="Category" appendTo="body" />
               <p-inputnumber [(ngModel)]="xf.amount" [min]="0" placeholder="Amount" [inputStyle]="{ width: '7rem' }" />
-              <input pInputText type="date" [(ngModel)]="xf.date" />
+              <input aria-label="Date" title="Date" pInputText type="date" [(ngModel)]="xf.date" />
               <input pInputText [(ngModel)]="xf.note" placeholder="Note" class="grow" />
-              <p-button icon="pi pi-plus" (onClick)="addExpense()" [disabled]="!xf.category || !xf.amount" />
+              <p-button icon="pi pi-plus" (onClick)="addExpense()" [disabled]="!xf.category || !xf.amount" ariaLabel="Add" pTooltip="Add"/>
             </div>
           }
         </p-card>
@@ -92,20 +93,21 @@ const EST_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'sec
           <p-table [value]="ef.lines" size="small" [scrollable]="true">
             <ng-template #header><tr><th>Description</th><th>Room / quantity from</th><th class="right">Qty</th><th>Unit</th><th class="right">Material rate</th><th class="right">Labour rate</th><th class="right">Line cost</th><th></th></tr></ng-template>
             <ng-template #body let-ln let-i="rowIndex"><tr>
-              <td><input pInputText [(ngModel)]="ln.description" [disabled]="!estEditable()" style="width: 13rem" />
+              <td><input placeholder="Description" pInputText [(ngModel)]="ln.description" [disabled]="!estEditable()" style="width: 13rem" />
                 <br /><p-select [options]="workTypes()" [(ngModel)]="ln.work_type" placeholder="Work type" [showClear]="true" [disabled]="!estEditable()" appendTo="body" styleClass="mt-xs" /></td>
               <td><p-select [options]="rooms()" [(ngModel)]="ln.room_id" optionLabel="name" optionValue="id" placeholder="Room" [showClear]="true" [disabled]="!estEditable()" appendTo="body" />
-                <br /><p-select [options]="sources()" [(ngModel)]="ln.qty_source" optionLabel="label" optionValue="value" [disabled]="!estEditable()" appendTo="body" styleClass="mt-xs" /></td>
-              <td class="right">@if (ln.qty_source === 'manual') { <p-inputnumber [(ngModel)]="ln.qty" [min]="0" [maxFractionDigits]="2" [disabled]="!estEditable()" [inputStyle]="{ width: '5rem' }" /> }
+                <br /><p-select placeholder="Quantity from" [options]="sources()" [(ngModel)]="ln.qty_source" optionLabel="label" optionValue="value" [disabled]="!estEditable()" appendTo="body" styleClass="mt-xs" /></td>
+              <td class="right">@if (ln.qty_source === 'manual') { <p-inputnumber placeholder="Qty" [(ngModel)]="ln.qty" [min]="0" [maxFractionDigits]="2" [disabled]="!estEditable()" [inputStyle]="{ width: '5rem' }" /> }
                 @else { {{ measuredQty(ln) }} }</td>
-              <td><input pInputText [(ngModel)]="ln.unit" [disabled]="!estEditable()" style="width: 4.5rem" /></td>
+              <td><input placeholder="Unit" pInputText [(ngModel)]="ln.unit" [disabled]="!estEditable()" style="width: 4.5rem" /></td>
               <td class="right"><p-select [options]="matRates()" [(ngModel)]="ln.material_rate_id" optionLabel="label" optionValue="id" placeholder="from library" [showClear]="true" (onChange)="pickRate(ln, 'material')" [disabled]="!estEditable()" appendTo="body" />
-                <br /><p-inputnumber [(ngModel)]="ln.material_rate" [min]="0" [disabled]="!estEditable()" [inputStyle]="{ width: '6rem' }" /></td>
+                <br /><p-inputnumber placeholder="Material rate" [(ngModel)]="ln.material_rate" [min]="0" [disabled]="!estEditable()" [inputStyle]="{ width: '6rem' }" /></td>
               <td class="right"><p-select [options]="labRates()" [(ngModel)]="ln.labour_rate_id" optionLabel="label" optionValue="id" placeholder="from library" [showClear]="true" (onChange)="pickRate(ln, 'labour')" [disabled]="!estEditable()" appendTo="body" />
-                <br /><p-inputnumber [(ngModel)]="ln.labour_rate" [min]="0" [disabled]="!estEditable()" [inputStyle]="{ width: '6rem' }" /></td>
+                <br /><p-inputnumber placeholder="Labour rate" [(ngModel)]="ln.labour_rate" [min]="0" [disabled]="!estEditable()" [inputStyle]="{ width: '6rem' }" /></td>
               <td class="right">{{ fmt(ln.line_cost) }}</td>
-              <td>@if (estEditable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="ef.lines.splice(i, 1)" /> }</td></tr></ng-template>
-          </p-table>
+              <td>@if (estEditable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="ef.lines.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }</td></tr></ng-template>
+            <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No lines yet — add the first line of the estimate.</td></tr></ng-template>
+      </p-table>
           @if (estEditable()) { <p-button label="Add line" icon="pi pi-plus" size="small" [text]="true" (onClick)="ef.lines.push(blankLine())" /> }
           <div class="grid2 top">
             <div class="grid2">
@@ -136,12 +138,12 @@ const EST_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'sec
       }
     </p-dialog>
 
-    <p-dialog header="Refuse the estimate" [modal]="true" [(visible)]="refuseDlg" [style]="{ width: '26rem' }">
+    <p-dialog header="Refuse the estimate" [modal]="true" [(visible)]="refuseDlg" [style]="{ width: '26rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack"><label class="field"><span>Why?</span><input pInputText [(ngModel)]="refuse.note" fluid /></label>
         <div class="row right"><p-button label="Refuse" severity="danger" (onClick)="decide(refuse.e, false, refuse.note)" [disabled]="!refuse.note?.trim()" /></div></div>
     </p-dialog>
 
-    <p-dialog header="Record an advance" [modal]="true" [(visible)]="recDlg" [style]="{ width: '28rem' }">
+    <p-dialog header="Record an advance" [modal]="true" [(visible)]="recDlg" [style]="{ width: '28rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack">
         <p-select [options]="money_()?.receipt_kinds ?? []" [(ngModel)]="rf.kind" placeholder="What for" fluid appendTo="body" />
         <div class="grid2"><label class="field"><span>Amount</span><p-inputnumber [(ngModel)]="rf.amount" [min]="0" fluid /></label>
@@ -153,7 +155,7 @@ const EST_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'sec
       </div>
     </p-dialog>
 
-    <p-dialog header="Void receipt" [modal]="true" [(visible)]="voidDlg" [style]="{ width: '26rem' }">
+    <p-dialog header="Void receipt" [modal]="true" [(visible)]="voidDlg" [style]="{ width: '26rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack"><label class="field"><span>Reason</span><input pInputText [(ngModel)]="voidR.reason" fluid /></label>
         <div class="row right"><p-button label="Void" severity="danger" (onClick)="voidReceipt()" [disabled]="!voidR.reason?.trim()" /></div></div>
     </p-dialog>
@@ -162,17 +164,17 @@ const EST_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'sec
       <p-table [value]="rates()" size="small" [scrollable]="true" scrollHeight="50vh">
         <ng-template #header><tr><th>Kind</th><th>Name</th><th>Category</th><th>Unit</th><th class="right">Rate</th><th></th></tr></ng-template>
         <ng-template #body let-r><tr><td>{{ label(r.kind) }}</td><td>{{ r.name }}{{ r.brand ? ' · ' + r.brand : '' }}</td><td>{{ r.category || '—' }}</td><td>{{ r.unit }}</td>
-          <td class="right">{{ fmt(r.rate) }}</td><td class="right">@if (canEst()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="delRate(r)" /> }</td></tr></ng-template>
+          <td class="right">{{ fmt(r.rate) }}</td><td class="right">@if (canEst()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="delRate(r)" ariaLabel="Delete" pTooltip="Delete"/> }</td></tr></ng-template>
         <ng-template #emptymessage><tr><td colspan="6" class="muted center">No rates yet</td></tr></ng-template>
       </p-table>
       @if (canEst()) {
         <div class="row gap wrap mt">
-          <p-select [options]="kinds" [(ngModel)]="nr.kind" optionLabel="label" optionValue="value" appendTo="body" />
+          <p-select placeholder="Kind" [options]="kinds" [(ngModel)]="nr.kind" optionLabel="label" optionValue="value" appendTo="body" />
           <input pInputText [(ngModel)]="nr.name" placeholder="Name" />
           <p-select [options]="workTypes()" [(ngModel)]="nr.category" placeholder="Category" [showClear]="true" appendTo="body" />
           <input pInputText [(ngModel)]="nr.unit" placeholder="Unit (sq ft, nos)" style="width: 8rem" />
           <p-inputnumber [(ngModel)]="nr.rate" [min]="0" placeholder="Rate" [inputStyle]="{ width: '6rem' }" />
-          <p-button icon="pi pi-plus" (onClick)="addRate()" [disabled]="!nr.name || !nr.unit || nr.rate == null" />
+          <p-button icon="pi pi-plus" (onClick)="addRate()" [disabled]="!nr.name || !nr.unit || nr.rate == null" ariaLabel="Add" pTooltip="Add"/>
         </div>
       }
     </p-dialog>

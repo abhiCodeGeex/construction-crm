@@ -322,7 +322,6 @@ button.link { background: none; border: 0; padding: 0 .15rem; color: var(--brand
 .w-4 { width: 4rem; } .w-10 { width: 10rem; }
 .gate { margin-top: .6rem; padding: .6rem .75rem; border: 1px dashed var(--border); border-radius: 10px; }
 .gate.closed { border-style: solid; background: color-mix(in srgb, #16a34a 6%, transparent); }
-.check-row { display: flex; align-items: center; gap: .5rem; padding: .2rem 0; }
 .task-link { color: inherit; font-weight: 500; } .task-link:hover { color: var(--brand); }
 .task-badges { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-top: .15rem; color: var(--muted); }
 .task-badges small { display: inline-flex; gap: .2rem; align-items: center; }
@@ -330,3 +329,21 @@ button.link { background: none; border: 0; padding: 0 .15rem; color: var(--brand
 .health-dot { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; margin-right: .3rem; }
 .health-dot.green { background: #16a34a; } .health-dot.amber { background: #f59e0b; } .health-dot.red { background: #ef4444; }
 .waiting-you { border: 1px solid #f59e0b; background: color-mix(in srgb, #f59e0b 8%, transparent); border-radius: 10px; padding: .65rem .8rem; margin-bottom: .9rem; }
+
+/* required field: same red star on every form */
+.field.req > span:first-child::after { content: ' *'; color: var(--bad); font-weight: 600; }
+
+/* phones (found by the 375px regression check): nothing may push the page sideways */
+.p-selectbutton { display: inline-flex; flex-wrap: wrap; max-width: 100%; }
+.bar-row > * { min-width: 0; }
+@media (max-width: 900px) {
+  .grid2, .plans { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .topbar { padding: .5rem .75rem; gap: .35rem; }
+  .company-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar > p-tag, .topbar .spacer { display: none; }
+  .who { padding: .2rem; gap: .25rem; }
+  .bar-row .w-8 { width: auto; flex: 0 1 auto; }
+  .page-head { flex-wrap: wrap; gap: .5rem; }
+}

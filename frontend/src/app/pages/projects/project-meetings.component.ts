@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ConfirmationService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CardModule } from 'primeng/card';
 import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
@@ -17,7 +18,7 @@ import { AuthService } from '../../core/auth.service';
  *  the minutes -> Publish: each action becomes a task (owner, stage, due date) and the minutes are emailed. */
 @Component({
   selector: 'app-project-meetings',
-  imports: [FormsModule, DatePipe, ButtonModule, CardModule, DialogModule, InputTextModule, MultiSelectModule, SelectModule, TagModule, TextareaModule],
+  imports: [TooltipModule, FormsModule, DatePipe, ButtonModule, CardModule, DialogModule, InputTextModule, MultiSelectModule, SelectModule, TagModule, TextareaModule],
   template: `
     <div class="row-between mb">
       <span class="muted small">Plan a meeting → attendees are told (and reminded 2 hours before). Afterwards write the minutes and publish: every action becomes a task and the minutes are emailed to every attendee.</span>
@@ -34,7 +35,7 @@ import { AuthService } from '../../core/auth.service';
               <p-button label="Minutes" icon="pi pi-pencil" size="small" [text]="true" (onClick)="openMinutes(m)" />
               <p-button label="Publish" icon="pi pi-send" size="small" (onClick)="publish(m)" />
             }
-            @if (canEdit() && (m.status !== 'published' || isOwner())) { <p-button icon="pi pi-trash" size="small" [text]="true" severity="danger" (onClick)="remove(m)" /> }
+            @if (canEdit() && (m.status !== 'published' || isOwner())) { <p-button icon="pi pi-trash" size="small" [text]="true" severity="danger" (onClick)="remove(m)" ariaLabel="Delete" pTooltip="Delete"/> }
           </div>
         </div>
         @if (m.agenda) { <div class="small mt-xs"><b>Agenda:</b> <span class="pre">{{ m.agenda }}</span></div> }
@@ -42,7 +43,7 @@ import { AuthService } from '../../core/auth.service';
         @if (m.decisions?.length) { <div class="small mt-xs"><b>Decisions</b>@for (x of m.decisions; track $index) { <div>• {{ x }}</div> }</div> }
         @if (m.actions?.length) {
           <div class="small mt-xs"><b>Actions</b>
-            @for (a of m.actions; track a.id) { <div>• {{ a.text }} — {{ owner(a.owner_id) }} · {{ stageName(a.stage_id) }} · by {{ a.due || '—' }} @if (a.task_id) { <p-tag value="task created" severity="success" /> }</div> }</div>
+            @for (a of m.actions; track a.id) { <div>• {{ a.text }} — {{ owner(a.owner_id) }} · {{ stageName(a.stage_id) }} · by {{ a.due ? (a.due | date: 'd MMM y') : '—' }} @if (a.task_id) { <p-tag value="task created" severity="success" /> }</div> }</div>
         }
         @if (m.status === 'published') {
           <div class="small muted mt-xs">Published {{ m.published_at | date: 'd MMM y, h:mm a' }} by {{ m.published_by }} ·
@@ -53,9 +54,9 @@ import { AuthService } from '../../core/auth.service';
 
     <p-dialog [header]="f.id ? 'Edit meeting' : 'Plan a meeting'" [modal]="true" [(visible)]="planDlg" [style]="{ width: '34rem' }" [breakpoints]="{ '640px': '96vw' }">
       <form class="stack" (ngSubmit)="savePlan()">
-        <label class="field"><span>Title</span><input pInputText name="t" [(ngModel)]="f.title" fluid /></label>
+        <label class="field req"><span>Title</span><input pInputText name="t" [(ngModel)]="f.title" fluid /></label>
         <div class="grid2">
-          <label class="field"><span>Date and time</span><input pInputText type="datetime-local" name="a" [(ngModel)]="f.at" fluid /></label>
+          <label class="field req"><span>Date and time</span><input pInputText type="datetime-local" name="a" [(ngModel)]="f.at" fluid /></label>
           <label class="field"><span>Place or link</span><input pInputText name="pl" [(ngModel)]="f.place" fluid /></label>
         </div>
         <label class="field"><span>Our team</span><p-multiselect name="s" [options]="staff()" [(ngModel)]="f.staff" optionLabel="name" optionValue="user_id" display="chip" fluid appendTo="body" /></label>
@@ -71,7 +72,7 @@ import { AuthService } from '../../core/auth.service';
         <label class="field"><span>Notes — what was discussed</span><textarea pTextarea rows="4" [(ngModel)]="mf.notes" fluid></textarea></label>
         <div class="field"><span>Decisions</span>
           @for (x of mf.decisions; track $index; let i = $index) {
-            <div class="row gap mb-xs"><input pInputText [(ngModel)]="mf.decisions[i]" class="grow" /><p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="mf.decisions.splice(i, 1)" /></div>
+            <div class="row gap mb-xs"><input placeholder="Decision" pInputText [(ngModel)]="mf.decisions[i]" class="grow" /><p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="mf.decisions.splice(i, 1)" ariaLabel="Remove" pTooltip="Remove"/></div>
           }
           <p-button label="Add decision" icon="pi pi-plus" size="small" [text]="true" (onClick)="mf.decisions.push('')" /></div>
         <div class="field"><span>Actions <small class="muted">— each becomes a task on publish (owner, stage and due date needed)</small></span>
@@ -80,8 +81,8 @@ import { AuthService } from '../../core/auth.service';
               <input pInputText [(ngModel)]="a.text" placeholder="What needs doing" class="grow" />
               <p-select [options]="staff()" [(ngModel)]="a.owner_id" optionLabel="name" optionValue="user_id" placeholder="Owner" appendTo="body" />
               <p-select [options]="stageOpts()" [(ngModel)]="a.stage_id" optionLabel="name" optionValue="id" placeholder="Stage" appendTo="body" />
-              <input pInputText type="date" [(ngModel)]="a.due" />
-              <p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="mf.actions.splice(i, 1)" />
+              <input aria-label="Due date" title="Due date" pInputText type="date" [(ngModel)]="a.due" />
+              <p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="mf.actions.splice(i, 1)" ariaLabel="Remove" pTooltip="Remove"/>
             </div>
           }
           <p-button label="Add action" icon="pi pi-plus" size="small" [text]="true" (onClick)="addAction()" /></div>

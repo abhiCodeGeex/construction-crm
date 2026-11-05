@@ -832,7 +832,7 @@ def clean_bid(d, existing=None):
     if status in ("won", "lost"):
         abort(400, "Record the result with Won or Lost on the bid, so the project and the lead follow")
     if status not in BID_STATUSES:
-        abort(400, "Invalid bid status")
+        abort(400, "Bid status must be preparing, submitted, won or lost")
     if decision != "bid" and status != "preparing":
         abort(400, "Only bids you decided to submit can be submitted")
     out["status"] = status

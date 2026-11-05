@@ -1,6 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CardModule } from 'primeng/card';
 import { CheckboxModule } from 'primeng/checkbox';
 import { DialogModule } from 'primeng/dialog';
@@ -16,7 +17,7 @@ import { AuthService } from '../core/auth.service';
 /** Settings -> Proposals & branding (Phase D): logo, colour and footer for proposals / contracts; proposal templates. */
 @Component({
   selector: 'app-proposal-settings',
-  imports: [FormsModule, ButtonModule, CardModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule, SelectModule, TableModule, TagModule, TextareaModule],
+  imports: [TooltipModule, FormsModule, ButtonModule, CardModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule, SelectModule, TableModule, TagModule, TextareaModule],
   template: `
     <p-card><ng-template #title>Branding on proposals and contracts</ng-template>
       <div class="grid2 top">
@@ -46,7 +47,8 @@ import { AuthService } from '../core/auth.service';
         <ng-template #header><tr><th>Name</th><th>Type</th><th>Service</th><th>Lines</th><th>Payment schedule</th><th></th></tr></ng-template>
         <ng-template #body let-x><tr><td><strong>{{ x.name }}</strong></td><td>{{ label(x.type) }}</td><td>{{ svc[x.service] || '—' }}</td><td>{{ x.items?.length || 0 }}</td>
           <td><small>{{ x.payment_schedule?.length ? x.payment_schedule.length + ' payment(s)' : 'default (10% on signing + per stage)' }}</small></td>
-          <td class="right nowrap">@if (canEdit()) { <p-button icon="pi pi-pencil" [text]="true" (onClick)="edit(x)" /><p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="del(x)" /> }</td></tr></ng-template>
+          <td class="right nowrap">@if (canEdit()) { <p-button icon="pi pi-pencil" [text]="true" (onClick)="edit(x)" ariaLabel="Edit" pTooltip="Edit"/><p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="del(x)" ariaLabel="Delete" pTooltip="Delete"/> }</td></tr></ng-template>
+        <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No proposal templates yet.</td></tr></ng-template>
       </p-table>
     </p-card>
 
@@ -66,17 +68,17 @@ import { AuthService } from '../core/auth.service';
             <p-inputnumber [(ngModel)]="it.qty" [min]="0" placeholder="Qty" [inputStyle]="{ width: '4rem' }" /><input pInputText [(ngModel)]="it.unit" placeholder="Unit" style="width: 4rem" />
             <p-inputnumber [(ngModel)]="it.rate" [min]="0" placeholder="Rate" [inputStyle]="{ width: '6rem' }" />
             <label class="check"><p-checkbox [(ngModel)]="it.optional" [binary]="true" /> optional</label>
-            <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="tf.items.splice(i, 1)" /></div>
+            <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="tf.items.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/></div>
         }
         <p-button label="Add line" icon="pi pi-plus" size="small" [text]="true" (onClick)="tf.items.push({ description: '', qty: 1, unit: '', rate: null, optional: false })" />
         <strong>Payment schedule <small class="muted">(leave empty for the default)</small></strong>
         @for (r of tf.payment_schedule; track $index; let i = $index) {
           <div class="row gap wrap"><input pInputText [(ngModel)]="r.name" placeholder="Payment" class="grow" />
-            <p-inputnumber [(ngModel)]="r.pct" [min]="0" [max]="100" suffix="%" [inputStyle]="{ width: '5rem' }" />
-            <p-select [options]="triggers" [(ngModel)]="r.trigger" optionLabel="label" optionValue="value" appendTo="body" />
+            <p-inputnumber placeholder="%" [(ngModel)]="r.pct" [min]="0" [max]="100" suffix="%" [inputStyle]="{ width: '5rem' }" />
+            <p-select placeholder="When" [options]="triggers" [(ngModel)]="r.trigger" optionLabel="label" optionValue="value" appendTo="body" />
             @if (r.trigger === 'stage') { <p-select [options]="stages()" [(ngModel)]="r.stage" placeholder="Stage" appendTo="body" /> }
-            @if (r.trigger === 'date') { <input pInputText type="date" [(ngModel)]="r.date" /> }
-            <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="tf.payment_schedule.splice(i, 1)" /></div>
+            @if (r.trigger === 'date') { <input aria-label="Date" title="Date" pInputText type="date" [(ngModel)]="r.date" /> }
+            <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="tf.payment_schedule.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/></div>
         }
         <p-button label="Add payment" icon="pi pi-plus" size="small" [text]="true" [disabled]="!tf.service" (onClick)="tf.payment_schedule.push({ name: '', pct: null, trigger: 'stage' })" />
         <div class="row right"><p-button label="Save template" icon="pi pi-check" (onClick)="save()" /></div>

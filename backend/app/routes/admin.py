@@ -210,7 +210,7 @@ def numbering_preview():
     try:
         return jsonify({"next": fmt.format(n=nxt, year=t.now().year)})
     except (KeyError, ValueError, IndexError):
-        abort(400, "Invalid format")
+        abort(400, "That number format cannot be used. Use {n} for the number and {year} for the year, e.g. PRJ-{year}-{n:03d}")
 
 
 # ---------------- uploads (compliance documents) ----------------

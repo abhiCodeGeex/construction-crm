@@ -103,11 +103,11 @@ interface Summary { limits: { plan: string; users: number | null }; usage: { use
       @if (form(); as f) {
         <form class="stack" (ngSubmit)="save()">
           <div class="grid2">
-            <label class="field"><span>Name</span><input pInputText name="name" [(ngModel)]="f.name" required fluid /></label>
+            <label class="field req"><span>Name</span><input pInputText name="name" [(ngModel)]="f.name" required fluid /></label>
             <label class="field"><span>Phone</span><input pInputText name="phone" [(ngModel)]="f.phone" fluid /></label>
           </div>
-          <label class="field"><span>Email</span><input pInputText name="email" type="email" [(ngModel)]="f.email" [disabled]="!!f.id" required fluid /></label>
-          <label class="field"><span>Role</span>
+          <label class="field req"><span>Email</span><input pInputText name="email" type="email" [(ngModel)]="f.email" [disabled]="!!f.id" required fluid /></label>
+          <label class="field req"><span>Role</span>
             <p-select name="role" [(ngModel)]="f.role" [options]="roleOptions(f)" optionLabel="label" optionValue="value"
                       optionDisabled="disabled" [group]="true" fluid appendTo="body" />
           </label>

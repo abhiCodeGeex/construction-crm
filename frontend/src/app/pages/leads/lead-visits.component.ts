@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, input, output, signal } from '@ang
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CardModule } from 'primeng/card';
 import { CheckboxModule } from 'primeng/checkbox';
 import { DialogModule } from 'primeng/dialog';
@@ -21,7 +22,7 @@ const VISIT_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 's
 /** Lead step 3 (C+2): site-visit appointments with report and cost, room-by-room and plot measurements. */
 @Component({
   selector: 'app-lead-visits',
-  imports: [FormsModule, DatePipe, DecimalPipe, ButtonModule, CardModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule,
+  imports: [TooltipModule, FormsModule, DatePipe, DecimalPipe, ButtonModule, CardModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule,
     MultiSelectModule, SelectButtonModule, TableModule, TagModule, TextareaModule],
   template: `
     <div class="grid2 top">
@@ -72,8 +73,8 @@ const VISIT_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 's
               <td><strong>{{ r.name }}</strong>@if (r.openings?.length) { <br /><small class="muted">{{ r.openings.length }} opening(s) · {{ r.openings_area }} {{ r.area_unit }}</small> }</td>
               <td class="right">{{ r.length }} × {{ r.width }}{{ r.height ? ' × ' + r.height : '' }}</td>
               <td class="right">{{ r.floor_area }}</td><td class="right">{{ r.height ? r.net_wall_area : '—' }}</td>
-              <td class="right nowrap">@if (editable()) { <p-button icon="pi pi-pencil" [text]="true" size="small" (onClick)="openRoom(r)" />
-                <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="deleteRoom(r)" /> }</td></tr></ng-template>
+              <td class="right nowrap">@if (editable()) { <p-button icon="pi pi-pencil" [text]="true" size="small" (onClick)="openRoom(r)" ariaLabel="Edit" pTooltip="Edit"/>
+                <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="deleteRoom(r)" ariaLabel="Delete" pTooltip="Delete"/> }</td></tr></ng-template>
             <ng-template #footer><tr><td>Total</td><td></td><td class="right">{{ m.totals.floor_area }}</td><td class="right">{{ m.totals.net_wall_area }}</td><td></td></tr></ng-template>
             <ng-template #emptymessage><tr><td colspan="5" class="muted center">No rooms measured</td></tr></ng-template>
           </p-table>
@@ -96,10 +97,10 @@ const VISIT_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 's
       <div class="stack">
         <p-selectbutton [options]="kinds" [(ngModel)]="bf.kind" optionLabel="label" optionValue="value" [allowEmpty]="false" />
         <div class="grid2">
-          <label class="field"><span>Date & time</span><input pInputText type="datetime-local" [(ngModel)]="bf.at" fluid /></label>
+          <label class="field req"><span>Date & time</span><input pInputText type="datetime-local" [(ngModel)]="bf.at" fluid /></label>
           <label class="field"><span>Duration (min)</span><p-inputnumber [(ngModel)]="bf.duration_min" [min]="15" fluid /></label>
         </div>
-        <label class="field"><span>Who goes</span><p-multiselect [options]="staff()" [(ngModel)]="bf.staff_ids" optionLabel="name" optionValue="id" display="chip" fluid appendTo="body" /></label>
+        <label class="field req"><span>Who goes</span><p-multiselect [options]="staff()" [(ngModel)]="bf.staff_ids" optionLabel="name" optionValue="id" display="chip" fluid appendTo="body" /></label>
         <label class="field"><span>Address</span><input pInputText [(ngModel)]="bf.address" fluid /></label>
         <label class="field"><span>Notes</span><input pInputText [(ngModel)]="bf.notes" fluid /></label>
         <label class="check"><p-checkbox [(ngModel)]="bf.email_client" [binary]="true" /> Email the client a confirmation (when email is set up)</label>
@@ -107,18 +108,18 @@ const VISIT_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 's
       </div>
     </p-dialog>
 
-    <p-dialog header="Reschedule" [modal]="true" [(visible)]="reDlg" [style]="{ width: '28rem' }">
+    <p-dialog header="Reschedule" [modal]="true" [(visible)]="reDlg" [style]="{ width: '28rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack">
-        <label class="field"><span>New date & time</span><input pInputText type="datetime-local" [(ngModel)]="rf.at" fluid /></label>
-        <label class="field"><span>Reason</span><input pInputText [(ngModel)]="rf.reason" fluid /></label>
+        <label class="field req"><span>New date & time</span><input pInputText type="datetime-local" [(ngModel)]="rf.at" fluid /></label>
+        <label class="field req"><span>Reason</span><input pInputText [(ngModel)]="rf.reason" fluid /></label>
         <label class="check"><p-checkbox [(ngModel)]="rf.email_client" [binary]="true" /> Email the client the new time</label>
         <div class="row right"><p-button label="Reschedule" (onClick)="reschedule()" [disabled]="!rf.at || !rf.reason?.trim()" /></div>
       </div>
     </p-dialog>
 
-    <p-dialog [header]="rsn.status === 'no_show' ? 'Client did not show' : 'Cancel the visit'" [modal]="true" [(visible)]="reasonDlg" [style]="{ width: '26rem' }">
+    <p-dialog [header]="rsn.status === 'no_show' ? 'Client did not show' : 'Cancel the visit'" [modal]="true" [(visible)]="reasonDlg" [style]="{ width: '26rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack">
-        <label class="field"><span>Reason</span><input pInputText [(ngModel)]="rsn.reason" fluid /></label>
+        <label class="field req"><span>Reason</span><input pInputText [(ngModel)]="rsn.reason" fluid /></label>
         <div class="row right"><p-button label="Save" (onClick)="setStatus(rsn.visit, rsn.status, rsn.reason)" [disabled]="!rsn.reason?.trim()" /></div>
       </div>
     </p-dialog>
@@ -149,7 +150,7 @@ const VISIT_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 's
 
     <p-dialog [header]="rm.id ? 'Edit room' : 'Measure a room'" [modal]="true" [(visible)]="roomDlg" [style]="{ width: '36rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack">
-        <label class="field"><span>Room</span><input pInputText [(ngModel)]="rm.name" placeholder="Living, Kitchen, Bedroom 1…" fluid /></label>
+        <label class="field req"><span>Room</span><input pInputText [(ngModel)]="rm.name" placeholder="Living, Kitchen, Bedroom 1…" fluid /></label>
         <div class="grid3">
           <label class="field"><span>Length ({{ m()?.unit }})</span><p-inputnumber [(ngModel)]="rm.length" [min]="0" [maxFractionDigits]="2" fluid /></label>
           <label class="field"><span>Width ({{ m()?.unit }})</span><p-inputnumber [(ngModel)]="rm.width" [min]="0" [maxFractionDigits]="2" fluid /></label>
@@ -161,8 +162,8 @@ const VISIT_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 's
             <p-selectbutton [options]="openingKinds" [(ngModel)]="o.kind" optionLabel="label" optionValue="value" [allowEmpty]="false" />
             <p-inputnumber [(ngModel)]="o.width" placeholder="W" [min]="0" [maxFractionDigits]="2" [inputStyle]="{ width: '4.5rem' }" />
             <p-inputnumber [(ngModel)]="o.height" placeholder="H" [min]="0" [maxFractionDigits]="2" [inputStyle]="{ width: '4.5rem' }" />
-            <p-inputnumber [(ngModel)]="o.count" [min]="1" [inputStyle]="{ width: '3.5rem' }" />
-            <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="rm.openings.splice(i, 1)" />
+            <p-inputnumber placeholder="Count" [(ngModel)]="o.count" [min]="1" [inputStyle]="{ width: '3.5rem' }" />
+            <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="rm.openings.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/>
           </div>
         }
         <label class="field"><span>Notes</span><input pInputText [(ngModel)]="rm.notes" fluid /></label>

@@ -14,7 +14,7 @@ import { Api } from '../../core/api.service';
   selector: 'app-win-lose',
   imports: [FormsModule, ButtonModule, DialogModule, InputNumberModule, InputTextModule, SelectModule, TextareaModule],
   template: `
-    <p-dialog [header]="bid?.status === 'won' ? 'Start project — won bid' : (kind() === 'won' ? 'Mark as won' : 'Record a loss') + (bid ? ' — bid' : '')" [modal]="true" [(visible)]="visible" [style]="{ width: '30rem' }">
+    <p-dialog [header]="bid?.status === 'won' ? 'Start project — won bid' : (kind() === 'won' ? 'Mark as won' : 'Record a loss') + (bid ? ' — bid' : '')" [modal]="true" [(visible)]="visible" [style]="{ width: '30rem' }" [breakpoints]="{ '640px': '96vw' }">
       @if (kind() === 'won') {
         <form class="stack" (ngSubmit)="win()">
           @if (!bid) {

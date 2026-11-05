@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CardModule } from 'primeng/card';
 import { SelectButtonModule } from 'primeng/selectbutton';
 import { SelectModule } from 'primeng/select';
@@ -16,14 +17,14 @@ import { SalesCalendarComponent } from '../shared/sales-calendar.component';
 
 @Component({
   selector: 'app-followups',
-  imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, SelectButtonModule, SelectModule, TableModule, TabsModule, TagModule,
+  imports: [TooltipModule, FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, SelectButtonModule, SelectModule, TableModule, TabsModule, TagModule,
     FollowupDialogComponent, SalesCalendarComponent],
   template: `
     <div class="page-head">
       <div><h1>Follow-ups</h1><p class="muted">Chasing is where firms lose the most time and money. Overdue items are highlighted.</p></div>
       <div class="row gap">
         @if (meta()?.can_view_all) {
-          <p-select [options]="people()" [(ngModel)]="who" optionLabel="name" optionValue="id" (onChange)="load()" />
+          <p-select placeholder="Everyone" [options]="people()" [(ngModel)]="who" optionLabel="name" optionValue="id" (onChange)="load()" />
         }
         @if (auth.can('followups', 'rw')) { <p-button label="New follow-up" icon="pi pi-plus" (onClick)="fd().open()" /> }
       </div>
@@ -71,7 +72,7 @@ import { SalesCalendarComponent } from '../shared/sales-calendar.component';
                 <td><p-tag [value]="f.priority" [severity]="f.priority === 'high' ? 'danger' : f.priority === 'low' ? 'secondary' : 'info'" /></td>
                 <td><p-tag [value]="f.overdue ? 'overdue' : f.status" [severity]="f.overdue ? 'danger' : f.status === 'done' ? 'success' : f.status === 'open' ? 'warn' : 'secondary'" /></td>
                 <td class="right nowrap">@if (canAct(f)) {
-                  @if (f.status === 'open') { <p-button icon="pi pi-check" [text]="true" [rounded]="true" severity="success" (onClick)="fd().openDone(f)" />
+                  @if (f.status === 'open') { <p-button icon="pi pi-check" [text]="true" [rounded]="true" severity="success" (onClick)="fd().openDone(f)" ariaLabel="Done" pTooltip="Done"/>
                     <p-button icon="pi pi-times" [text]="true" [rounded]="true" severity="secondary" (onClick)="cancel(f)" ariaLabel="Cancel" /> }
                   @else { <p-button label="Reopen" size="small" [text]="true" (onClick)="reopen(f)" /> } }</td>
               </tr>

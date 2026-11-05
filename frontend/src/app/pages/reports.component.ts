@@ -17,7 +17,7 @@ import { AuthService } from '../core/auth.service';
       <div><h1>Reports</h1><p class="muted">Sales conversion and follow-up discipline. Finance and project reports arrive with their phases.</p></div>
       @if (auth.can('leads')) {
         <div class="row gap">
-          <input pInputText type="date" [(ngModel)]="from" /> <span class="muted">to</span> <input pInputText type="date" [(ngModel)]="to" />
+          <input aria-label="From date" title="From date" pInputText type="date" [(ngModel)]="from" /> <span class="muted">to</span> <input aria-label="To date" title="To date" pInputText type="date" [(ngModel)]="to" />
           <p-button label="Apply" icon="pi pi-filter" [outlined]="true" (onClick)="load()" />
         </div>
       }
@@ -53,7 +53,8 @@ import { AuthService } from '../core/auth.service';
             <ng-template #body let-r><tr><td>{{ g.key === 'by_service' ? label[r.key] || r.key : r.key }}</td><td class="right">{{ r.leads }}</td><td class="right">{{ r.open }}</td>
               <td class="right">{{ r.won }}</td><td class="right">{{ r.lost }}</td><td class="right"><strong>{{ pct(r.conversion) }}</strong></td>
               <td class="right">{{ fmt(r.won_value) }}</td><td class="right">{{ hours(r.avg_response_hours) }}</td></tr></ng-template>
-          </p-table>
+            <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No data for this period.</td></tr></ng-template>
+      </p-table>
         </p-card>
       }
 
@@ -105,14 +106,16 @@ import { AuthService } from '../core/auth.service';
             <ng-template #header><tr><th>Source</th><th class="right">Pre-sales spend</th><th class="right">Won</th><th class="right">Cost per win</th><th class="right">Return</th></tr></ng-template>
             <ng-template #body let-r><tr><td>{{ r.source }}</td><td class="right">{{ fmt(r.spent) }}</td><td class="right">{{ r.won }}</td>
               <td class="right">{{ fmt(r.cost_per_win) }}</td><td class="right">{{ r.roi != null ? r.roi + '×' : '—' }}</td></tr></ng-template>
-          </p-table>
+            <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No leads or spending in this period.</td></tr></ng-template>
+      </p-table>
         </p-card>
         <p-card><ng-template #title>Salesperson leaderboard</ng-template>
           <p-table [value]="s.leaderboard" size="small">
             <ng-template #header><tr><th>Salesperson</th><th class="right">Leads</th><th class="right">Won</th><th class="right">Conversion</th><th class="right">Won value</th><th class="right">Contacts (30 d)</th></tr></ng-template>
             <ng-template #body let-r><tr><td>{{ r.salesperson }}</td><td class="right">{{ r.leads }}</td><td class="right">{{ r.won }}</td><td class="right">{{ pct(r.conversion) }}</td>
               <td class="right">{{ fmt(r.won_value) }}</td><td class="right">{{ r.activities_30d }}</td></tr></ng-template>
-          </p-table>
+            <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No salespeople with leads in this period.</td></tr></ng-template>
+      </p-table>
         </p-card>
       </div>
     }
@@ -123,7 +126,8 @@ import { AuthService } from '../core/auth.service';
           <ng-template #header><tr><th>User</th><th class="right">Open</th><th class="right">Overdue</th><th class="right">Done</th><th class="right">Done on time</th><th class="right">Cancelled</th></tr></ng-template>
           <ng-template #body let-r><tr><td>{{ r.owner }}</td><td class="right">{{ r.open }}</td><td class="right" [class.c-bad]="r.overdue">{{ r.overdue }}</td>
             <td class="right">{{ r.done }}</td><td class="right">{{ pct(r.on_time_pct) }}</td><td class="right">{{ r.cancelled }}</td></tr></ng-template>
-        </p-table>
+          <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No follow-ups in this period.</td></tr></ng-template>
+      </p-table>
       </p-card>
     }
   `,

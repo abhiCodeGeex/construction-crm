@@ -115,6 +115,7 @@ export class SaDashboardComponent implements OnInit {
             </td>
           </tr>
         </ng-template>
+        <ng-template #emptymessage><tr><td colspan="20" class="muted center small">Nothing to show yet.</td></tr></ng-template>
       </p-table>
       @if (!canEdit()) { <p class="muted small"><i class="pi pi-eye"></i> Your role can view companies but not change them.</p> }
     </p-card>
@@ -181,9 +182,10 @@ export class SaCompaniesComponent implements OnInit {
             </td>
           </tr>
         </ng-template>
+        <ng-template #emptymessage><tr><td colspan="20" class="muted center small">Nothing to show yet.</td></tr></ng-template>
       </p-table>
     </p-card>
-    <p-dialog header="Add team member" [modal]="true" [(visible)]="dialog" [style]="{ width: '30rem' }">
+    <p-dialog header="Add team member" [modal]="true" [(visible)]="dialog" [style]="{ width: '30rem' }" [breakpoints]="{ '640px': '96vw' }">
       <form class="stack" (ngSubmit)="save()">
         <label class="field"><span>Name</span><input pInputText name="name" [(ngModel)]="f.name" fluid /></label>
         <label class="field"><span>Email</span><input pInputText name="email" [(ngModel)]="f.email" fluid /></label>
@@ -326,6 +328,7 @@ export class SaAccessComponent implements OnInit {
         <ng-template #body let-a>
           <tr><td><small>{{ a.at | date: 'short' }}</small></td><td>{{ a.by }}</td><td class="cap">{{ a.role }}</td><td>{{ a.action }}</td><td><small>{{ a.target }} {{ a.note }}</small></td></tr>
         </ng-template>
+        <ng-template #emptymessage><tr><td colspan="20" class="muted center small">Nothing to show yet.</td></tr></ng-template>
       </p-table>
     </p-card>
   `,

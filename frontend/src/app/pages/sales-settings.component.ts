@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CardModule } from 'primeng/card';
 import { CheckboxModule } from 'primeng/checkbox';
 import { InputNumberModule } from 'primeng/inputnumber';
@@ -19,7 +20,7 @@ import { CHANNEL_LABEL } from '../shared/followup-dialog.component';
 /** Settings → Sales: pipelines per service, loss reasons, website form, message templates. */
 @Component({
   selector: 'app-sales-settings',
-  imports: [FormsModule, ButtonModule, CardModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule, MultiSelectModule, SelectModule, TableModule, TagModule, TextareaModule],
+  imports: [TooltipModule, FormsModule, ButtonModule, CardModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule, MultiSelectModule, SelectModule, TableModule, TagModule, TextareaModule],
   template: `
     @if (meta(); as m) {
       <div class="tpl-grid">
@@ -27,11 +28,11 @@ import { CHANNEL_LABEL } from '../shared/followup-dialog.component';
           <p-card><ng-template #title>{{ label[svc] }} pipeline</ng-template>
             <ol class="pipe-edit">
               @for (st of draft[svc]; track $index; let i = $index; let last = $last) {
-                <li><input pInputText [(ngModel)]="draft[svc][i]" [disabled]="!canEdit()" />
+                <li><input placeholder="Stage name" pInputText [(ngModel)]="draft[svc][i]" [disabled]="!canEdit()" />
                   @if (canEdit()) {
-                    <p-button icon="pi pi-arrow-up" [text]="true" size="small" [disabled]="i === 0" (onClick)="swap(svc, i, i - 1)" />
-                    <p-button icon="pi pi-arrow-down" [text]="true" size="small" [disabled]="last" (onClick)="swap(svc, i, i + 1)" />
-                    <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="draft[svc].splice(i, 1)" /> }</li>
+                    <p-button icon="pi pi-arrow-up" [text]="true" size="small" [disabled]="i === 0" (onClick)="swap(svc, i, i - 1)" ariaLabel="Move up" pTooltip="Move up"/>
+                    <p-button icon="pi pi-arrow-down" [text]="true" size="small" [disabled]="last" (onClick)="swap(svc, i, i + 1)" ariaLabel="Move down" pTooltip="Move down"/>
+                    <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="draft[svc].splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }</li>
               }
               <li class="muted"><i class="pi pi-trophy"></i> Won · <i class="pi pi-times-circle"></i> Lost <small>(fixed)</small></li>
             </ol>
@@ -40,8 +41,8 @@ import { CHANNEL_LABEL } from '../shared/followup-dialog.component';
         }
         <p-card><ng-template #title>Loss reasons</ng-template>
           @for (r of reasons; track $index; let i = $index) {
-            <div class="row gap mb-xs"><input pInputText [(ngModel)]="reasons[i]" [disabled]="!canEdit()" class="grow" />
-              @if (canEdit()) { <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="reasons.splice(i, 1)" /> }</div>
+            <div class="row gap mb-xs"><input placeholder="Reason" pInputText [(ngModel)]="reasons[i]" [disabled]="!canEdit()" class="grow" />
+              @if (canEdit()) { <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="reasons.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }</div>
           }
           @if (canEdit()) { <p-button label="Add reason" icon="pi pi-plus" size="small" [text]="true" (onClick)="reasons.push('')" /> }
         </p-card>
@@ -71,7 +72,7 @@ import { CHANNEL_LABEL } from '../shared/followup-dialog.component';
             <p-select [options]="svcOptions()" [(ngModel)]="r.service" optionLabel="label" optionValue="value" placeholder="Any service" [showClear]="true" [disabled]="!canEdit()" appendTo="body" />
             @if (m.branches?.length) { <p-select [options]="m.branches" [(ngModel)]="r.branch" placeholder="Any branch" [showClear]="true" [disabled]="!canEdit()" appendTo="body" /> }
             <p-multiselect [options]="m.staff" [(ngModel)]="r.user_ids" optionLabel="name" optionValue="id" placeholder="Salespeople" display="chip" [disabled]="!canEdit()" appendTo="body" class="grow" />
-            @if (canEdit()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="assign.splice(i, 1)" /> }
+            @if (canEdit()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="assign.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }
           </div>
         } @empty { <p class="muted small">No rules — new website leads arrive unassigned.</p> }
         @if (canEdit()) { <div class="row-between mt-xs"><p-button label="Add rule" icon="pi pi-plus" size="small" [text]="true" (onClick)="assign.push({ service: null, branch: null, user_ids: [] })" />
@@ -85,8 +86,8 @@ import { CHANNEL_LABEL } from '../shared/followup-dialog.component';
               @for (p of pkgs[svc]; track $index; let i = $index) {
                 <div class="row gap mt-xs"><input pInputText [(ngModel)]="p.name" placeholder="Package" [disabled]="!canEdit()" style="width: 8rem" />
                   <p-inputnumber [(ngModel)]="p.rate" [min]="0" placeholder="Rate" [disabled]="!canEdit()" [inputStyle]="{ width: '7rem' }" />
-                  <p-select [options]="rateUnits" [(ngModel)]="p.unit" optionLabel="label" optionValue="value" [disabled]="!canEdit()" appendTo="body" />
-                  @if (canEdit()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="pkgs[svc].splice(i, 1)" /> }</div>
+                  <p-select placeholder="Unit" [options]="rateUnits" [(ngModel)]="p.unit" optionLabel="label" optionValue="value" [disabled]="!canEdit()" appendTo="body" />
+                  @if (canEdit()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="pkgs[svc].splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }</div>
               } @empty { <p class="muted small">No packages yet.</p> }
               @if (canEdit()) { <p-button label="Add package" icon="pi pi-plus" size="small" [text]="true" (onClick)="pkgs[svc].push({ name: '', rate: null, unit: 'sqft' })" /> }
             </div>
@@ -138,7 +139,7 @@ import { CHANNEL_LABEL } from '../shared/followup-dialog.component';
       @if (m.form_key) {
         <p-card styleClass="mt"><ng-template #title>Website enquiry form</ng-template>
           <p class="muted">Enquiries from this form arrive as <strong>Website form</strong> leads (unassigned). Repeat enquiries from the same phone or email are added to the open lead instead of creating a duplicate.</p>
-          <div class="row gap"><input pInputText [value]="formUrl()" readonly class="grow" />
+          <div class="row gap"><input aria-label="Website form link" title="Website form link" pInputText [value]="formUrl()" readonly class="grow" />
             <p-button label="Copy link" icon="pi pi-copy" [outlined]="true" (onClick)="copy(formUrl())" />
             <a [href]="formUrl()" target="_blank" rel="noopener"><p-button label="Open" icon="pi pi-external-link" [text]="true" /></a></div>
           <label class="field mt"><span>Embed on your website</span><textarea pTextarea rows="3" [value]="embed()" readonly fluid></textarea></label>
@@ -154,13 +155,14 @@ import { CHANNEL_LABEL } from '../shared/followup-dialog.component';
           <ng-template #header><tr><th>Name</th><th>Channel</th><th>Text</th><th></th></tr></ng-template>
           <ng-template #body let-t><tr><td><strong>{{ t.name }}</strong></td><td><p-tag [value]="chan[t.channel]" severity="secondary" /></td>
             <td><small class="muted pre">{{ t.body.length > 140 ? t.body.slice(0, 140) + '…' : t.body }}</small></td>
-            <td class="right nowrap">@if (canEdit()) { <p-button icon="pi pi-pencil" [text]="true" (onClick)="editTpl(t)" />
-              <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="deleteTpl(t)" /> }</td></tr></ng-template>
-        </p-table>
+            <td class="right nowrap">@if (canEdit()) { <p-button icon="pi pi-pencil" [text]="true" (onClick)="editTpl(t)" ariaLabel="Edit" pTooltip="Edit"/>
+              <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="deleteTpl(t)" ariaLabel="Delete" pTooltip="Delete"/> }</td></tr></ng-template>
+          <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No message templates yet.</td></tr></ng-template>
+      </p-table>
       </p-card>
     }
 
-    <p-dialog [header]="tf.id ? 'Edit template' : 'New template'" [modal]="true" [(visible)]="tplDlg" [style]="{ width: '36rem' }">
+    <p-dialog [header]="tf.id ? 'Edit template' : 'New template'" [modal]="true" [(visible)]="tplDlg" [style]="{ width: '36rem' }" [breakpoints]="{ '640px': '96vw' }">
       <div class="stack">
         <div class="grid2">
           <label class="field"><span>Name</span><input pInputText [(ngModel)]="tf.name" fluid /></label>

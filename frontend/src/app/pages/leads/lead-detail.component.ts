@@ -253,12 +253,12 @@ const EVENT_ICON: Record<string, string> = {
         </p-tabpanels>
       </p-tabs>
 
-      <p-dialog header="Use a message template" [modal]="true" [(visible)]="tplDlg" [style]="{ width: '36rem' }">
+      <p-dialog header="Use a message template" [modal]="true" [(visible)]="tplDlg" [style]="{ width: '36rem' }" [breakpoints]="{ '640px': '96vw' }">
         <div class="stack">
           <p-select [options]="templates()" [(ngModel)]="tplId" optionLabel="label" optionValue="id" placeholder="Choose template" (onChange)="render()" fluid appendTo="body" />
           @if (rendered(); as r) {
             @if (r.subject) { <strong>{{ r.subject }}</strong> }
-            <textarea pTextarea rows="7" [(ngModel)]="r.text" fluid></textarea>
+            <textarea placeholder="The message text — edit it before you copy and send it" pTextarea rows="7" [(ngModel)]="r.text" fluid></textarea>
             @if (r.missing.length) { <p-message severity="warn" text="Fill in before sending: {{ r.missing.join(', ') }}" /> }
             <small class="muted">Sending through email / SMS / WhatsApp providers arrives in a later phase. Copy the text, send it, then log it.</small>
             <div class="row gap right">
@@ -269,7 +269,7 @@ const EVENT_ICON: Record<string, string> = {
         </div>
       </p-dialog>
 
-      <p-dialog header="Put the lead on hold" [modal]="true" [(visible)]="holdDlg" [style]="{ width: '28rem' }">
+      <p-dialog header="Put the lead on hold" [modal]="true" [(visible)]="holdDlg" [style]="{ width: '28rem' }" [breakpoints]="{ '640px': '96vw' }">
         <div class="stack">
           <p class="muted small">The lead leaves the active pipeline (it is not a loss) and comes back by itself on the resume date. The salesperson is told when it does.</p>
           <label class="field"><span>Why?</span><input pInputText [(ngModel)]="hf.reason" placeholder="e.g. client travelling, waiting for loan" fluid /></label>
@@ -278,7 +278,7 @@ const EVENT_ICON: Record<string, string> = {
         </div>
       </p-dialog>
 
-      <p-dialog header="Move past unfinished steps?" [modal]="true" [(visible)]="ovDlg" [style]="{ width: '32rem' }">
+      <p-dialog header="Move past unfinished steps?" [modal]="true" [(visible)]="ovDlg" [style]="{ width: '32rem' }" [breakpoints]="{ '640px': '96vw' }">
         <div class="stack">
           <p-message severity="warn" [text]="ovMsg" />
           @if (auth.user()?.role === 'owner') {

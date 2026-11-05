@@ -81,13 +81,13 @@ def _read_token():
     header = request.headers.get("Authorization", "")
     token = header[7:] if header.startswith("Bearer ") else request.args.get("t")
     if not token:
-        abort(401, "Missing token")
+        abort(401, "Please sign in first")
     try:
         return jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
     except jwt.ExpiredSignatureError:
-        abort(401, "Session expired")
+        abort(401, "Your session has expired. Sign in again.")
     except jwt.InvalidTokenError:
-        abort(401, "Invalid token")
+        abort(401, "Your session is not valid any more. Sign in again.")
 
 
 # write endpoints a read-only (unpaid) tenant may still call
@@ -163,7 +163,7 @@ def api(area=None, module=None, write=None, staff=True):
             if area:
                 w = write if write is not None else request.method not in ("GET", "HEAD")
                 if not can(area, w):
-                    abort(403, f"Your role cannot {'change' if w else 'view'} {area}")
+                    abort(403, f"Your role cannot {'change' if w else 'view'} {area.replace('_', ' ')}")
             if module and module not in g.company.get("modules", []):
                 abort(403, f"The {module} module is not enabled for this company")
             return f(*a, **kw)

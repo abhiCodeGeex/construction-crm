@@ -325,11 +325,11 @@ def clean_project(dat, existing=None):
             abort(409, "Services cannot be removed from a project once added; delete their stages instead")
     if "status" in dat:
         if dat["status"] not in PROJECT_STATUSES:
-            abort(400, "Invalid project status")
+            abort(400, "Project status must be planning, active, on hold, completed or cancelled")
         out["status"] = dat["status"]
     if "project_type" in dat:
         if dat["project_type"] and dat["project_type"] not in PROJECT_TYPES:
-            abort(400, "Invalid project type")
+            abort(400, f"Project type must be one of: {', '.join(PROJECT_TYPES)}")
         out["project_type"] = dat["project_type"] or None
     if "start" in dat or not existing:
         out["start"] = d(dat.get("start"), "Start date") or date.today().isoformat()
@@ -727,7 +727,7 @@ def clean_task(dat, p, task=None):
         out["depends_on"] = [ln["task_id"] for ln in links]
     if "status" in dat:
         if dat["status"] not in TASK_STATUSES:
-            abort(400, "Invalid task status")
+            abort(400, "Task status must be to do, in progress, blocked or done")
         out["status"] = dat["status"]
     if "progress" in dat:
         v = dat["progress"]

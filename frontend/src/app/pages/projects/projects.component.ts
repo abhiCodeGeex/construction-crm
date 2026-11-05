@@ -1,4 +1,5 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
@@ -18,7 +19,7 @@ import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-projects',
-  imports: [FormsModule, ButtonModule, CardModule, DialogModule, IconFieldModule, InputIconModule, InputNumberModule, InputTextModule,
+  imports: [FormsModule, DatePipe, ButtonModule, CardModule, DialogModule, IconFieldModule, InputIconModule, InputNumberModule, InputTextModule,
     ProgressBarModule, SelectButtonModule, SelectModule, TableModule, TagModule],
   template: `
     <div class="page-head">
@@ -48,7 +49,7 @@ import { AuthService } from '../../core/auth.service';
               @if (p.late) { <p-tag value="Late" severity="danger" styleClass="ml-xs" /> }</td>
             <td><div class="prog"><p-progressbar [value]="p.progress" [showValue]="false" styleClass="thin grow" /><span>{{ p.progress }}%</span></div></td>
             <td>@if (p.health) { <span class="nowrap" [title]="p.health.late_days ? 'Forecast ' + p.health.late_days + ' working days late' : ''"><i class="health-dot" [class]="p.health.grade"></i>{{ p.health.score }} · {{ p.health.label }}</span> } @else { <span class="muted">—</span> }</td>
-            <td>{{ p.planned_end || '—' }}</td>
+            <td>{{ p.planned_end ? (p.planned_end | date: 'd MMM y') : '—' }}</td>
             @if (showMoney()) { <td class="right">{{ fmt(p.value) }}</td> }
           </tr>
         </ng-template>
@@ -58,7 +59,7 @@ import { AuthService } from '../../core/auth.service';
 
     <p-dialog header="New project" [modal]="true" [(visible)]="dialog" [style]="{ width: '40rem' }" [breakpoints]="{ '700px': '95vw' }">
       <form class="stack" (ngSubmit)="create()">
-        <label class="field"><span>Project name</span><input pInputText name="name" [(ngModel)]="f.name" fluid /></label>
+        <label class="field req"><span>Project name</span><input pInputText name="name" [(ngModel)]="f.name" fluid /></label>
         <div class="field"><span>Services <small class="muted">(pick several for design-and-build)</small></span>
           <p-selectbutton name="svc" [options]="serviceOptions()" [(ngModel)]="f.services" [multiple]="true" optionLabel="label" optionValue="value" /></div>
         <div class="grid2">
@@ -72,7 +73,7 @@ import { AuthService } from '../../core/auth.service';
           <label class="field"><span>Status</span><p-select name="status" [options]="['planning', 'active']" [(ngModel)]="f.status" fluid appendTo="body" /></label>
         </div>
         <div class="grid3">
-          <label class="field"><span>Project value</span><p-inputnumber name="value" [(ngModel)]="f.value" mode="decimal" [min]="0" fluid /></label>
+          <label class="field"><span>Project value</span><p-inputnumber placeholder="Value" name="value" [(ngModel)]="f.value" mode="decimal" [min]="0" fluid /></label>
           <label class="field"><span>Area</span><p-inputnumber name="area" [(ngModel)]="f.area" [min]="0" fluid /></label>
           <label class="field"><span>Unit</span><p-selectbutton [allowEmpty]="false" name="unit" [options]="units" [(ngModel)]="f.area_unit" optionLabel="label" optionValue="value" /></label>
         </div>

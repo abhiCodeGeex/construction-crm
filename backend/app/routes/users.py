@@ -59,7 +59,7 @@ def create_user():
     if not name or not email:
         abort(400, "Name and email are required")
     if role not in INTERNAL_ROLES + EXTERNAL_ROLES:
-        abort(400, "Invalid role")
+        abort(400, "Choose a valid role for this user")
     if role == "owner" and g.role != "owner":
         abort(403, "Only an owner can create another owner")
     if len(d.get("password") or "") < 6:

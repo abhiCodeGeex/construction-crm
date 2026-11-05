@@ -146,12 +146,12 @@ const PORTAL_ROLE: Record<string, string> = { client: 'client', developer: 'clie
               <ng-template #header><tr><th>Type</th><th>Name</th><th>Number</th><th>Issuer</th><th>Issued</th><th>Expiry</th><th>Status</th><th>File</th><th></th></tr></ng-template>
               <ng-template #body let-d let-i="rowIndex">
                 <tr>
-                  <td><p-select [options]="complianceTypes" [(ngModel)]="d.type" [disabled]="!canEdit()" appendTo="body" /></td>
-                  <td><input pInputText [(ngModel)]="d.name" [disabled]="!canEdit()" /></td>
-                  <td><input pInputText [(ngModel)]="d.number" [disabled]="!canEdit()" class="w-8" /></td>
-                  <td><input pInputText [(ngModel)]="d.issuer" [disabled]="!canEdit()" class="w-8" /></td>
-                  <td><input pInputText type="date" [(ngModel)]="d.issue_date" [disabled]="!canEdit()" /></td>
-                  <td><input pInputText type="date" [(ngModel)]="d.expiry" [disabled]="!canEdit()" /></td>
+                  <td><p-select placeholder="Type" [options]="complianceTypes" [(ngModel)]="d.type" [disabled]="!canEdit()" appendTo="body" /></td>
+                  <td><input placeholder="Document name" pInputText [(ngModel)]="d.name" [disabled]="!canEdit()" /></td>
+                  <td><input placeholder="Number" pInputText [(ngModel)]="d.number" [disabled]="!canEdit()" class="w-8" /></td>
+                  <td><input placeholder="Issued by" pInputText [(ngModel)]="d.issuer" [disabled]="!canEdit()" class="w-8" /></td>
+                  <td><input aria-label="Issue date" title="Issue date" pInputText type="date" [(ngModel)]="d.issue_date" [disabled]="!canEdit()" /></td>
+                  <td><input aria-label="Expiry date" title="Expiry date" pInputText type="date" [(ngModel)]="d.expiry" [disabled]="!canEdit()" /></td>
                   <td>@if (d.status) { <p-tag [value]="label(d.status)" [severity]="sev[d.status]" /> }</td>
                   <td class="nowrap">
                     @if (d.file) { <p-button icon="pi pi-file" [text]="true" [rounded]="true" (onClick)="api.openFile(d.file.url)" [pTooltip]="d.file.name" /> }
@@ -159,7 +159,7 @@ const PORTAL_ROLE: Record<string, string> = { client: 'client', developer: 'clie
                       <label class="upload-btn"><i class="pi pi-upload"></i><input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx" (change)="attach(d, $event)" hidden /></label>
                     }
                   </td>
-                  <td>@if (canEdit()) { <p-button icon="pi pi-trash" severity="danger" [text]="true" [rounded]="true" (onClick)="c.compliance.splice(i, 1)" /> }</td>
+                  <td>@if (canEdit()) { <p-button icon="pi pi-trash" severity="danger" [text]="true" [rounded]="true" (onClick)="c.compliance.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }</td>
                 </tr>
               </ng-template>
               <ng-template #emptymessage><tr><td colspan="9" class="center muted">No compliance documents</td></tr></ng-template>
@@ -175,7 +175,7 @@ const PORTAL_ROLE: Record<string, string> = { client: 'client', developer: 'clie
                   <td><a [routerLink]="['/app/projects', p.id]"><strong>{{ p.name }}</strong></a> <small class="muted">{{ p.code }}</small></td>
                   <td>@for (r of p.roles; track r) { <p-tag [value]="r" severity="info" styleClass="mr-xs" /> }</td>
                   <td><p-tag [value]="label(p.status)" [severity]="sev[p.status]" /></td>
-                  <td>{{ p.start }}</td>
+                  <td>{{ p.start | date: 'd MMM y' }}</td>
                   <td class="right">{{ fmt(p.value) }}</td>
                 </tr>
               </ng-template>
@@ -221,7 +221,7 @@ const PORTAL_ROLE: Record<string, string> = { client: 'client', developer: 'clie
       </p-tabs>
     }
 
-    <p-dialog header="Give portal access" [modal]="true" [(visible)]="invite" [style]="{ width: '28rem' }">
+    <p-dialog header="Give portal access" [modal]="true" [(visible)]="invite" [style]="{ width: '28rem' }" [breakpoints]="{ '640px': '96vw' }">
       <form class="stack" (ngSubmit)="sendInvite()">
         <p class="muted small">Portal users are free and only see projects where this contact is on the team.</p>
         <label class="field"><span>Portal role</span><p-select name="role" [options]="portalRoles" [(ngModel)]="inv.role" fluid appendTo="body" /></label>

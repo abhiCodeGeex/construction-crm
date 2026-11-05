@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CardModule } from 'primeng/card';
 import { CheckboxModule } from 'primeng/checkbox';
 import { DialogModule } from 'primeng/dialog';
@@ -19,7 +20,7 @@ import { AuthService } from '../../core/auth.service';
 /** Lead steps 2 and 4 (C+2): decision-makers, ballpark, the requirement brief and the client questionnaire. */
 @Component({
   selector: 'app-lead-brief',
-  imports: [FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, DialogModule, InputTextModule, MessageModule, MultiSelectModule,
+  imports: [TooltipModule, FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, DialogModule, InputTextModule, MessageModule, MultiSelectModule,
     SelectModule, SelectButtonModule, TagModule, TextareaModule],
   template: `
     @if (d(); as d) {
@@ -35,7 +36,7 @@ import { AuthService } from '../../core/auth.service';
                   <br /><small class="muted">{{ p.role }}{{ p.phone ? ' · ' + p.phone : '' }}{{ p.email ? ' · ' + p.email : '' }}</small></div>
                 @if (editable()) {
                   @if (!p.main) { <p-button label="Make main" size="small" [text]="true" (onClick)="setMain(p)" /> }
-                  <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="removePerson(p)" /> }
+                  <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="removePerson(p)" ariaLabel="Delete" pTooltip="Delete"/> }
               </div>
             }
           </p-card>
@@ -64,8 +65,8 @@ import { AuthService } from '../../core/auth.service';
               @if (editable()) { <p-button label="Copy answers into the brief notes" icon="pi pi-copy" size="small" [text]="true" (onClick)="copyAnswers()" /> }
             } @else {
               <p class="small muted">A link the client opens to describe what they want; the answers arrive here and the salesperson is told.</p>
-              @if (d.questionnaire.link) { <div class="row gap"><input pInputText [value]="origin + d.questionnaire.link" readonly class="grow" />
-                <p-button icon="pi pi-copy" [outlined]="true" (onClick)="copy(origin + d.questionnaire.link)" /></div>
+              @if (d.questionnaire.link) { <div class="row gap"><input aria-label="Questionnaire link" title="Questionnaire link" pInputText [value]="origin + d.questionnaire.link" readonly class="grow" />
+                <p-button icon="pi pi-copy" [outlined]="true" (onClick)="copy(origin + d.questionnaire.link)" ariaLabel="Copy" pTooltip="Copy"/></div>
                 <small class="muted">Created {{ d.questionnaire.sent_at | date: 'd MMM' }} by {{ d.questionnaire.sent_by }} · not answered yet</small> }
               @if (editable()) { <div class="row gap mt-xs">
                 <p-button [label]="d.questionnaire.link ? 'Email the link' : 'Create link'" icon="pi pi-link" size="small" [outlined]="true" (onClick)="questionnaire(!!d.questionnaire.link)" /></div> }
@@ -85,7 +86,7 @@ import { AuthService } from '../../core/auth.service';
               <div class="row gap">
                 <input pInputText [(ngModel)]="s.room" placeholder="Room / area" [disabled]="!editable()" />
                 <p-multiselect [options]="d.work_types" [(ngModel)]="s.work_types" placeholder="Work" display="chip" class="grow" [disabled]="!editable()" appendTo="body" />
-                @if (editable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="f.scope.splice(i, 1)" /> }
+                @if (editable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="f.scope.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }
               </div>
             }
             @if (editable()) { <div class="row gap"><p-button label="Add room" icon="pi pi-plus" size="small" [text]="true" (onClick)="f.scope.push({ room: '', work_types: [] })" />
@@ -113,7 +114,7 @@ import { AuthService } from '../../core/auth.service';
         </p-card>
       </div>
 
-      <p-dialog header="Add a decision-maker" [modal]="true" [(visible)]="personDlg" [style]="{ width: '30rem' }">
+      <p-dialog header="Add a decision-maker" [modal]="true" [(visible)]="personDlg" [style]="{ width: '30rem' }" [breakpoints]="{ '640px': '96vw' }">
         <div class="stack">
           <p-selectbutton [options]="modes" [(ngModel)]="pf.mode" optionLabel="label" optionValue="value" [allowEmpty]="false" />
           @if (pf.mode === 'existing') {
@@ -128,7 +129,7 @@ import { AuthService } from '../../core/auth.service';
         </div>
       </p-dialog>
 
-      <p-dialog header="How did the client confirm the brief?" [modal]="true" [(visible)]="confirmDlg" [style]="{ width: '26rem' }">
+      <p-dialog header="How did the client confirm the brief?" [modal]="true" [(visible)]="confirmDlg" [style]="{ width: '26rem' }" [breakpoints]="{ '640px': '96vw' }">
         <div class="stack">
           <p-selectbutton [options]="hows" [(ngModel)]="how" optionLabel="label" optionValue="value" [allowEmpty]="false" />
           <div class="row right"><p-button label="Record confirmation" (onClick)="confirm()" /></div>

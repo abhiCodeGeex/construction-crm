@@ -86,7 +86,7 @@ export const TYPE_LABEL: Record<string, string> = {
     <p-dialog header="New contact" [modal]="true" [(visible)]="dialog" [style]="{ width: '34rem' }" [breakpoints]="{ '640px': '95vw' }">
       <form class="stack" (ngSubmit)="create()">
         <p-selectbutton [allowEmpty]="false" name="kind" [options]="newKindOptions" [(ngModel)]="f.kind" optionLabel="label" optionValue="value" />
-        <label class="field"><span>{{ f.kind === 'person' ? 'Full name' : 'Company name' }}</span><input pInputText name="name" [(ngModel)]="f.name" fluid /></label>
+        <label class="field req"><span>{{ f.kind === 'person' ? 'Full name' : 'Company name' }}</span><input pInputText name="name" [(ngModel)]="f.name" fluid /></label>
         @if (f.kind === 'person') {
           <div class="grid2">
             <label class="field"><span>Company</span>

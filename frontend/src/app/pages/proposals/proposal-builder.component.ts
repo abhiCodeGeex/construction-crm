@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { CardModule } from 'primeng/card';
 import { CheckboxModule } from 'primeng/checkbox';
 import { DialogModule } from 'primeng/dialog';
@@ -22,7 +23,7 @@ import { AuthService } from '../../core/auth.service';
  *  discount, tax, payment schedule; approval; send with a client link. */
 @Component({
   selector: 'app-proposal-builder',
-  imports: [FormsModule, DatePipe, DecimalPipe, RouterLink, ButtonModule, CardModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule,
+  imports: [TooltipModule, FormsModule, DatePipe, DecimalPipe, RouterLink, ButtonModule, CardModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule,
     MessageModule, SelectModule, SelectButtonModule, TableModule, TagModule, TextareaModule],
   template: `
     @if (p(); as p) {
@@ -86,9 +87,9 @@ import { AuthService } from '../../core/auth.service';
                 @if (p.type === 'fee') {
                   <strong class="small">Split the fee across stages (optional, must total 100%)</strong>
                   @for (s of fee.stages; track $index; let i = $index) {
-                    <div class="row gap"><p-select [options]="p.meta.stages" [(ngModel)]="s.name" [editable]="true" [disabled]="!editable()" appendTo="body" />
-                      <p-inputnumber [(ngModel)]="s.pct" [min]="0" [max]="100" suffix="%" [disabled]="!editable()" [inputStyle]="{ width: '6rem' }" />
-                      @if (editable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="fee.stages.splice(i, 1)" /> }</div>
+                    <div class="row gap"><p-select placeholder="Stage name" [options]="p.meta.stages" [(ngModel)]="s.name" [editable]="true" [disabled]="!editable()" appendTo="body" />
+                      <p-inputnumber placeholder="%" [(ngModel)]="s.pct" [min]="0" [max]="100" suffix="%" [disabled]="!editable()" [inputStyle]="{ width: '6rem' }" />
+                      @if (editable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="fee.stages.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }</div>
                   }
                   @if (editable()) { <p-button label="Add stage" icon="pi pi-plus" size="small" [text]="true" (onClick)="fee.stages.push({ name: '', pct: null })" /> }
                 }
@@ -99,7 +100,7 @@ import { AuthService } from '../../core/auth.service';
           @if (p.type === 'construction') {
             <p-card><ng-template #title>From estimate {{ p.estimate_number }}</ng-template>
               <p class="small muted">Every estimate line is priced for the client at its share of the estimate's price (cost, overheads and markup stay internal). To change quantities or rates, make a new estimate version, approve it and choose it here.</p>
-              @if (editable()) { <p-select [options]="estimates()" [(ngModel)]="f.estimate_id" optionLabel="label" optionValue="id" fluid appendTo="body" /> }
+              @if (editable()) { <p-select placeholder="Choose an approved estimate" [options]="estimates()" [(ngModel)]="f.estimate_id" optionLabel="label" optionValue="id" fluid appendTo="body" /> }
             </p-card>
           }
 
@@ -108,24 +109,25 @@ import { AuthService } from '../../core/auth.service';
               <p-table [value]="products" size="small" [scrollable]="true">
                 <ng-template #header><tr><th>Room</th><th>Product</th><th>Brand</th><th class="right">Qty</th><th>Unit</th><th class="right">Trade price</th><th class="right">Markup %</th><th class="right">Client price</th><th>Optional</th><th></th></tr></ng-template>
                 <ng-template #body let-r let-i="rowIndex"><tr>
-                  <td><input pInputText [(ngModel)]="r.room" [disabled]="!editable()" style="width: 6rem" /></td>
-                  <td><input pInputText [(ngModel)]="r.name" [disabled]="!editable()" style="width: 9rem" /></td>
-                  <td><input pInputText [(ngModel)]="r.brand" [disabled]="!editable()" style="width: 6rem" /></td>
-                  <td class="right"><p-inputnumber [(ngModel)]="r.qty" [min]="0" [disabled]="!editable()" [inputStyle]="{ width: '4rem' }" /></td>
-                  <td><input pInputText [(ngModel)]="r.unit" [disabled]="!editable()" style="width: 3.5rem" /></td>
-                  <td class="right"><p-inputnumber [(ngModel)]="r.trade_price" [min]="0" [disabled]="!editable()" [inputStyle]="{ width: '6rem' }" /></td>
-                  <td class="right"><p-inputnumber [(ngModel)]="r.markup_pct" [min]="0" [disabled]="!editable()" [inputStyle]="{ width: '4rem' }" /></td>
+                  <td><input placeholder="Room" pInputText [(ngModel)]="r.room" [disabled]="!editable()" style="width: 6rem" /></td>
+                  <td><input placeholder="Item" pInputText [(ngModel)]="r.name" [disabled]="!editable()" style="width: 9rem" /></td>
+                  <td><input placeholder="Brand" pInputText [(ngModel)]="r.brand" [disabled]="!editable()" style="width: 6rem" /></td>
+                  <td class="right"><p-inputnumber placeholder="Qty" [(ngModel)]="r.qty" [min]="0" [disabled]="!editable()" [inputStyle]="{ width: '4rem' }" /></td>
+                  <td><input placeholder="Unit" pInputText [(ngModel)]="r.unit" [disabled]="!editable()" style="width: 3.5rem" /></td>
+                  <td class="right"><p-inputnumber placeholder="Trade price" [(ngModel)]="r.trade_price" [min]="0" [disabled]="!editable()" [inputStyle]="{ width: '6rem' }" /></td>
+                  <td class="right"><p-inputnumber placeholder="Markup %" [(ngModel)]="r.markup_pct" [min]="0" [disabled]="!editable()" [inputStyle]="{ width: '4rem' }" /></td>
                   <td class="right">{{ fmt((r.trade_price || 0) * (1 + (r.markup_pct || 0) / 100)) }}</td>
                   <td class="center"><p-checkbox [(ngModel)]="r.optional" [binary]="true" [disabled]="!editable()" /></td>
-                  <td>@if (editable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="products.splice(i, 1)" /> }</td></tr></ng-template>
-              </p-table>
+                  <td>@if (editable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="products.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }</td></tr></ng-template>
+                <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No products yet — add the first item.</td></tr></ng-template>
+      </p-table>
               @if (editable()) { <p-button label="Add product" icon="pi pi-plus" size="small" [text]="true" (onClick)="products.push({ room: '', name: '', qty: 1, unit: 'nos', trade_price: null, markup_pct: 25, optional: false })" /> }
             </p-card>
           }
 
           @if (p.type === 'simple') {
             <p-card><ng-template #title>Value</ng-template>
-              <p-inputnumber [(ngModel)]="f.value" [min]="0" [disabled]="!editable()" fluid />
+              <p-inputnumber placeholder="Value" [(ngModel)]="f.value" [min]="0" [disabled]="!editable()" fluid />
             </p-card>
           } @else {
             <p-card><ng-template #title>More lines (extra services, allowances, options)</ng-template>
@@ -137,7 +139,7 @@ import { AuthService } from '../../core/auth.service';
                   <input pInputText [(ngModel)]="it.unit" placeholder="Unit" [disabled]="!editable()" style="width: 4rem" />
                   <p-inputnumber [(ngModel)]="it.rate" [min]="0" placeholder="Rate" [disabled]="!editable()" [inputStyle]="{ width: '6rem' }" />
                   <label class="check"><p-checkbox [(ngModel)]="it.optional" [binary]="true" [disabled]="!editable()" /> optional</label>
-                  @if (editable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="extra.splice(i, 1)" /> }
+                  @if (editable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="extra.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }
                 </div>
               }
               @if (editable()) { <p-button label="Add line" icon="pi pi-plus" size="small" [text]="true" (onClick)="extra.push({ section: '', description: '', qty: 1, unit: '', rate: null, optional: false })" /> }
@@ -151,7 +153,8 @@ import { AuthService } from '../../core/auth.service';
               <p-table [value]="p.items" size="small">
                 <ng-template #body let-i><tr [class.muted]="i.optional"><td>{{ i.section ? i.section + ' · ' : '' }}{{ i.description }}{{ i.optional ? ' (optional)' : '' }}</td>
                   <td class="right nowrap">{{ i.qty | number: '1.0-2' }} {{ i.unit || '' }}</td><td class="right">{{ fmt(i.amount) }}</td></tr></ng-template>
-              </p-table>
+                <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No items yet.</td></tr></ng-template>
+      </p-table>
             }
             <div class="grid2 mt-xs">
               <label class="field"><span>Discount % <small class="muted">(limit {{ p.meta.limits.max_discount_pct }}%)</small></span><p-inputnumber [(ngModel)]="f.discount_pct" [min]="0" [max]="100" [maxFractionDigits]="2" [disabled]="!editable() || p.type === 'simple'" fluid /></label>
@@ -174,11 +177,11 @@ import { AuthService } from '../../core/auth.service';
             @for (r of schedule; track $index; let i = $index) {
               <div class="row gap wrap mb-xs">
                 <input pInputText [(ngModel)]="r.name" placeholder="Payment" [disabled]="!editable()" class="grow" />
-                <p-inputnumber [(ngModel)]="r.pct" [min]="0" [max]="100" suffix="%" [maxFractionDigits]="2" [disabled]="!editable()" [inputStyle]="{ width: '5rem' }" />
-                <p-select [options]="triggers()" [(ngModel)]="r.trigger" optionLabel="label" optionValue="value" [disabled]="!editable()" appendTo="body" />
+                <p-inputnumber placeholder="%" [(ngModel)]="r.pct" [min]="0" [max]="100" suffix="%" [maxFractionDigits]="2" [disabled]="!editable()" [inputStyle]="{ width: '5rem' }" />
+                <p-select placeholder="When" [options]="triggers()" [(ngModel)]="r.trigger" optionLabel="label" optionValue="value" [disabled]="!editable()" appendTo="body" />
                 @if (r.trigger === 'stage') { <p-select [options]="p.meta.stages" [(ngModel)]="r.stage" placeholder="Stage" [disabled]="!editable()" appendTo="body" /> }
-                @if (r.trigger === 'date') { <input pInputText type="date" [(ngModel)]="r.date" [disabled]="!editable()" /> }
-                @if (editable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="schedule.splice(i, 1)" /> }
+                @if (r.trigger === 'date') { <input aria-label="Date" title="Date" pInputText type="date" [(ngModel)]="r.date" [disabled]="!editable()" /> }
+                @if (editable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="schedule.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }
               </div>
             }
             <div class="row-between"><small [class.c-bad]="schedTotal() !== 100">Total {{ schedTotal() }}%{{ schedTotal() !== 100 ? ' — must be 100%' : '' }}</small>
@@ -195,7 +198,7 @@ import { AuthService } from '../../core/auth.service';
         </div>
       </div>
 
-      <p-dialog header="Send to the client" [modal]="true" [(visible)]="sendDlg" [style]="{ width: '30rem' }">
+      <p-dialog header="Send to the client" [modal]="true" [(visible)]="sendDlg" [style]="{ width: '30rem' }" [breakpoints]="{ '640px': '96vw' }">
         <div class="stack">
           <p class="small muted">The client gets a private link to view the proposal, choose options and accept with a signature. Email sends it (with the file) when email is set up; otherwise copy the link and share it.</p>
           <p-selectbutton [options]="channels" [(ngModel)]="channel" optionLabel="label" optionValue="value" [allowEmpty]="false" />
@@ -203,12 +206,12 @@ import { AuthService } from '../../core/auth.service';
         </div>
       </p-dialog>
 
-      <p-dialog header="Sent — the client's link" [modal]="true" [(visible)]="linkDlg" [style]="{ width: '34rem' }">
-        <div class="stack"><div class="row gap"><input pInputText [value]="sentLink" readonly class="grow" /><p-button icon="pi pi-copy" (onClick)="copy(sentLink)" /></div>
+      <p-dialog header="Sent — the client's link" [modal]="true" [(visible)]="linkDlg" [style]="{ width: '34rem' }" [breakpoints]="{ '640px': '96vw' }">
+        <div class="stack"><div class="row gap"><input aria-label="Client link" title="Client link" pInputText [value]="sentLink" readonly class="grow" /><p-button icon="pi pi-copy" (onClick)="copy(sentLink)" ariaLabel="Copy" pTooltip="Copy"/></div>
           <small class="muted">You are told when the client opens it, and reminded if it is opened but not answered.</small></div>
       </p-dialog>
 
-      <p-dialog header="Refuse" [modal]="true" [(visible)]="refuseDlg" [style]="{ width: '26rem' }">
+      <p-dialog header="Refuse" [modal]="true" [(visible)]="refuseDlg" [style]="{ width: '26rem' }" [breakpoints]="{ '640px': '96vw' }">
         <div class="stack"><input pInputText [(ngModel)]="refuseNote" placeholder="Why" />
           <div class="row right"><p-button label="Refuse" severity="danger" (onClick)="decide(false)" [disabled]="!refuseNote.trim()" /></div></div>
       </p-dialog>
