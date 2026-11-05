@@ -98,8 +98,8 @@ check("no follow-up yet is flagged", upd["next_followup"] is None)
 
 # 3 -------------------------------------------------------------------------------------------------
 step("3. Sales responds and plans follow-ups")
-ok("log first call", call("POST", f"/leads/{LID}/activities", {"type": "call", "text": "Discussed plot, floors and budget",
-                                                               "outcome": "Wants site visit this week"}, T["sales"]), 201)
+ok("log first call", call("POST", f"/leads/{LID}/activities", {"type": "call", "text": "Discussed plot, floors and budget — wants a site visit this week",
+                                                               "outcome": "Reached", "next_due": day(1)}, T["sales"]), 201)
 check("first response recorded", call("GET", f"/leads/{LID}", token=T["sales"])[1]["first_response_at"] is not None)
 f_over = ok("follow-up already overdue", call("POST", "/followups", {"title": f"Send sample floor plans {RUN}", "due": day(-1),
                                                                     "priority": "high", "channel": "email",
@@ -141,9 +141,14 @@ ok("reopen", call("POST", f"/followups/{f_today['id']}/reopen", {}, T["sales"]))
 
 # 5 -------------------------------------------------------------------------------------------------
 step("5. Lead moves through every pipeline stage")
-stages = call("GET", "/leads/meta", token=T["sales"])[1]["pipelines"]["construction"]
-for st in stages[1:]:
-    ok(f"move to {st}", call("POST", f"/leads/{LID}/stage", {"stage": st}, T["sales"]))
+m = call("GET", "/leads/meta", token=T["sales"])[1]
+stages = m["pipelines"]["construction"]
+for item in m["stage_rules"]["construction"]["Lead"]["checklist"]:
+    ok(f"tick {item}", call("POST", f"/leads/{LID}/checklist", {"stage": "Lead", "item": item, "done": True}, T["sales"]))
+ok("move to Site visit (Lead checklist done, first call logged)", call("POST", f"/leads/{LID}/stage", {"stage": "Site visit"}, T["sales"]))
+# visit, measurements, brief, estimate and proposal are recorded by the owner here (Phase C+ blocks 2-4 test them)
+for st in stages[2:]:
+    ok(f"move to {st}", call("POST", f"/leads/{LID}/stage", {"stage": st, "override_reason": "e2e: steps covered in later suites"}, T["owner"]))
 hist = [h["stage"] for h in call("GET", f"/leads/{LID}", token=T["sales"])[1]["stage_history"]]
 check("history covers every stage in order", hist == stages, hist)
 tpl = next(t for t in call("GET", "/message_templates", token=T["sales"])[1] if t["name"] == "Budget discussion")

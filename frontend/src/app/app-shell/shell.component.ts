@@ -9,10 +9,11 @@ import { MenuItem } from 'primeng/api';
 import { AuthService } from '../core/auth.service';
 import { NAV, SECTIONS } from '../core/nav';
 import { ThemeService } from '../core/theme.service';
+import { NotificationBellComponent } from '../shared/notification-bell.component';
 
 @Component({
   selector: 'app-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, AvatarModule, ButtonModule, MenuModule, TagModule, TooltipModule],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AvatarModule, ButtonModule, MenuModule, TagModule, TooltipModule, NotificationBellComponent],
   template: `
     <div class="layout" [class.collapsed]="collapsed()">
       <aside class="sidebar">
@@ -41,6 +42,7 @@ import { ThemeService } from '../core/theme.service';
           <div class="company-name">{{ auth.company()?.name }}</div>
           <p-tag [value]="auth.company()?.status ?? ''" [severity]="auth.company()?.status === 'active' ? 'success' : 'info'" />
           <span class="spacer"></span>
+          <app-notification-bell />
           <p-button [icon]="theme.dark() ? 'pi pi-sun' : 'pi pi-moon'" [rounded]="true" [text]="true" severity="secondary" (onClick)="theme.toggle()" ariaLabel="Theme" />
           <button class="who" (click)="menu.toggle($event)">
             <p-avatar [label]="initials()" shape="circle" styleClass="avatar" />

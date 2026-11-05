@@ -46,6 +46,7 @@ import { WinLoseComponent } from './win-lose.component';
             <p-selectbutton [allowEmpty]="false" [options]="serviceOptions()" [(ngModel)]="service" optionLabel="label" optionValue="value" (onChange)="load()" />
             <p-select [options]="ownerOptions()" [(ngModel)]="owner" optionLabel="name" optionValue="id" placeholder="All salespeople" [showClear]="true" (onChange)="load()" />
             <p-select [options]="meta()?.sources ?? []" [(ngModel)]="source" placeholder="All sources" [showClear]="true" (onChange)="load()" />
+            <p-select [options]="temps" [(ngModel)]="temperature" optionLabel="label" optionValue="value" placeholder="Any temperature" [showClear]="true" (onChange)="load()" />
             <p-iconfield><p-inputicon class="pi pi-search" /><input pInputText placeholder="Search" [(ngModel)]="q" (keyup.enter)="load()" /></p-iconfield>
           </div>
           <div class="board">
@@ -55,11 +56,15 @@ import { WinLoseComponent } from './win-lose.component';
                   <span class="muted small">{{ col.items.length }} · {{ fmt(col.value) }}</span></div>
                 @for (l of col.items; track l.id) {
                   <div class="lead-card" pDraggable="lead" [pDraggableDisabled]="!canEdit()" (onDragStart)="dragging = l" (onDragEnd)="dragging = null" (click)="open(l)">
-                    <strong>{{ l.title }}</strong>
+                    <strong>@if (l.temperature) { <span class="temp" [class]="l.temperature" [title]="l.temperature"></span> }{{ l.title }}</strong>
                     <small class="muted">{{ l.contact_name }}{{ l.location ? ' · ' + l.location : '' }}</small>
                     <div class="row-between small mt-xs">
-                      <span>{{ fmt(l.budget) }}</span>
+                      <span title="Value · probability">{{ fmt(l.value) }} · {{ l.probability_effective }}%</span>
                       <p-tag [value]="l.source" severity="secondary" />
+                    </div>
+                    <div class="row-between small mt-xs">
+                      <span [class.c-bad]="l.over_limit" [title]="l.max_days ? 'Limit ' + l.max_days + ' days' : ''"><i class="pi pi-clock"></i> {{ l.days_in_stage }}d{{ l.over_limit ? ' — stuck' : '' }}</span>
+                      <span class="score" title="Lead score">{{ l.score }}</span>
                     </div>
                     <div class="row-between small mt-xs">
                       <span class="muted"><i class="pi pi-user"></i> {{ l.owner_name || 'Unassigned' }}</span>
@@ -86,16 +91,18 @@ import { WinLoseComponent } from './win-lose.component';
             <p-selectbutton [allowEmpty]="false" [options]="statusOptions" [(ngModel)]="status" optionLabel="label" optionValue="value" (onChange)="loadAll()" />
           </div>
           <p-table [value]="all()" size="small" [rowHover]="true" selectionMode="single" (onRowSelect)="open($event.data)" [paginator]="all().length > 20" [rows]="20">
-            <ng-template #header><tr><th>Lead</th><th>Service</th><th>Stage</th><th>Source</th><th>Salesperson</th><th class="right">Budget</th><th>Created</th></tr></ng-template>
+            <ng-template #header><tr><th>Lead</th><th>Service</th><th>Stage</th><th>Source</th><th>Salesperson</th><th class="right">Value</th><th class="right">Score</th><th>Close</th><th>Created</th></tr></ng-template>
             <ng-template #body let-l>
               <tr [pSelectableRow]="l" class="clickable">
-                <td><strong>{{ l.title }}</strong><br /><small class="muted">{{ l.contact_name }}</small></td>
+                <td><strong>@if (l.temperature) { <span class="temp" [class]="l.temperature"></span> }{{ l.title }}</strong><br /><small class="muted">{{ l.contact_name }}</small></td>
                 <td><span class="svc" [style.--c]="color[l.service]">{{ svc[l.service] }}</span></td>
-                <td>@if (l.status === 'open') { {{ l.stage }} } @else { <p-tag [value]="l.status" [severity]="l.status === 'won' ? 'success' : 'danger'" /> }</td>
-                <td>{{ l.source }}</td><td>{{ l.owner_name || '—' }}</td><td class="right">{{ fmt(l.budget) }}</td><td><small>{{ l.created_at | date }}</small></td>
+                <td>@if (l.status === 'open') { {{ l.stage }} <small [class.c-bad]="l.over_limit" class="muted">{{ l.days_in_stage }}d</small> }
+                  @else { <p-tag [value]="label(l.status)" [severity]="l.status === 'won' ? 'success' : l.status === 'on_hold' ? 'warn' : 'danger'" /> }</td>
+                <td>{{ l.source }}</td><td>{{ l.owner_name || '—' }}</td><td class="right">{{ fmt(l.value) }}</td><td class="right"><span class="score">{{ l.score }}</span></td>
+                <td><small>{{ l.status === 'on_hold' ? 'resumes ' + (l.resume_on | date: 'd MMM') : (l.expected_close | date: 'd MMM y') }}</small></td><td><small>{{ l.created_at | date }}</small></td>
               </tr>
             </ng-template>
-            <ng-template #emptymessage><tr><td colspan="7" class="center muted">No leads</td></tr></ng-template>
+            <ng-template #emptymessage><tr><td colspan="9" class="center muted">No leads</td></tr></ng-template>
           </p-table>
         </p-tabpanel>
 
@@ -238,13 +245,15 @@ export class LeadsComponent implements OnInit {
     const stages: string[] = this.meta()?.pipelines?.[this.service] ?? [];
     return stages.map((stage) => {
       const items = this.board().filter((l) => l.stage === stage);
-      return { stage, items, value: items.reduce((a, l) => a + (l.budget || 0), 0), end: false };
+      return { stage, items, value: items.reduce((a, l) => a + (l.value || 0), 0), end: false };
     });
   });
   tab = 'board';
   service = '';
   owner: string | null = null;
   source: string | null = null;
+  temperature: string | null = null;
+  temps = [{ label: 'Hot', value: 'hot' }, { label: 'Warm', value: 'warm' }, { label: 'Cold', value: 'cold' }];
   status = 'open';
   q = '';
   dragging: any = null;
@@ -257,7 +266,7 @@ export class LeadsComponent implements OnInit {
   color = SERVICE_COLOR;
   units = [{ label: 'sq ft', value: 'sqft' }, { label: 'm²', value: 'sqm' }];
   contactModes = [{ label: 'New enquirer', value: 'new' }, { label: 'Existing contact', value: 'existing' }];
-  statusOptions = [{ label: 'Open', value: 'open' }, { label: 'Won', value: 'won' }, { label: 'Lost', value: 'lost' }, { label: 'All', value: '' }];
+  statusOptions = [{ label: 'Open', value: 'open' }, { label: 'On hold', value: 'on_hold' }, { label: 'Won', value: 'won' }, { label: 'Lost', value: 'lost' }, { label: 'All', value: '' }];
   decisions = [{ label: 'Pending', value: 'pending' }, { label: 'Bid', value: 'bid' }, { label: 'No bid', value: 'no_bid' }];
   bidStatuses = [{ label: 'Preparing', value: 'preparing' }, { label: 'Submitted', value: 'submitted' }];
   label = label;
@@ -279,6 +288,7 @@ export class LeadsComponent implements OnInit {
     const p = new URLSearchParams({ service: this.service, status: 'open' });
     if (this.owner) p.set('owner_id', this.owner);
     if (this.source) p.set('source', this.source);
+    if (this.temperature) p.set('temperature', this.temperature);
     if (this.q) p.set('q', this.q);
     this.board.set(await this.api.get(`/leads?${p}`));
     await this.loadAll();

@@ -117,6 +117,10 @@ meta = call("GET", "/leads/meta", token=T["sales"])[1]
 check("§2.3 default pipeline from doc", meta["pipelines"]["construction"] == ["Lead", "Site visit", "Proposal/Bid", "Negotiation"])
 check("§2.3 starts at first stage", L2["stage"] == "Lead")
 expect("§2.3 unknown stage", call("POST", f"/leads/{L2['id']}/stage", {"stage": "Dreaming"}, T["sales"]), 400)
+expect("§C+ exit rules block an unready move", call("POST", f"/leads/{L2['id']}/stage", {"stage": "Site visit"}, T["sales"]), 409)
+for item in meta["stage_rules"]["construction"]["Lead"]["checklist"]:
+    call("POST", f"/leads/{L2['id']}/checklist", {"stage": "Lead", "item": item, "done": True}, T["sales"])
+call("POST", f"/leads/{L2['id']}/activities", {"type": "call", "text": "First call", "outcome": "Reached", "next_due": day(1)}, T["sales"])
 mv = expect("§2.3 move stage", call("POST", f"/leads/{L2['id']}/stage", {"stage": "Site visit"}, T["sales"]), 200)
 check("§2.3 stage history recorded", [h["stage"] for h in mv["stage_history"]] == ["Lead", "Site visit"] and mv["stage_history"][-1]["by"])
 expect("§2.3 pm cannot move", call("POST", f"/leads/{L2['id']}/stage", {"stage": "Lead"}, T["pm"]), 403)
@@ -135,12 +139,14 @@ board = call("GET", "/leads?service=construction&status=open", token=T["sales"])
 check("§2.3 board filter by service", board and all(x["service"] == "construction" and x["status"] == "open" for x in board))
 
 # ---------------- §2.4 activity log ----------------
-for typ in ("call", "email", "whatsapp", "meeting", "site_visit", "note"):
-    expect(f"§2.4 log {typ}", call("POST", f"/leads/{L2['id']}/activities", {"type": typ, "text": f"{typ} done", "outcome": "ok"}, T["sales"]), 201)
+LOGGED = {"call": {"outcome": "Reached", "next_due": day(2)}, "email": {}, "whatsapp": {}, "meeting": {"outcome": "Agreed scope", "next_due": day(3)}, "note": {}}
+for typ, extra in LOGGED.items():
+    expect(f"§2.4 log {typ}", call("POST", f"/leads/{L2['id']}/activities", {"type": typ, "text": f"{typ} done", **extra}, T["sales"]), 201)
+expect("§C+ site visit is booked, not typed", call("POST", f"/leads/{L2['id']}/activities", {"type": "site_visit", "text": "x"}, T["sales"]), 400)
 expect("§2.4 bad activity type", call("POST", f"/leads/{L2['id']}/activities", {"type": "fax", "text": "x"}, T["sales"]), 400)
 expect("§2.4 empty note", call("POST", f"/leads/{L2['id']}/activities", {"type": "note", "text": " "}, T["sales"]), 400)
 acts = call("GET", f"/leads/{L2['id']}", token=T["sales"])[1]
-check("§2.4 activities stored with author", sum(1 for a in acts["activities"] if a["type"] != "stage") == 6 and acts["activities"][-1]["by"])
+check("§2.4 activities stored with author", sum(1 for a in acts["activities"] if a["type"] in LOGGED) == 6 and acts["activities"][-1]["by"])
 check("§2.5 first response time captured", acts["first_response_at"] is not None)
 
 # ---------------- §16 follow-ups ----------------
@@ -226,7 +232,8 @@ check("§16 project timeline shows lead history + follow-ups", any(r["kind"] == 
 
 expect("§2.5 loss reason required", call("POST", f"/leads/{L1['id']}/lose", {}, T["sales"]), 400)
 expect("§2.5 loss reason from list", call("POST", f"/leads/{L1['id']}/lose", {"reason": "Bad vibes"}, T["sales"]), 400)
-call("POST", f"/leads/{L1['id']}/stage", {"stage": "Negotiation"}, T["sales"])
+expect("§C+ owner override to skip steps", call("POST", f"/leads/{L1['id']}/stage", {"stage": "Negotiation",
+                                                "override_reason": "Agreed at a meeting, steps recorded offline"}, T["owner"]), 200)
 lost = expect("§2.5 lose", call("POST", f"/leads/{L1['id']}/lose", {"reason": "Price too high", "note": "Cheaper quote"}, T["sales"]), 200)
 check("§2.5 loss recorded", lost["status"] == "lost" and lost["loss_reason"] == "Price too high")
 check("§2.5 open follow-ups cancelled on loss", call("GET", f"/followups?related_id={L1['id']}", token=T["sales"])[1][0]["status"] == "cancelled")

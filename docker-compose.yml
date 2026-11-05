@@ -27,6 +27,21 @@ services:
       mongo:
         condition: service_healthy
 
+  # scheduled checks: reminders, escalations, expiry, on-hold resume (backend/app/worker.py)
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: buildsuite
+      SECRET_KEY: ${SECRET_KEY:-change-this-secret-in-production}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      - backend
+
   frontend:
     build: ./frontend
     restart: unless-stopped

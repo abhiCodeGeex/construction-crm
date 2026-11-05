@@ -46,6 +46,11 @@ import { Api } from '../../core/api.service';
           @if (bid?.lead_id && bid.lead_status === 'open') { <p class="muted small">The linked lead <strong>{{ bid.lead_title }}</strong> is recorded as lost with the same reason.</p> }
           <label class="field"><span>Reason</span><p-select name="r" [options]="reasons" [(ngModel)]="l.reason" placeholder="Choose a reason" fluid appendTo="body" /></label>
           <label class="field"><span>Note</span><textarea pTextarea name="n" rows="3" [(ngModel)]="l.note" placeholder="e.g. went with a cheaper local builder" fluid></textarea></label>
+          <div class="grid2">
+            <label class="field"><span>Lost to (competitor)</span><input pInputText name="cp" [(ngModel)]="l.competitor" fluid /></label>
+            <label class="field"><span>Their price</span><p-inputnumber name="cpp" [(ngModel)]="l.competitor_price" [min]="0" [disabled]="!l.competitor" fluid /></label>
+          </div>
+          <label class="field"><span>Try again on <small class="muted">(optional — creates a re-engage follow-up)</small></span><input pInputText type="date" name="re" [min]="tomorrow" [(ngModel)]="l.reengage_on" fluid /></label>
           <div class="row gap right"><p-button type="submit" label="Record loss" icon="pi pi-times" severity="danger" [loading]="busy()" /></div>
         </form>
       }
@@ -66,6 +71,7 @@ export class WinLoseComponent {
   w: any = {};
   clients: any[] = [];
   l: any = {};
+  tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
 
   /** `bid` holds the bid plus `lead_status` of its linked lead (if any). */
   open(kind: 'won' | 'lost', item: any, meta: any, bid = false, clients: any[] = []) {
@@ -76,7 +82,7 @@ export class WinLoseComponent {
     this.pms = meta?.project_managers ?? [];
     this.reasons = meta?.loss_reasons ?? [];
     this.w = { project_name: item.title, pm_id: null, start: new Date().toISOString().slice(0, 10), value: (bid ? item.value : item.budget) ?? null };
-    this.l = { reason: null, note: '' };
+    this.l = { reason: null, note: '', competitor: '', competitor_price: null, reengage_on: '' };
     this.visible = true;
   }
 
@@ -100,7 +106,9 @@ export class WinLoseComponent {
   async lose() {
     this.busy.set(true);
     try {
-      await this.api.post(`${this.base()}/${this.bid ? 'lost' : 'lose'}`, this.l, 'Loss recorded');
+      const competitor = this.l.competitor?.trim() || null;
+      const body = { ...this.l, competitor, competitor_price: competitor ? this.l.competitor_price : null, reengage_on: this.l.reengage_on || null };
+      await this.api.post(`${this.base()}/${this.bid ? 'lost' : 'lose'}`, body, 'Loss recorded');
       this.visible = false;
       this.done.emit();
     } finally {

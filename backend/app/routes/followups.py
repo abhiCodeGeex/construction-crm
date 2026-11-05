@@ -7,6 +7,7 @@ from flask import Blueprint, request, jsonify, abort, g
 from .. import tenancy as t
 from ..db import db, oid, serialize
 from ..security import api, can
+from ..services import notify
 from ..services.defaults import FOLLOWUP_CHANNELS
 
 bp = Blueprint("followups", __name__)
@@ -144,7 +145,12 @@ def today():
 def create():
     d = clean(request.get_json(force=True) or {})
     d["status"] = "open"
-    return jsonify(present(t.insert("followups", d))), 201
+    f = t.insert("followups", d)
+    rel = d.get("related") or {}
+    notify.send("followup_assigned", [d["owner_id"]], f"{g.user.get('name')} gave you a follow-up: {d['title']} "
+                f"(due {d['due']})", f"/app/leads/{rel['id']}" if rel.get("type") == "lead" else "/app/followups",
+                rel.get("id") if rel.get("type") == "lead" else None)
+    return jsonify(present(f)), 201
 
 
 @bp.put("/followups/<_id>")

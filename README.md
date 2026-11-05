@@ -2,7 +2,7 @@
 
 Construction & interior CRM — Angular 19 + PrimeNG (Aura) · Flask · MongoDB · Docker.
 
-**Current phase: C — leads, pipeline, bids & follow-ups** (Phases A and B are done). See [PLAN.md](PLAN.md).
+**Current phase: C+ — leads in depth** (Phases A, B and C are done). See [PLAN.md](PLAN.md).
 
 ## Run
 
@@ -13,6 +13,7 @@ docker compose up -d --build
 - App: http://localhost:8080
 - Super Admin: http://localhost:8080/sa/login
 - API health: http://localhost:8080/api/health
+- The `worker` service runs the scheduled checks every minute (reminders, escalations, on-hold resume) — see `backend/app/worker.py`.
 
 ## Demo accounts
 
@@ -31,9 +32,10 @@ docker compose exec backend python tests/test_phase_b.py
 docker compose exec backend python tests/test_phase_c.py
 docker compose exec backend python tests/test_e2e_flow.py
 docker compose exec backend python tests/test_flow_gaps.py
+docker compose exec backend python tests/test_leads_deep.py
 ```
 
-`test_auth.py` runs every role against every permission area plus isolation, limits, deactivation, suspension and Super Admin checks. `test_phase_b.py` covers every Phase B requirement row in PLAN.md (B1). `test_phase_c.py` covers every Phase C row (C1). `test_e2e_flow.py` walks one enquiry through to a delivered project. `test_flow_gaps.py` covers the hand-offs between modules (PLAN.md C2b). Every suite removes the records it creates (test logins and signed-up test companies included), so the demo data stays clean between runs.
+`test_auth.py` runs every role against every permission area plus isolation, limits, deactivation, suspension and Super Admin checks. `test_phase_b.py` covers every Phase B requirement row in PLAN.md (B1). `test_phase_c.py` covers every Phase C row (C1). `test_e2e_flow.py` walks one enquiry through to a delivered project. `test_flow_gaps.py` covers the hand-offs between modules (PLAN.md C2b). `test_leads_deep.py` covers Phase C+ (leads in depth: notifications, stage rules, scheduled checks, email). Every suite removes the records it creates (test logins and signed-up test companies included), so the demo data stays clean between runs.
 
 ## Layout
 

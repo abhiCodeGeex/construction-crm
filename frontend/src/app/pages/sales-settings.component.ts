@@ -3,6 +3,9 @@ import { FormsModule } from '@angular/forms';
 import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
+import { CheckboxModule } from 'primeng/checkbox';
+import { InputNumberModule } from 'primeng/inputnumber';
+import { MultiSelectModule } from 'primeng/multiselect';
 import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
@@ -16,7 +19,7 @@ import { CHANNEL_LABEL } from '../shared/followup-dialog.component';
 /** Settings → Sales: pipelines per service, loss reasons, website form, message templates. */
 @Component({
   selector: 'app-sales-settings',
-  imports: [FormsModule, ButtonModule, CardModule, DialogModule, InputTextModule, SelectModule, TableModule, TagModule, TextareaModule],
+  imports: [FormsModule, ButtonModule, CardModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule, MultiSelectModule, SelectModule, TableModule, TagModule, TextareaModule],
   template: `
     @if (meta(); as m) {
       <div class="tpl-grid">
@@ -44,6 +47,60 @@ import { CHANNEL_LABEL } from '../shared/followup-dialog.component';
         </p-card>
       </div>
       @if (canEdit()) { <div class="row right mt"><p-button label="Save pipelines & reasons" icon="pi pi-check" (onClick)="savePipelines()" /></div> }
+
+      <p-card styleClass="mt"><ng-template #title>Sales rules</ng-template>
+        <div class="grid3">
+          <label class="field"><span>Sales manager <small class="muted">(gets escalations and approvals; empty = every owner)</small></span>
+            <p-select [options]="m.staff" [(ngModel)]="ss.manager_id" optionLabel="name" optionValue="id" [showClear]="true" [disabled]="!canEdit()" fluid appendTo="body" /></label>
+          <label class="field"><span>Contact a new lead within (minutes)</span><p-inputnumber [(ngModel)]="ss.response_minutes" [min]="1" [disabled]="!canEdit()" fluid /></label>
+          <label class="field"><span>Tell the manager when a follow-up is late by (days)</span><p-inputnumber [(ngModel)]="ss.followup_escalate_days" [min]="1" [disabled]="!canEdit()" fluid /></label>
+          <label class="field"><span>Hot lead idle alert after (days)</span><p-inputnumber [(ngModel)]="ss.hot_idle_days" [min]="1" [disabled]="!canEdit()" fluid /></label>
+          <label class="field"><span>Discount above this needs approval (%)</span><p-inputnumber [(ngModel)]="ss.max_discount_pct" [min]="0" [max]="100" [disabled]="!canEdit()" fluid /></label>
+          <label class="field"><span>Margin below this needs approval (%)</span><p-inputnumber [(ngModel)]="ss.min_margin_pct" [min]="0" [max]="100" [disabled]="!canEdit()" fluid /></label>
+        </div>
+        <label class="check mt"><p-checkbox [(ngModel)]="ss.own_leads_only" [binary]="true" [disabled]="!canEdit()" /> Salespeople see only their own leads (the owner and the sales manager see all)</label>
+        @if (canEdit()) { <div class="row right mt"><p-button label="Save sales rules" icon="pi pi-check" (onClick)="saveRules()" /></div> }
+      </p-card>
+
+      <p-card styleClass="mt"><ng-template #title>Stage rules — what must be done before a lead leaves a stage</ng-template>
+        <p class="muted small">Moving a lead forward needs every stage it passes to meet its rules. Moving back is always allowed. The owner can override with a reason, which is logged.</p>
+        @for (svc of m.services; track svc) {
+          <h4>{{ label[svc] }}</h4>
+          <div class="tpl-grid">
+            @for (st of m.pipelines[svc]; track st) {
+              <div class="gate rule-card">
+                <strong>{{ st }}</strong>
+                <label class="field"><span>Checklist (one per line)</span><textarea pTextarea rows="4" [(ngModel)]="rules[svc][st].checklist_text" [disabled]="!canEdit()"></textarea></label>
+                <label class="field"><span>Required steps</span><p-multiselect [options]="reqOptions()" [(ngModel)]="rules[svc][st].requires" optionLabel="label" optionValue="value" [disabled]="!canEdit()" display="chip" fluid appendTo="body" /></label>
+                <div class="grid2">
+                  <label class="field"><span>Day limit</span><p-inputnumber [(ngModel)]="rules[svc][st].max_days" [min]="1" [disabled]="!canEdit()" fluid /></label>
+                  <label class="field"><span>Win probability %</span><p-inputnumber [(ngModel)]="rules[svc][st].probability" [min]="0" [max]="100" [disabled]="!canEdit()" fluid /></label>
+                </div>
+              </div>
+            }
+          </div>
+        }
+        @if (canEdit()) { <div class="row right mt"><p-button label="Save stage rules" icon="pi pi-check" (onClick)="saveStageRules()" /></div> }
+      </p-card>
+
+      <p-card styleClass="mt"><ng-template #title>Email sending (SMTP)</ng-template>
+        <p class="muted small">When set up, every notification is also emailed to the person (each user can switch emails off), and client emails such as visit reminders are sent. Leave the server empty to switch email off.</p>
+        <div class="grid3">
+          <label class="field"><span>SMTP server</span><input pInputText [(ngModel)]="em.host" placeholder="smtp.example.com" [disabled]="!canEdit()" fluid /></label>
+          <label class="field"><span>Port</span><p-inputnumber [(ngModel)]="em.port" [useGrouping]="false" [disabled]="!canEdit()" fluid /></label>
+          <label class="field"><span>From address</span><input pInputText [(ngModel)]="em.from_address" placeholder="crm@yourfirm.com" [disabled]="!canEdit()" fluid /></label>
+          <label class="field"><span>Username</span><input pInputText [(ngModel)]="em.username" [disabled]="!canEdit()" fluid /></label>
+          <label class="field"><span>Password</span><input pInputText type="password" [(ngModel)]="em.password" [disabled]="!canEdit()" fluid /></label>
+          <label class="field"><span>App address for links</span><input pInputText [(ngModel)]="em.app_url" [placeholder]="origin" [disabled]="!canEdit()" fluid /></label>
+        </div>
+        <label class="check mt"><p-checkbox [(ngModel)]="em.use_tls" [binary]="true" [disabled]="!canEdit()" /> Use STARTTLS</label>
+        <div class="row gap right mt">
+          <p-tag [value]="em.ready ? 'Email is on' : 'Email is off'" [severity]="em.ready ? 'success' : 'secondary'" />
+          @if (canEdit()) {
+            <p-button label="Send test email to me" icon="pi pi-send" [outlined]="true" [disabled]="!em.ready" (onClick)="testEmail()" />
+            <p-button label="Save email settings" icon="pi pi-check" (onClick)="saveEmail()" /> }
+        </div>
+      </p-card>
 
       @if (m.form_key) {
         <p-card styleClass="mt"><ng-template #title>Website enquiry form</ng-template>
@@ -100,6 +157,11 @@ export class SalesSettingsComponent implements OnInit {
   mergeFields = ['client', 'name', 'project', 'amount', 'company', 'date', 'salesperson'];
   draft: Record<string, string[]> = {};
   reasons: string[] = [];
+  ss: any = {};
+  rules: Record<string, Record<string, any>> = {};
+  em: any = {};
+  origin = location.origin;
+  reqOptions = computed(() => Object.entries(this.meta()?.requirements ?? {}).map(([value, label]) => ({ value, label })));
   tplDlg = false;
   tf: any = {};
 
@@ -112,7 +174,35 @@ export class SalesSettingsComponent implements OnInit {
     this.meta.set(m);
     this.draft = Object.fromEntries(m.services.map((s: string) => [s, [...m.pipelines[s]]]));
     this.reasons = [...m.loss_reasons];
+    this.ss = { ...m.sales_settings };
+    this.rules = Object.fromEntries(m.services.map((s: string) => [s, Object.fromEntries(m.pipelines[s].map((st: string) => {
+      const r = m.stage_rules[s][st];
+      return [st, { checklist_text: (r.checklist || []).join('\n'), requires: [...(r.requires || [])], max_days: r.max_days ?? null, probability: r.probability ?? null }];
+    }))]));
     this.templates.set(await this.api.get('/message_templates'));
+    if (this.auth.can('settings')) this.em = { port: 587, use_tls: true, ...(await this.api.get('/settings/email')) };
+  }
+
+  async saveRules() {
+    await this.api.put('/leads/settings', this.ss, 'Sales rules saved');
+    await this.load();
+  }
+
+  async saveStageRules() {
+    const stage_rules = Object.fromEntries(Object.entries(this.rules).map(([s, stages]) => [s, Object.fromEntries(Object.entries(stages).map(([st, r]) =>
+      [st, { checklist: r.checklist_text.split('\n').map((x: string) => x.trim()).filter(Boolean), requires: r.requires, max_days: r.max_days, probability: r.probability }]))]));
+    await this.api.put('/leads/settings', { stage_rules }, 'Stage rules saved');
+    await this.load();
+  }
+
+  async saveEmail() {
+    const { ready, ...body } = this.em;
+    this.em = { ...(await this.api.put('/settings/email', body, body.host ? 'Email settings saved' : 'Email switched off')) };
+  }
+
+  async testEmail() {
+    const r = await this.api.post('/settings/email/test', {});
+    this.toast.add({ severity: 'success', summary: `Test email sent to ${r.to}`, life: 3000 });
   }
 
   mf(f: string) {

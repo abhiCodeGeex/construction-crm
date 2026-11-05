@@ -85,6 +85,19 @@ def m006_phase_c():
     db.form_hits.create_index("at", expireAfterSeconds=3600)
 
 
+def m007_leads_deep():
+    """Phase C+: days-in-stage starts from the last stage change of existing leads; indexes for the bell,
+    reminders and appointments."""
+    for lead in db.leads.find({"stage_entered_at": {"$exists": False}}, {"stage_history": 1, "created_at": 1}):
+        hist = lead.get("stage_history") or []
+        db.leads.update_one({"_id": lead["_id"]}, {"$set": {
+            "stage_entered_at": hist[-1]["at"] if hist else lead.get("created_at")}})
+    db.notifications.create_index([("company_id", 1), ("user_id", 1), ("read_at", 1), ("created_at", -1)])
+    db.notifications.create_index([("company_id", 1), ("user_id", 1), ("key", 1)])
+    db.lead_visits.create_index([("company_id", 1), ("lead_id", 1)])
+    db.lead_visits.create_index([("company_id", 1), ("status", 1), ("at", 1)])
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -92,6 +105,7 @@ MIGRATIONS = [
     ("004_project_indexes", m004_project_indexes),
     ("005_contact_types", m005_contact_types),
     ("006_phase_c", m006_phase_c),
+    ("007_leads_deep", m007_leads_deep),
 ]
 
 

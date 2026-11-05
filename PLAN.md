@@ -196,5 +196,61 @@ Each module now hands its record on to the next, and nothing is left pointing at
 | Website form | Closed (404) when the company is read-only or cancelled, like every other write. |
 | Choice buttons | Single-choice button groups (decision, status, unit, priority, access…) cannot be clicked back to empty, so a form never sends a blank required value. |
 
-## C3. Next phase (proposed, awaiting approval)
-Phase D — Proposals & estimates → contract with payment schedule.
+## C3. Next phase
+Phase C+ (below), then Phase D — Proposals & estimates → contract with payment schedule.
+
+---
+
+# Phase C+ — Leads in depth
+
+Source: the leads review (sections A–E agreed with the owner), built on requirements §2, §3, §5 (estimate inputs), §15 (notifications) and §16 (follow-ups). The proposal *builder*, client e-signature, the public proposal link and "viewed" tracking stay in Phase D; WhatsApp / SMS sending stays in Phase G. Everything else about a lead is here. Covered by [backend/tests/test_leads_deep.py](backend/tests/test_leads_deep.py).
+
+### Build status (delivered block by block, each tested and committed)
+| Block | Scope | Status |
+|---|---|---|
+| 1 | Notifications + bell + email, preferences, stage checklists / exit rules / day limits / override, call & meeting outcome + next step, old→new edit log, temperature / probability / close date / score / value, on hold & resume, lost with competitor + re-engage, sales settings, visibility, worker (response time, stuck, hot idle, follow-ups, resume) | **Done** |
+| 2 | Site visits (appointments, reminders, report, cost), measurements, site checklist, lead files | Next |
+| 3 | Brief + client questionnaire, decision-makers, ballpark from package rates | Pending |
+| 4 | Rate library, estimates + approval, expenses, receipts, proposals tracking, negotiation, competitors, won carry-over to the project | Pending |
+| 5 | Assignment rules, merge, import, bulk, export, saved views, calendar, Needs attention, bid additions, reports | Pending |
+
+## C+1. Rules for every step
+| Rule | Implementation | Test |
+|---|---|---|
+| Every action is logged | Every lead change pushes a timeline entry `{type, text, at, by, changes?}`; edits record **old → new** per field | edit shows old→new; each action below adds an entry |
+| Stage checklist + exit rules | Settings → Sales → *Stage rules* per service and stage: checklist items, required steps (`first_contact`, `visit_done`, `measurements`, `brief_complete`, `estimate_approved`, `proposal_sent`), day limit, win probability. Moving **forward** needs every stage passed to meet its rules (no skipping); moving back is free. The Owner may override with a reason (logged) | forward move refused with the missing items; override logged |
+| Calls / meetings need outcome + next step | `call` needs an outcome from *Reached, No answer, Busy, Wrong number, Call back later*; `meeting` needs an outcome; both need a next follow-up date (not for *Wrong number*), which creates the follow-up. A site visit is no longer typed as a note — it is booked as an appointment | 400 without outcome / next date; follow-up created |
+| Day limit per stage | `stage_entered_at` → days in stage on every card; past the limit the salesperson is notified, past twice the limit the sales manager | worker notifications |
+| One notification matrix | `services/notify.py`: in-app bell for every staff user + email when the company has set up email (SMTP). Each user can switch off non-critical events (critical: assigned, approvals, visit assigned). A key per event prevents duplicate reminders | prefs respected; no duplicate |
+| Sales manager | Settings → Sales: a chosen staff user, else every Owner. Receives escalations and approvals | recipients |
+
+## C+2. The journey
+| Step | Captured / actions | Logged | Notified |
+|---|---|---|---|
+| 1 New enquiry | Language, best time to call, preferred channel, branch, tags. **Assignment rules** (first rule matching service / branch → round-robin in its pool; no match → unassigned, to the manager). **Merge** two leads. **Import** CSV / Excel with a dry run. One-tap call / WhatsApp / email links | created, assigned, merged, imported | salesperson: *New lead assigned*; manager: *Unassigned lead*, *Not contacted within N min* (again after 24 h) |
+| 2 Qualification | Stage checklist; **decision-makers** (contacts with a role, one marked main); temperature hot / warm / cold; expected close date; probability (stage default, overridable); **ballpark** = area × package rate (Settings) with a **budget-gap warning** | call with outcome, checklist ticks, temperature / probability / close date (old→new), ballpark | salesperson: follow-up reminders; manager: *Hot lead idle N days* |
+| 3 Site visit & measurement | **Appointment** (date/time, duration, staff, address): scheduled → confirmed → done / no-show / cancelled; reschedule keeps old→new time and reason. **Measurements** room by room (L×W×H, doors / windows → floor, wall, net wall area, perimeter) and plot (size, setbacks, floors, soil, access). **Site condition checklist** (yes / no / n.a. + note). **Photos & files** per room. **Visit report** (findings, risks, recommendations). **Visit cost** (travel, staff hours × rate, other) → pre-sales spend | every status change, report, measurement add / edit / delete, file | staff: *Visit assigned*, day-before and 2-hour reminders; client: email reminder; salesperson: *Report submitted*; manager: *Visit missed*, *Report not submitted in 24 h* |
+| 4 Brief | Scope per room × work types, style, materials, brands, must-haves, nice-to-haves, reference files, architecture programme and approvals. **Client questionnaire** link (public, one submission). Brief versions; client confirmation | each version (what changed), questionnaire sent / submitted, confirmed | salesperson: *Questionnaire submitted*; estimators: *Brief ready for estimate* |
+| 5a Estimate (internal) | **Rate library** (material, labour, product; unit, rate). Estimate lines by room: quantity typed or taken from a measurement (floor / wall / net wall / ceiling area, perimeter), material + labour rate, overheads %, markup %, discount %, tax → cost, price and margin. Versions. **Approval** when margin < the minimum or discount > the limit. Hidden from site staff and clients | created, edited, submitted, approved / refused | approver: *Estimate needs approval*; author: *approved / refused* |
+| 5b Proposal (tracking) | Proposal versions from an estimate or a typed value, validity date, file; sent (channel, date); accepted / rejected (reason + comment) / revision requested → next version; expired; **only one accepted** per lead | each status change | salesperson: *Accepted / Rejected*, *Not accepted in 3 days* (+ follow-up), *Expires in 2 days*; manager: *Rejected*, *Expired* |
+| 6 Negotiation | Rounds: asked, offered, discount %, note; a discount above the limit needs approval. Competitors (name, price, notes) | every round, approval | approver / salesperson |
+| 7 Won | Value defaults to the accepted proposal. Optional **advance received** (amount, date, mode, reference → receipt number). The project gets the brief, measurements, decision-makers (added to the team, view), accepted proposal, files and receipts — shown on the project as **From the lead**. A hand-off meeting follow-up is created for the PM | won, advance, files moved | PM: *You are PM*; Accounts: *Advance / contract value*; Owner + manager: *Lead won*; client: welcome email |
+| 8 Lost / On hold / Reopen | Lost: reason, competitor, their price, re-engage date (creates a follow-up for that day). **On hold**: reason + resume date; leaves the active pipeline, not counted as lost, returns on that date. Reopen returns to the stage it left | each with its reason | manager: *Lead lost*; salesperson: *Resumes today*, *Re-engage today* |
+| 9 Any time | Reassign, edit, change service, delete (Owner; refused once money was received), merge | old→new | old and new salesperson on reassignment |
+
+## C+3. Across the module
+| Area | Implementation |
+|---|---|
+| Timeline | One feed with filters (calls & messages, visits, brief, money, proposals, stage & status, edits) |
+| Files | Lead files with a folder (photos, client drawings, brief, proposals, other) and room; they move to the project on win |
+| Calendar | Visits, follow-ups, bid due dates and proposal expiry, per user or team (Follow-ups → Calendar) |
+| Pre-sales money | Expenses (site visit, staff time, 3D renders, samples, consultant, marketing, other) and receipts (token / booking advance, design-fee advance) on the lead |
+| Value, probability, score | Value = accepted or latest sent proposal → approved estimate → ballpark → budget. Weighted = value × probability. Score 0–100 = source (20) + budget fit (25) + temperature (25) + last contact (15) + first response within target (15) |
+| Board cards | Temperature, days in stage (red over the limit), value, score, next follow-up |
+| Needs attention | Not contacted, stuck, missed visits, late reports, proposals expiring / not accepted, approvals waiting, overdue follow-ups, hot & idle, unassigned |
+| Bulk / views | Select leads → reassign, move stage (rules apply), tag, temperature; export CSV; saved filters per user |
+| Visibility | Optional *salespeople see only their own leads* |
+| Bids | Owner, site-walk date, Q&A deadline, documents & addenda, competitor + price on a loss; reminders 7 / 2 / 0 days before due; win rate per owner |
+| Reports | Funnel with drop-off, time in stage, visit→win, proposal→win, average discount, losses per competitor, cost to acquire + ROI per source, monthly weighted forecast, response target met %, salesperson leaderboard |
+| Settings | Stage rules, package rates, rate library, response target, approval limits, assignment rules, sales manager, visibility, email (SMTP) |
+| Scheduled checks | A `worker` service runs every minute: reminders, escalations, expiry, on-hold resume, re-engage, bid due dates |
