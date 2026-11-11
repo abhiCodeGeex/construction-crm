@@ -84,6 +84,10 @@ def waiting(p, today=None):
                                                     "text": {"$regex": "→ done$"}}, sort=[("at", -1)])
             since = done_at["at"].date().isoformat() if done_at else max(tk.get("end") or today for tk in s["tasks"])
             add("signoff", f"Client sign-off for {s['name']}", "client", min(since, today), "Stage work is done", s["id"])
+    for sel in db.selections.find({"company_id": g.cid, "project_id": pid, "status": {"$in": ["open", "options_sent"]},
+                                   "due_date": {"$ne": None, "$lt": today}}):  # Phase F: the client's choice is late
+        add("selection", f"Choose: {sel['item']}" + (f" ({sel['room']})" if sel.get("room") else ""), "client", sel["due_date"],
+            "Client choice overdue", str(sel["_id"]))
     for i in db.project_issues.find({"company_id": g.cid, "project_id": pid, "status": "open", "waiting_on": {"$ne": None}}):
         w = i["waiting_on"]
         add("issue", i["title"], w["party"], w.get("since"), w.get("note"), str(i["_id"]))

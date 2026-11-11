@@ -206,6 +206,12 @@ def m017_transmittals():
     db.transmittals.create_index([("company_id", 1), ("acknowledged", 1), ("created_at", 1)])
 
 
+def m018_selections():
+    """Phase F block 3: selections per project and by due date (reminders, waiting on client)."""
+    db.selections.create_index([("company_id", 1), ("project_id", 1), ("stage_id", 1)])
+    db.selections.create_index([("company_id", 1), ("status", 1), ("due_date", 1)])
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -224,6 +230,7 @@ MIGRATIONS = [
     ("015_change_orders", m015_change_orders),
     ("016_documents", m016_documents),
     ("017_transmittals", m017_transmittals),
+    ("018_selections", m018_selections),
 ]
 
 

@@ -502,6 +502,7 @@ def delete_project(_id):
             delete_stored(v["file_key"])
     db.documents.delete_many({"company_id": g.cid, "project_id": _id})
     db.transmittals.delete_many({"company_id": g.cid, "project_id": _id})
+    db.selections.delete_many({"company_id": g.cid, "project_id": _id})
     db.notifications.delete_many({"company_id": g.cid, "project_id": _id})  # no bell entry may point at it
     for coll in ("project_comments", "project_activity", "project_meetings", "project_delays"):
         db[coll].delete_many({"company_id": g.cid, "project_id": _id})

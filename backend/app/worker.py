@@ -301,9 +301,27 @@ def check_transmittals(now):
                     project_id=tr["project_id"], key=f"trn-wait:{tr['_id']}", level="warn")
 
 
+def check_selections(now):
+    """A client choice due in 3 days -> the project's managers; overdue -> managers again (it is also listed as waiting
+    on the client). Keys carry the due date, so a new due date is reminded again."""
+    today = now.date()
+    for s in db.selections.find({"company_id": g.cid, "status": {"$in": ["open", "options_sent"]}, "due_date": {"$ne": None}}):
+        days = (datetime.fromisoformat(s["due_date"]).date() - today).days
+        if days > 3:
+            continue
+        p = db.projects.find_one({"_id": oid(s["project_id"])})
+        if not p or p.get("status") not in ("planning", "active"):
+            continue
+        late = days < 0
+        notify.send("selection_due", project_events.managers(p),
+                    f"{p['name']}: the client's choice of {s['item']} " + (f"is {-days} day(s) late" if late else f"is due {s['due_date']}"),
+                    f"/app/projects/{p['_id']}?tab=selections", project_id=s["project_id"],
+                    key=f"sel-{'late' if late else 'due'}:{s['_id']}:{s['due_date']}", level="warn" if late else "info")
+
+
 CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
           check_compliance, check_meetings, check_health, check_invoices, check_change_orders,
-          check_transmittals]
+          check_transmittals, check_selections]
 
 
 def run_once(now=None):

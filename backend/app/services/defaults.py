@@ -332,4 +332,6 @@ NOTIFY_EVENTS.update({
     "transmittal_sent": ("Drawings or documents issued", False),
     "transmittal_waiting": ("Transmittal not acknowledged", False),
     "drawing_approved": ("Drawing approved", False),
+    "selection_chosen": ("Client choice recorded", False),
+    "selection_due": ("Client choice due or overdue", False),
 })

@@ -461,7 +461,7 @@ Source: requirements for documents & drawings, selections and site reports *(sec
 |---|---|---|
 | 1 | Document library: folders, upload, versions / revisions, lead files shown in the library, permissions, quota | **Done** |
 | 2 | Drawing register, revision status, transmittals (issue to client / consultant, by email), stage checks ticked from issued drawings | **Done** |
-| 3 | Selections: rooms, options, allowance vs chosen cost, client choice recorded by staff, link to Phase E cost and change orders | Planned |
+| 3 | Selections: rooms, options, allowance vs chosen cost, client choice recorded by staff, link to Phase E cost and change orders | **Done** |
 | 4 | Daily site reports: weather, manpower, work done, photos, issues → project issues, delays → delay log; portal read-only view; Documents, Selections, Site reports leave SOON | Planned |
 
 ## F1. Requirement → implementation → test
@@ -531,3 +531,5 @@ Decisions taken to start building (the owner can change any of them):
 5. **Selection options use the rate library's *product* items**; no separate product library.
 
 Block 1–2 notes: the library lists lead files and task files in two automatic folders without copying them. Drawings need a number unique on the project; a new revision supersedes the older ones. A transmittal emails the current revisions as attachments to people on the project team and keeps the email result per person; issued revisions can never be deleted. Issuing drawings of a stage to the client marks that stage's *Drawings issued to the client* check as ready to tick (an editor still ticks it).
+
+Block 3 notes: when no due date is given, a choice is due on the stage start minus the longest option lead time. Options can be picked from the rate library's *product* items. Ordering a selection records a submitted Phase E cost (only roles with finance write create it). Over the allowance, *Change order* drafts a Phase E change order for the difference (cost in the chosen option's ratio); within the allowance there is no credit line yet. A late choice is listed as waiting on the client and reminds the PM; when every selection of a stage is installed, its *Items installed as per the selection* check is offered.

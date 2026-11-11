@@ -41,7 +41,7 @@ MANAGER_ROLES = {"owner", "pm"}
 # roles that must never see cost price / margin
 HIDE_COST_ROLES = {"site", "client", "subcontractor", "vendor", "consultant"}
 COST_FIELDS = {"trade_price", "material_rate", "labour_rate", "cost", "line_cost", "subtotal_cost",
-               "margin", "margin_pct", "markup_pct", "overheads", "markup_amount", "budget", "spent", "cost_rate"}
+               "margin", "margin_pct", "markup_pct", "overheads", "markup_amount", "budget", "spent", "cost_rate", "unit_cost"}
 
 ROLE_LABELS = {
     "owner": "Owner / Admin", "sales": "Sales / BD", "pm": "Project Manager", "designer": "Architect / Designer",

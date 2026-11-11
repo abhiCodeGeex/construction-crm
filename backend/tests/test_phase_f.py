@@ -86,7 +86,7 @@ U = {u["email"].split("@")[0]: u["id"] for u in users if u["kind"] == "staff"}
 CID = mongo.users.find_one({"email": "owner@skyline.test"})["company_id"]
 CLIENT_CONTACT = mongo.users.find_one({"email": "client@skyline.test"})["contact_id"]
 company_before = mongo.companies.find_one({"_id": ObjectId(CID)}, {"document_folders": 1, "site_settings": 1})
-projects, keys = [], []
+projects, keys, contacts_made, rates_made = [], [], [], []
 
 
 def bell(user, **q):
@@ -213,6 +213,67 @@ try:
     worker()
     worker()
     check("not acknowledged in 7 days: sender reminded once", len([n for n in bell("pm", event="transmittal_waiting") if tr2["number"] in n["text"]]) == 1)
+
+    # ================= block 3 · selections =================
+    intr = next(x for x in call("GET", f"/projects/{pid}", token=T["owner"])[1]["stages"] if x["service"] == "interior")
+    sup = expect("supplier", call("POST", "/contacts", {"name": f"Stone Co {RUN}", "kind": "company", "types": ["supplier"], "phone": f"95{RUN}"}, T["owner"]), 201)
+    contacts_made.append(sup["id"])
+    rate = expect("product in the rate library", call("POST", "/rates", {"kind": "product", "name": f"Quartz slab {RUN}", "unit": "slab", "rate": 55000,
+                                                                          "brand": "Caesarstone"}, T["owner"]), 201)
+    rates_made.append(rate["id"])
+    expect("site has no selections", call("GET", f"/projects/{pid}/selections", token=T["site"]), 403)
+    expect("item required", call("POST", f"/projects/{pid}/selections", {"stage_id": intr["id"]}, T["designer"]), 400)
+    expect("stage required", call("POST", f"/projects/{pid}/selections", {"stage_id": "x", "item": "y"}, T["designer"]), 400)
+    sel = expect("designer adds a selection", call("POST", f"/projects/{pid}/selections", {"stage_id": intr["id"], "item": f"Kitchen countertop {RUN}",
+                                                                                         "room": "Kitchen", "allowance": 50000}, T["designer"]), 201)
+    empty = call("POST", f"/projects/{pid}/selections", {"stage_id": intr["id"], "item": f"Empty {RUN}"}, T["designer"])[1]
+    expect("send needs options", call("POST", f"/selections/{empty['id']}/send", {}, T["designer"]), 400)
+    expect("bad product", call("PUT", f"/selections/{sel['id']}", {"options": [{"name": "x", "rate_id": str(ObjectId())}]}, T["designer"]), 400)
+    sel = expect("options", call("PUT", f"/selections/{sel['id']}", {"options": [
+        {"name": "Granite", "qty": 1, "unit_cost": 40000, "unit_price": 48000, "lead_days": 10},
+        {"name": "Quartz", "qty": 1, "unit_cost": 55000, "unit_price": 65000, "lead_days": 20, "supplier_id": sup["id"], "rate_id": rate["id"]}]}, T["designer"]), 200)
+    quartz = sel["options"][1]
+    check("option from the rate library and supplier", quartz["unit"] == "slab" and quartz["brand"] == "Caesarstone" and quartz["supplier_name"] == sup["name"], quartz)
+    expected_due = (date.fromisoformat(intr["start"]) - timedelta(days=20)).isoformat()
+    check("choice due = stage start minus the longest lead time", sel["due_date"] == expected_due, (sel["due_date"], expected_due))
+    sent = expect("send the options", call("POST", f"/selections/{sel['id']}/send", {}, T["designer"]), 200)
+    check("options sent, email result kept", sent["status"] == "options_sent" and sent["emailed"])
+    expect("choice: how", call("POST", f"/selections/{sel['id']}/choice", {"option_id": quartz["id"], "name": "Mrs C"}, T["designer"]), 400)
+    expect("choice: one of the options", call("POST", f"/selections/{sel['id']}/choice", {"option_id": "nope", "name": "Mrs C", "method": "Email"}, T["designer"]), 400)
+    ch = expect("client chose quartz", call("POST", f"/selections/{sel['id']}/choice", {"option_id": quartz["id"], "name": "Mrs C", "method": "WhatsApp"}, T["designer"]), 200)
+    check("chosen, difference over the allowance", ch["status"] == "chosen" and ch["difference"] == 15000 and ch["choice"]["method"] == "WhatsApp", ch.get("difference"))
+    check("PM told of the choice", any(f"Kitchen countertop {RUN}" in n["text"] for n in bell("pm", event="selection_chosen")))
+    expect("a chosen item is not edited", call("PUT", f"/selections/{sel['id']}", {"allowance": 1}, T["designer"]), 409)
+    lst = call("GET", f"/projects/{pid}/selections", token=T["pm"])[1]
+    check("summary: allowance, chosen, difference", lst["summary"]["difference"] == 15000 and lst["summary"]["chosen"] == 65000, lst["summary"])
+    co = expect("over the allowance: change order", call("POST", f"/selections/{sel['id']}/change-order", {}, T["designer"]), 201)
+    check("change order for the difference, cost in the option's ratio", co["change_order"]["totals"]["price"] == 15000
+          and abs(co["change_order"]["totals"]["cost"] - 15000 * 55000 / 65000) < 0.02 and co["change_order"]["status"] == "draft", co["change_order"]["totals"])
+    expect("one change order per item", call("POST", f"/selections/{sel['id']}/change-order", {}, T["designer"]), 409)
+    expect("reopen needs a reason", call("POST", f"/selections/{sel['id']}/reopen", {}, T["designer"]), 400)
+    ro = expect("reopen", call("POST", f"/selections/{sel['id']}/reopen", {"reason": "Client changed mind"}, T["designer"]), 200)
+    check("reopened: choice cleared, history kept", ro["status"] == "options_sent" and ro["chosen"] is None and ro["history"][-1]["was"] == "Quartz")
+    granite = sel["options"][0]
+    call("POST", f"/selections/{sel['id']}/choice", {"option_id": granite["id"], "name": "Mrs C", "method": "In person"}, T["designer"])
+    expect("within the allowance: no change order", call("POST", f"/selections/{sel['id']}/change-order", {}, T["designer"]), 409)
+    expect("forward only (chosen -> ordered skips confirm)", call("POST", f"/selections/{sel['id']}/status", {"status": "ordered"}, T["designer"]), 409)
+    expect("confirmed", call("POST", f"/selections/{sel['id']}/status", {"status": "confirmed"}, T["designer"]), 200)
+    od = expect("PM orders it", call("POST", f"/selections/{sel['id']}/status", {"status": "ordered"}, T["pm"]), 200)
+    cst = mongo.costs.find_one({"company_id": CID, "selection_id": sel["id"]})
+    check("ordering records the cost in Finance", cst and cst["amount"] == 40000 and od["cost_id"] == str(cst["_id"]) and cst["status"] in ("submitted", "approved"), cst)
+    call("DELETE", f"/selections/{empty['id']}", token=T["designer"])
+    expect("installed", call("POST", f"/selections/{sel['id']}/status", {"status": "installed"}, T["designer"]), 200)
+    item = next(c for c in next(x for x in call("GET", f"/projects/{pid}", token=T["owner"])[1]["stages"] if x["id"] == intr["id"])["checklist"]
+                if "selection" in c["text"].lower())
+    check("all installed: the stage check is offered, not ticked", item.get("suggested") and not item["done"], item)
+    late = call("POST", f"/projects/{pid}/selections", {"stage_id": intr["id"], "item": f"Wallpaper {RUN}", "due_date": day(-2)}, T["designer"])[1]
+    w = call("GET", f"/projects/{pid}/waiting", token=T["pm"])[1]
+    check("a late choice is waiting on the client", any(r["kind"] == "selection" and r["party"] == "client" and f"Wallpaper {RUN}" in r["title"] for r in w["rows"]), w["rows"])
+    worker()
+    worker()
+    check("late choice: PM reminded once", len([n for n in bell("pm", event="selection_due") if f"Wallpaper {RUN}" in n["text"]]) == 1)
+    mine = next(x for x in call("GET", f"/projects/{pid}/selections", token=T["designer"])[1]["selections"] if x["id"] == sel["id"])
+    check("designer (finance read) sees the option cost", "unit_cost" in mine["options"][0] and "cost" in mine["options"][0])
 finally:
     for p_ in projects:
         mongo.costs.update_many({"company_id": CID, "project_id": p_}, {"$set": {"status": "void"}})
@@ -221,6 +282,11 @@ finally:
         call("DELETE", f"/projects/{p_}", token=T["owner"])
     for k in keys:
         mongo.files.delete_one({"key": k})
+    mongo.change_orders.delete_many({"company_id": CID, "project_id": {"$in": projects}})
+    for c_ in contacts_made:
+        call("DELETE", f"/contacts/{c_}", token=T["owner"])
+    for r_ in rates_made:
+        mongo.rate_library.delete_one({"_id": ObjectId(r_)})
     mongo.notifications.delete_many({"company_id": CID, "text": {"$regex": RUN}})
     for f in ("document_folders", "site_settings"):
         if company_before.get(f) is not None:
