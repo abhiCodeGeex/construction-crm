@@ -462,7 +462,7 @@ Source: requirements for documents & drawings, selections and site reports *(sec
 | 1 | Document library: folders, upload, versions / revisions, lead files shown in the library, permissions, quota | **Done** |
 | 2 | Drawing register, revision status, transmittals (issue to client / consultant, by email), stage checks ticked from issued drawings | **Done** |
 | 3 | Selections: rooms, options, allowance vs chosen cost, client choice recorded by staff, link to Phase E cost and change orders | **Done** |
-| 4 | Daily site reports: weather, manpower, work done, photos, issues → project issues, delays → delay log; portal read-only view; Documents, Selections, Site reports leave SOON | Planned |
+| 4 | Daily site reports: weather, manpower, work done, photos, issues → project issues, delays → delay log; portal read-only view; Documents, Selections, Site reports leave SOON | **Done** |
 
 ## F1. Requirement → implementation → test
 | § | Requirement | Implementation | Test |
@@ -533,3 +533,95 @@ Decisions taken to start building (the owner can change any of them):
 Block 1–2 notes: the library lists lead files and task files in two automatic folders without copying them. Drawings need a number unique on the project; a new revision supersedes the older ones. A transmittal emails the current revisions as attachments to people on the project team and keeps the email result per person; issued revisions can never be deleted. Issuing drawings of a stage to the client marks that stage's *Drawings issued to the client* check as ready to tick (an editor still ticks it).
 
 Block 3 notes: when no due date is given, a choice is due on the stage start minus the longest option lead time. Options can be picked from the rate library's *product* items. Ordering a selection records a submitted Phase E cost (only roles with finance write create it). Over the allowance, *Change order* drafts a Phase E change order for the difference (cost in the chosen option's ratio); within the allowance there is no credit line yet. A late choice is listed as waiting on the client and reminds the PM; when every selection of a stage is installed, its *Items installed as per the selection* check is offered.
+
+Block 4 notes: a site report can be written for today or yesterday (older only by an Owner) and changed until the end of the next day. The cut-off is checked in the company's local time (UTC+5:30 by default). In the portal a document marked *shared* shows its current revision; otherwise the client sees the latest revision issued to them by transmittal. Photos appear in the portal only when marked for the client.
+
+**Phase F is complete.**
+
+---
+
+# Phase G — Client portal approvals, messaging & online payments
+
+Source: requirements §13 (client portal: portal users see their projects and approve; never costs), §11 (client approval of change orders), §12 (invoices and payments), §16 (email / SMS / WhatsApp templates with merge fields; today only *log as sent*), the inbox and WhatsApp drafts *(§17 — to confirm; the parked `later/routes/engage.py` cites "section 17")*, and every item earlier phases parked here: C (sending through a provider), C+ (WhatsApp / SMS sending), E (portal approval of change orders, online payment links), F (client approves drawings, comments on documents, picks a selection; transmittals by WhatsApp). Builds on what staff record today with one shape — who, how (`SIGNOFF_METHODS`), date, note, file — for the stage sign-off (`routes/project_work.py` `record_signoff`), change-order approval (`routes/change_orders.py` `approve_co` / `reject_co`), selection choice (`routes/selections.py` `record_choice`) and drawing status (`routes/documents.py` `drawing_status`, `acknowledge`); on the online signature of a proposal (Phase D, `routes/proposals.py` `public_accept` / `visitor()`); on the read-only portal of Phase F (`routes/projects.py` `portal_query` / `portal_project`, `routes/site_reports.py` portal endpoints); and on receipts (`routes/invoices.py` `apply_payment`). Covered by `backend/tests/test_phase_g.py`.
+
+### Build status
+| Block | Scope | Status |
+|---|---|---|
+| 1 | Portal approvals: stage sign-off, change orders, selection choice, drawing approval, transmittal acknowledgement, consultant and client comments on documents; "Waiting on you" becomes actionable; PM notified | Planned |
+| 2 | Invoices and receipts in the portal; payment-provider interface; Razorpay (test mode first) pay links; webhook → receipt; provider keys in Settings | Planned |
+| 3 | Project message threads between each portal user and the team; staff **Inbox** (area `messages`) leaves SOON | Planned |
+| 4 | WhatsApp / SMS gateway: provider settings, opt-in, sending templates, transmittals, invoices and reminders; delivery status webhook; *log only* when not set up | Planned |
+
+## G1. Requirement → implementation → test
+| § | Requirement | Implementation | Test |
+|---|---|---|---|
+| §13 | One approval path for staff and portal | The body of each staff action moves into a function that both routes call: `signoff_stage(p, stage, approval)` (from `record_signoff`), `decide_change_order(co, p, approval, approve)` (from `approve_co` / `reject_co`, still calling `apply_change`), `choose_option(s, p, opt, choice)` (from `record_choice`), `set_drawing_status(doc, p, st, by)` (from `drawing_status`). A portal approval records `method: "Portal"`, the portal user's name, contact id, time, IP and user agent (reuse `proposals.visitor()`). *Portal* is not offered to staff (`SIGNOFF_METHODS` unchanged for them) | same record either way; staff cannot pick *Portal*; IP and time kept |
+| §13 | Who may do what in the portal | The project is found with `portal_query()` (team `contact_id`). The **project role** on the team decides: *Client* — sign-off, change orders, selections, drawings sent to them *for approval*, invoices, payments, messages. *Architect / Structural / MEP Consultant / Consultant* — comment on and return drawings sent to them *for comment* or *for approval*, acknowledge transmittals, messages. *Subcontractor / Supplier / Main Contractor* — acknowledge transmittals, see their own "waiting on you", messages; no money, no approvals. Every portal response keeps `HIDE_COST_ROLES` (`security.py`): prices only, never cost or margin | each role allowed / 403; other project 404; no cost fields |
+| B+2 | Client signs off a stage | `POST /portal/projects/<id>/stages/<sid>/signoff`: only when the stage is open and the sign-off is the last thing missing or asked for (`signoff_required`); typed full name + "I approve" tick (+ optional note / file). Same notification as today (`signoff_recorded` → `ev.managers`) and timeline entry. Staff may still remove it while the stage is open | method Portal; closed stage 409; notified |
+| §11 | Client approves or rejects a change order | Portal lists change orders with status *sent* (price, time impact in working days, files; never cost lines). **Approve** needs typed name + drawn signature (same check as `public_accept`: PNG data URL, `MAX_SIGNATURE`) because it changes the contract value; then `apply_change` runs exactly as for a staff approval (revised value, schedule row, dates, *client change* delay). **Reject** needs a reason. Both → `co_decided` to the raiser + managers. *Our error* orders never appear in the portal | signature required; contract revised once; reject reason; our-error hidden |
+| §13 / F | Client picks a selection | Portal shows options with client price, photo and lead time (already read-only in `portal_selections`); **Choose** calls `choose_option` with method Portal; status open / options sent only (a recorded choice needs staff *reopen*, as today). Over the allowance the difference is shown before confirming; the change order is still drafted by staff (F rule) | over-allowance shown; second choice 409; `selection_chosen` sent |
+| F | Client approves a drawing; consultants comment | Only on a revision sent by transmittal **to this contact** with purpose *for approval* (approve or *return with comments*) or *for comment* (comments only). Approve → `set_drawing_status(approved)` → `drawing_approved` notification. Comments: `document_comments` {document, rev, contact / user, side (client, consultant, team), text, file (marked-up PDF via `/uploads`), status open → answered → closed}. The team replies on the Documents tab; a comment can become a task (B+2 task comment pattern). A new revision lists the open comments of the previous one | not sent to you 404; superseded rev 409; comment → task |
+| F | Acknowledge a transmittal | `POST /portal/transmittals/<id>/acknowledge` fills the same `acknowledged` record as staff (`documents.acknowledge`) with method Portal; stops the `check_transmittals` reminder | ack once; reminder quiet |
+| B+4 | "Waiting on you" becomes actionable | `project_health.waiting` rows already carry `kind` (task, signoff, selection, issue), `ref` and `contact`. Add kinds *change_order* (sent), *drawing* (for approval / comment to this contact), *transmittal* (not acknowledged), *invoice* (due). The portal filters rows by the user's contact (clients also get party *client*) and each row opens its action; information-only rows (blocked task, issue) open a message to the team | rows per contact; action link per kind |
+| §12 | Invoices and receipts visible to the client | `GET /portal/projects/<id>/invoices`: sent / part paid / paid invoices and credit notes of the project (never drafts or void), balance, due date, the invoice page (same layout as `/app/invoices/<id>`) and receipts against them. Client role only | draft hidden; other client 404 |
+| §12 | Pay online | `services/payments.py`: `create_link(company, invoice, amount)` → {provider, ref, url, expires}, `verify(company, headers, body)` → event, `fetch(company, ref)`. **Razorpay first** (INR, UPI / cards / net banking; Payment Links in test mode), Stripe behind the same interface later. `payment_links` {invoice, amount, provider, ref, url, status created → paid / expired / cancelled, events[]}. Portal **Pay** and the invoice email (`send_invoice`) carry the link. Amount = balance by default *(part payment — to confirm)* | link created; expired link refused; second link cancels the first |
+| §12 | Payment → receipt | `POST /webhooks/payments/<provider>/<company>`: no login, provider signature checked (Razorpay HMAC of the body with the webhook secret), idempotent on the provider payment id. A *paid* event creates a receipt through `record_receipt(...)` (the body of `add_receipt`, so numbering `RCT`, allocation and `apply_payment` are the same) with mode *Online* (added to `PAYMENT_MODES`) and the provider reference; `receipt_recorded` → managers + Accounts; the client gets the receipt email | bad signature 400; replay no second receipt; invoice paid; schedule row paid |
+| §12 | Provider keys per company | Settings → *Online payments*: provider, key id, key secret, webhook secret, test / live. Secrets masked on read like the SMTP password (`notifications.email_out`); audit row without values. Not set up → no Pay button | secret never returned; off → no link |
+| §17 *(to confirm)* | Messages between client and team | `messages` (the collection `services/subscription.py` already counts) with `channel: portal`, one thread per project per portal contact, so a client never sees a subcontractor's thread {project, contact, side, author, text, files, at, read_by}. Portal: *Messages* on the project page. Staff: project **Messages** tab and **Inbox** (all threads of projects you are on, unread first), area `messages` from `ROLE_PERMS`; `nav.ts` Inbox gets `ready: true` | thread per contact; outsider 404; unread count |
+| §15 | Who is told about portal actions | A portal message → the project's managers and the team members who already wrote in that thread; staff reply → the portal user by email (and WhatsApp when opted in, block 4). Every portal approval → managers (existing events), nobody about their own action | each; not the author |
+| §16 | Send templates by WhatsApp / SMS | `services/messaging.py` gateway: `send(company, channel, to, text, template=None, params=None)` → {status, provider_id, error}. **One provider first: WhatsApp Cloud API (Meta)** *(Gupshup / Twilio as alternatives — to confirm)*; SMS second (India needs DLT-registered templates). `message_templates` (`routes/followups.py`) gain the provider template name and the order of merge fields; `render` stays the preview; **Send** replaces *log as sent* when a provider is set. Not set up → **log only**: the message is stored with status *logged (not sent)*, exactly today's behaviour | sent / logged; unknown field blocks sending |
+| §16 | Opt-in | Contacts get `whatsapp_opt_in` {at, how (portal tick, written, verbal), by}; no opt-in → no WhatsApp (email still works). An inbound *STOP* records opt-out | refused without opt-in; STOP → out |
+| F / E | Transmittals, invoices and reminders by WhatsApp | Transmittal send offers *also by WhatsApp* (template with a portal link, not the file); invoice send carries the pay link; worker reminders that today email the client (invoice due / overdue — the client reminder not built in E —, selection choice due, stage waiting for sign-off) go by WhatsApp when the contact opted in, once per key | link not attachment; reminder once |
+| §16 | Delivery status | `POST /webhooks/messages/<provider>/<company>` (signature checked, e.g. Meta `X-Hub-Signature-256`) moves a message sent → delivered → read / failed with the error; a failed message to a client tells its sender | status flow; failed notified |
+| — | Limits | WhatsApp messages per month from the plan (`subscription.limits()["whatsapp"]` + add-ons); over → 402 with the add-on hint (as the parked `_check_whatsapp_quota`). Logged-only messages do not count | 402 over limit |
+
+## G2. Rules fixed in this phase
+* A portal approval and a staff-recorded approval are the same record and run the same code; the only differences are `method: "Portal"`, the IP / user agent and who recorded it. Staff never record *Portal*.
+* A portal user acts only on what was sent to them: their project (team contact), their transmittal, their thread. Anything else is 404, not 403.
+* Approvals that change money or the contract (change orders) need a drawn signature; sign-off, selection choice and drawing approval need a typed name and a tick.
+* An online payment becomes money only through the provider's signed webhook, never from the browser's return page. One provider payment makes one receipt.
+* Secrets (payment keys, webhook secrets, messaging tokens) are written but never read back, as the SMTP password today.
+* Nothing is sent by WhatsApp without opt-in; without a provider every send is *logged only*, so nothing breaks for companies that have not set one up.
+* Cost fields stay hidden for every portal role (`HIDE_COST_ROLES`).
+
+## G3. What is added
+| Kind | Items |
+|---|---|
+| Collections | `document_comments`, `payment_links`, `messages` (portal, whatsapp, sms, email log; `thread_id`, `status`, `provider_id`), `webhook_events` (raw provider events, kept 90 days). Company `payment_settings`, `messaging_settings`; contact `whatsapp_opt_in`. Migration `020_portal_messaging` (indexes: messages company + thread + at, payment_links provider ref unique, webhook_events provider id unique) |
+| Endpoints | `POST /portal/projects/<id>/stages/<sid>/signoff` · `GET /portal/projects/<id>/change_orders` · `POST /portal/change_orders/<id>/approve` · `/reject` |
+| | `POST /portal/selections/<id>/choice` · `POST /portal/documents/<id>/approve` · `/return` · `GET/POST /portal/documents/<id>/comments` · `POST /portal/transmittals/<id>/acknowledge` · `GET /portal/waiting` |
+| | `GET /portal/projects/<id>/invoices` · `GET /portal/invoices/<id>` · `POST /portal/invoices/<id>/pay` · `POST /webhooks/payments/<provider>/<company>` · `GET/PUT /settings/payments` |
+| | `GET/POST /portal/projects/<id>/messages` · `GET /inbox` · `GET/POST /projects/<id>/messages` · `POST /messages/<thread>/read` · `GET/POST /documents/<id>/comments` (staff) |
+| | `POST /message_templates/<id>/send` · `POST /transmittals/<id>/whatsapp` · `POST /invoices/<id>/whatsapp` · `PUT /contacts/<id>/opt-in` · `POST /webhooks/messages/<provider>/<company>` · `GET/PUT /settings/messaging` |
+| Screens | Portal project page: *Waiting on you* with buttons, Approvals (sign-off, change orders with signature pad, selections side by side, drawings), Documents with comments, Invoices & payments, Messages. Staff: Inbox; project Messages tab; comments on the Documents tab; Settings → Online payments and Messaging (provider, keys, test button); opt-in on the contact; *Send* next to *Copy / Log as sent* on templates |
+| Worker | `check_payment_links` (expire old links, re-check *created* links with `fetch` in case a webhook was missed), `check_portal_reminders` (client reminders by WhatsApp / email for sign-off, selection and invoice), `check_messages` (unanswered client message after 1 working day → managers). All in `run_once` |
+| Notifications | *Portal & messages* group: client approved / rejected in the portal (reuse `signoff_recorded`, `co_decided`, `selection_chosen`, `drawing_approved`), document comment, transmittal acknowledged, new portal message (critical), online payment received (`receipt_recorded`), message failed |
+| Test file | `backend/tests/test_phase_g.py` (provider calls faked; keeps `test_phase_e.py`, `test_phase_f.py` green) |
+
+### What the parked drafts give (`backend/later/`)
+| Draft | Reuse | Change needed |
+|---|---|---|
+| `routes/portal.py` decisions (`selection_decision`, `co_decision`, `doc_decision`, `doc_comment`) | Endpoint shape, `_stop_sequences` idea (a decision cancels its reminders) | Call the shared functions above instead of writing status directly; access by team contact (`portal_query`), not `client_id`; `notify.send`, not `t.notify(role=…)`; statuses are the F ones (*sent*, *for approval*) |
+| `routes/portal.py` `pay` | Endpoint name | Simulated: becomes a provider link; money only via webhook and `record_receipt`, not `record_payment` |
+| `routes/portal.py` `message` and `routes/engage.py` `log_message`, `inbox`, `inbound`, `_check_whatsapp_quota` | `messages` field list, inbox query, quota check, inbound webhook shape (Meta Cloud API) | Threads per project + contact; drop topic routing and the per-message cost guess *(routing — to confirm)*; real signature check |
+| `routes/engage.py` morning messages, PM digest, trade handoff | Not in this phase (below) | — |
+| `routes/portal.py` vendor purchase orders, design options | Not in this phase (below) | — |
+
+## G4. Not in this phase (and where it goes)
+| Item | Where |
+|---|---|
+| Vendor portal for purchase orders and delivery updates (`later/routes/portal.py` `vendor_pos`) | Procurement phase |
+| WhatsApp for site workers (morning work messages, buttons, *work done*), PM digest (`later/routes/engage.py`) | *(to confirm)* — after G, on the same gateway |
+| Inbound WhatsApp / SMS turned into threads or records | *(to confirm)* — G stores inbound messages from known numbers in the contact's thread only; topic routing later |
+| Refunds and payment disputes | Staff void the receipt and refund outside the CRM; later *(to confirm)* |
+| Stripe, second WhatsApp provider, email-to-thread replies | Behind the same interfaces when asked |
+| Design options / 360° renders chosen in the portal | Interior design phase (F4) |
+| Retention, progress-% claims paid online | With retention *(E4, to confirm)* |
+
+Decisions taken to start building (the owner can change any of them):
+1. **Payments:** Razorpay first (test mode until live keys are entered), Stripe later behind the same interface. A client may pay part of an invoice online (any amount up to the balance). The company absorbs the gateway fee; nothing is added to the invoice.
+2. **WhatsApp:** the Meta WhatsApp Cloud API directly; Gupshup / Twilio can be added behind the gateway. **SMS is not built in G** (India needs DLT-registered templates first); it stays *log only*.
+3. **Signatures:** a drawn signature for change orders only; stage sign-off, selection choice and drawing approval take a typed full name and a tick.
+4. **Consultants** comment on and return drawings; only the client approves.
+5. **Threads:** one private thread per portal contact per project.
+6. **Automatic client reminders** (email, and WhatsApp when opted in): invoice overdue (once, the day after the due date) and selection choice due (once, 3 days before). Others stay manual.
