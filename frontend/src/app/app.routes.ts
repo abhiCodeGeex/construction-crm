@@ -33,6 +33,7 @@ export const routes: Routes = [
       { path: 'projects', canActivate: [staffGuard], data: { area: 'projects' }, loadComponent: () => import('./pages/projects/projects.component').then((m) => m.ProjectsComponent) },
       { path: 'projects/:id', canActivate: [staffGuard], data: { area: 'projects' }, loadComponent: () => import('./pages/projects/project-detail.component').then((m) => m.ProjectDetailComponent) },
       { path: 'invoices/:id', canActivate: [staffGuard], data: { area: 'finance' }, loadComponent: () => import('./pages/invoice-view.component').then((m) => m.InvoiceViewComponent) },
+      { path: 'change-orders', canActivate: [staffGuard], data: { area: 'change_orders' }, loadComponent: () => import('./pages/change-orders.component').then((m) => m.ChangeOrdersComponent) },
       { path: 'finance', canActivate: [staffGuard], data: { area: 'finance' }, loadComponent: () => import('./pages/finance.component').then((m) => m.FinanceComponent) },
       { path: 'settings', canActivate: [staffGuard], data: { area: 'settings' }, loadComponent: () => import('./pages/settings.component').then((m) => m.SettingsComponent) },
       { path: 'm/:area', canActivate: [staffGuard], loadComponent: () => import('./pages/area.component').then((m) => m.AreaComponent) },

@@ -28,6 +28,17 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
     SelectModule, TableModule, TagModule, TooltipModule, ProjectInvoicesComponent],
   template: `
     @if (data(); as d) {
+      @if (summary(); as s) {
+        <div class="money-strip mb">
+          <div><small>Contract{{ s.contract_value !== null && s.revised_value !== s.contract_value ? ' → revised' : '' }}</small>
+            <strong>@if (s.contract_value !== null && s.revised_value !== s.contract_value) { {{ fmt(s.contract_value) }} → } {{ fmt(s.revised_value) }}</strong></div>
+          <div><small>Invoiced</small><strong>{{ fmt(s.invoiced) }}</strong></div>
+          <div><small>Received</small><strong>{{ fmt(s.received) }}</strong></div>
+          <div><small>Owed by the client</small><strong [class.c-warn]="s.receivable > 0">{{ fmt(s.receivable) }}</strong></div>
+          <div><small>Still to invoice</small><strong>{{ fmt(s.to_invoice) }}</strong></div>
+          @if (s.margin !== undefined) { <div><small>Margin so far</small><strong [class.c-bad]="s.margin < 0">{{ fmt(s.margin) }}@if (s.margin_pct !== null) { <span class="small muted"> {{ s.margin_pct }}%</span> }</strong></div> }
+        </div>
+      }
       @if (d.budget; as b) {
         <div class="stats">
           <div class="stat-card"><div class="stat-icon indigo"><i class="pi pi-wallet"></i></div>
@@ -103,7 +114,7 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
         </ng-template>
         <ng-template #emptymessage><tr><td colspan="7" class="muted">No costs recorded yet.</td></tr></ng-template>
       </p-table>
-      @if (canSeeInvoices()) { <app-project-invoices [projectId]="project().id" (changed)="changed.emit()" /> }
+      @if (canSeeInvoices()) { <app-project-invoices [projectId]="project().id" (changed)="load(); changed.emit()" /> }
     }
 
     <p-dialog [header]="f.id ? 'Edit cost' : (data()?.perms?.can_add ? 'Record a cost' : 'Log a site expense')" [modal]="true" [(visible)]="dlg"
@@ -161,6 +172,10 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
   styles: `
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .nowrap { white-space: nowrap; }
+    .money-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius); padding: .9rem 1rem; }
+    .money-strip small { display: block; color: var(--muted); }
+    .money-strip strong { font-variant-numeric: tabular-nums; }
     :host ::ng-deep .bar-amber .p-progressbar-value { background: var(--warn, #d97706); }
     :host ::ng-deep .bar-red .p-progressbar-value { background: var(--bad, #dc2626); }
   `,
@@ -189,8 +204,11 @@ export class ProjectMoneyComponent implements OnInit {
     await this.load();
   }
 
+  summary = signal<any>(null);
+
   async load() {
     this.data.set(await this.api.get(`/projects/${this.project().id}/costs`));
+    if (this.auth.can('finance')) this.summary.set(await this.api.get(`/projects/${this.project().id}/finance`));
   }
 
   fmt(v: number) {

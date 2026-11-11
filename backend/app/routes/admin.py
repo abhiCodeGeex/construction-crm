@@ -142,7 +142,7 @@ def set_role(role):
 
 
 # ---------------- company setup ----------------
-NUMBERED = ("PRJ", "INV", "CRN")
+NUMBERED = ("PRJ", "INV", "CRN", "CO")
 SETTINGS_FIELDS = ("name", "city", "gstin", "currency", "tax_rate", "branches", "numbering", "allow_support_login",
                    "modules", "branding")
 CURRENCIES = ("INR", "USD", "EUR", "GBP", "AED", "SGD", "AUD")

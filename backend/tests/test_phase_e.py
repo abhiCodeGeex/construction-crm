@@ -68,6 +68,7 @@ def upload(name, token):
 
 day = lambda n: (date.today() + timedelta(days=n)).isoformat()
 T = {r: login(f"{r}@skyline.test") for r in ("owner", "pm", "site", "accounts", "designer", "sales", "estimator")}
+CAL = call("GET", "/settings/calendar", token=T["owner"])[1]
 users = call("GET", "/users", token=T["owner"])[1]
 U = {u["email"].split("@")[0]: u["id"] for u in users if u["kind"] == "staff"}
 CID = mongo.users.find_one({"email": "owner@skyline.test"})["company_id"]
@@ -376,11 +377,122 @@ try:
     rows = {r["id"]: r for r in call("GET", f"/projects/{WP}/invoices", token=T["pm"])[1]["contract"]["payment_schedule"]}
     check("the contract payment is back to invoiced", rows[sign_row["id"]].get("status") == "invoiced")
     expect("voided twice", call("POST", f"/receipts/{rc['id']}/void", {"reason": "x"}, T["accounts"]), 409)
+
+    # ================= block 4 · change orders =================
+    from app.services import workdays  # noqa: E402  (same working-day maths as the server)
+    pj = call("GET", f"/projects/{WP}", token=T["owner"])[1]
+    cstages = [x for x in pj["stages"] if x["service"] == "construction" and not x["gate"]["closed"]]
+    X, Y = cstages[-2], cstages[-1]
+    t1 = expect("task on the changed stage", call("POST", f"/projects/{WP}/stages/{X['id']}/tasks",
+                                                  {"title": f"Tile floor {RUN}", "start": X["start"], "end": X["end"]}, T["pm"]), 201)
+    t1 = next(tk for st_ in t1["stages"] for tk in st_["tasks"] if tk["title"] == f"Tile floor {RUN}")
+    t2 = expect("dependent task on the next stage", call("POST", f"/projects/{WP}/stages/{Y['id']}/tasks",
+                                                         {"title": f"Skirting {RUN}", "start": Y["start"], "end": Y["end"], "depends_on": [t1["id"]]}, T["pm"]), 201)
+    t2 = next(tk for st_ in t2["stages"] for tk in st_["tasks"] if tk["title"] == f"Skirting {RUN}")
+    expect("baseline", call("POST", f"/projects/{WP}/baseline", {"note": f"Agreed {RUN}"}, T["pm"]), 201)
+
+    call("POST", f"/projects/{WP}/team", {"user_id": U["site"], "project_role": "Site Supervisor", "access": "view"}, T["owner"])
+    expect("site cannot raise a change order", call("POST", f"/projects/{WP}/change_orders", {"stage_id": X["id"], "title": "x", "reason": "client_request"}, T["site"]), 403)
+    expect("reason required", call("POST", f"/projects/{WP}/change_orders", {"stage_id": X["id"], "title": "x", "reason": "whim"}, T["pm"]), 400)
+    expect("title required", call("POST", f"/projects/{WP}/change_orders", {"stage_id": X["id"], "reason": "client_request"}, T["pm"]), 400)
+    co = expect("PM raises a change order", call("POST", f"/projects/{WP}/change_orders", {"stage_id": X["id"], "title": f"Italian marble {RUN}",
+                                                                                         "reason": "client_request"}, T["pm"]), 201)
+    check("numbered CO, draft", co["number"].startswith("CO") and co["status"] == "draft")
+    co = expect("price lines, time and payment", call("PUT", f"/change_orders/{co['id']}", {"lines": [
+        {"description": "Marble instead of vitrified", "qty": 2, "unit": "lot", "cost_rate": 10000, "price_rate": 15000}],
+        "time_days": 5, "payment": "on_approval"}, T["pm"]), 200)
+    check("totals: cost, price, tax, margin", co["totals"]["cost"] == 20000 and co["totals"]["price"] == 30000
+          and abs(co["totals"]["tax"] - 30000 * tax_rate / 100) < 0.02 and co["totals"]["margin"] == 10000, co["totals"])
+    expect("send before pricing", call("POST", f"/change_orders/{co['id']}/send", {}, T["pm"]), 409)
+    expect("price it", call("POST", f"/change_orders/{co['id']}/price", {}, T["pm"]), 200)
+    sco = call("GET", f"/projects/{WP}/change_orders", token=T["site"])[1]["change_orders"]
+    sc1 = next(c for c in sco if c["id"] == co["id"])
+    check("site sees the price, never the cost", sc1["totals"]["total"] == co["totals"]["total"] and "cost" not in sc1["totals"]
+          and "margin" not in sc1["totals"] and "cost_rate" not in sc1["lines"][0] and "cost" not in sc1["lines"][0], sc1["totals"])
+    expect("send to the client", call("POST", f"/change_orders/{co['id']}/send", {}, T["pm"]), 200)
+    expect("approval: how", call("POST", f"/change_orders/{co['id']}/approve", {"name": "Mr PE"}, T["pm"]), 400)
+    expect("approval: who", call("POST", f"/change_orders/{co['id']}/approve", {"method": "Email"}, T["pm"]), 400)
+    expect("accounts cannot record the approval", call("POST", f"/change_orders/{co['id']}/approve", {"name": "Mr PE", "method": "Email"}, T["accounts"]), 403)
+    budget_before = next(x for x in call("GET", f"/projects/{WP}", token=T["owner"])[1]["stages"] if x["id"] == X["id"]).get("budget") or 0
+    con_before = mongo.contracts.find_one({"_id": ObjectId(CON)})
+    ok_ = expect("PM records the client's approval", call("POST", f"/change_orders/{co['id']}/approve",
+                                                         {"name": "Mr PE", "method": "Email", "note": f"OK by mail {RUN}"}, T["pm"]), 200)
+    check("approved with the approval kept", ok_["status"] == "approved" and ok_["approval"]["method"] == "Email")
+    pj2 = call("GET", f"/projects/{WP}", token=T["owner"])[1]
+    X2 = next(x for x in pj2["stages"] if x["id"] == X["id"])
+    check("stage budget grows by the cost", X2["budget"] == budget_before + 20000, (budget_before, X2.get("budget")))
+    con_after = mongo.contracts.find_one({"_id": ObjectId(CON)})
+    check("contract: signed value untouched, revised value added", con_after["value"] == con_before["value"]
+          and abs(con_after["revised_value"] - (con_before.get("revised_value") or con_before["value"]) - co["totals"]["total"]) < 0.02, con_after.get("revised_value"))
+    cot1 = next(tk for x in pj2["stages"] for tk in x["tasks"] if tk["id"] == t1["id"])
+    cot2 = next(tk for x in pj2["stages"] for tk in x["tasks"] if tk["id"] == t2["id"])
+    check("time impact moves the stage's tasks by working days", cot1["end"] == workdays.add_working(t1["end"], 5, CAL), (t1["end"], cot1["end"]))
+    check("and what depends on them", cot2["end"] == workdays.add_working(t2["end"], 5, CAL), (t2["end"], cot2["end"]))
+    dl = call("GET", f"/projects/{WP}/delays", token=T["owner"])[1]
+    check("logged as a client-change delay against the baseline", any(r["reason"] == "client_change" and co["number"] in (r.get("note") or "") for r in dl["rows"]), dl["rows"][:2])
+    row = next(r for r in call("GET", f"/projects/{WP}/invoices", token=T["accounts"])[1]["contract"]["payment_schedule"] if r.get("co_id") == co["id"])
+    check("a payment-schedule row, due on approval", row["state"] == "due" and abs(row["amount"] - co["totals"]["total"]) < 0.02, row)
+    ci = expect("invoice the change order from the schedule", call("POST", f"/contracts/{CON}/schedule/{row['id']}/invoice", {}, T["accounts"]), 201)
+    check("its own tax, not the contract's ratio", abs(ci["subtotal"] - 30000) < 0.02 and abs(ci["total"] - co["totals"]["total"]) < 0.02, ci)
+    expect("not invoiced directly when on the contract", call("POST", f"/change_orders/{co['id']}/invoice", {}, T["accounts"]), 409)
+
+    # rejected, withdrawn, our error
+    co2 = call("POST", f"/projects/{WP}/change_orders", {"stage_id": X["id"], "title": f"Gold taps {RUN}", "reason": "client_request",
+                                                        "lines": [{"description": "Taps", "qty": 1, "cost_rate": 5000, "price_rate": 8000}]}, T["pm"])[1]
+    call("POST", f"/change_orders/{co2['id']}/price", {}, T["pm"])
+    call("POST", f"/change_orders/{co2['id']}/send", {}, T["pm"])
+    mongo.change_orders.update_one({"_id": ObjectId(co2["id"])}, {"$set": {"sent_at": mongo.change_orders.find_one({"_id": ObjectId(co2["id"])})["sent_at"] - timedelta(days=4)}})
+    worker()
+    worker()
+    check("unanswered for 3 days: PM reminded once", len([n for n in bell("pm", event="co_waiting") if co2["number"] in n["text"]]) == 1)
+    expect("reject needs a reason", call("POST", f"/change_orders/{co2['id']}/reject", {}, T["pm"]), 400)
+    rj = expect("client rejected", call("POST", f"/change_orders/{co2['id']}/reject", {"reason": "Too costly"}, T["pm"]), 200)
+    check("rejected", rj["status"] == "rejected")
+    co3 = call("POST", f"/projects/{WP}/change_orders", {"stage_id": X["id"], "title": f"Idea {RUN}", "reason": "design_change"}, T["designer"])
+    check("designer on the project? (not on the team: refused)", co3[0] in (403, 404), co3[0])
+    co3 = call("POST", f"/projects/{WP}/change_orders", {"stage_id": X["id"], "title": f"Idea {RUN}", "reason": "design_change"}, T["pm"])[1]
+    expect("withdraw needs a reason", call("POST", f"/change_orders/{co3['id']}/withdraw", {}, T["pm"]), 400)
+    check("withdrawn", expect("withdraw", call("POST", f"/change_orders/{co3['id']}/withdraw", {"reason": "Not needed"}, T["pm"]), 200)["status"] == "withdrawn")
+    oe = call("POST", f"/projects/{WP}/change_orders", {"stage_id": X["id"], "title": f"Redo wall {RUN}", "reason": "our_error",
+                                                       "lines": [{"description": "Rework", "qty": 1, "cost_rate": 7000, "price_rate": 9000}]}, T["pm"])[1]
+    check("our error: no client price", oe["totals"]["price"] == 0 and oe["totals"]["cost"] == 7000, oe["totals"])
+    call("POST", f"/change_orders/{oe['id']}/price", {}, T["pm"])
+    expect("our error is not sent to the client", call("POST", f"/change_orders/{oe['id']}/send", {}, T["pm"]), 409)
+    expect("only an Owner approves our error", call("POST", f"/change_orders/{oe['id']}/approve", {}, T["pm"]), 403)
+    rev_before = mongo.contracts.find_one({"_id": ObjectId(CON)})["revised_value"]
+    expect("Owner approves our error", call("POST", f"/change_orders/{oe['id']}/approve", {"note": "our slip"}, T["owner"]), 200)
+    check("the PM who raised it is told", any(oe["number"] in n["text"] for n in bell("pm", event="co_decided")))
+    check("our error: budget grows, contract does not", mongo.contracts.find_one({"_id": ObjectId(CON)})["revised_value"] == rev_before
+          and next(x for x in call("GET", f"/projects/{WP}", token=T["owner"])[1]["stages"] if x["id"] == X["id"])["budget"] == budget_before + 27000)
+
+    # §12 the client-change overspend from block 1 left a draft change order (project without a contract)
+    ovs = call("GET", f"/projects/{pid}/change_orders", token=T["owner"])[1]["change_orders"]
+    ov = next((c for c in ovs if c["title"].startswith(f"Overspend: Tiles {RUN}")), None)
+    check("over budget for a client change: draft change order with the markup", ov and ov["status"] == "draft"
+          and ov["lines"][0]["cost"] == 11200 and ov["lines"][0]["price"] == 12320 and ov.get("from_cost_id"), ov and ov["lines"])
+    call("POST", f"/change_orders/{ov['id']}/price", {}, T["owner"])
+    call("POST", f"/change_orders/{ov['id']}/send", {}, T["owner"])
+    expect("owner records the approval", call("POST", f"/change_orders/{ov['id']}/approve", {"name": "Client", "method": "WhatsApp"}, T["owner"]), 200)
+    di = expect("no contract: invoice the change order directly", call("POST", f"/change_orders/{ov['id']}/invoice", {}, T["accounts"]), 201)
+    check("direct invoice for the price + tax", abs(di["subtotal"] - 12320) < 0.02 and di["co_number"] == ov["number"], di)
+    expect("invoiced once", call("POST", f"/change_orders/{ov['id']}/invoice", {}, T["accounts"]), 409)
+
+    # §12 reports
+    fs = expect("project money summary", call("GET", f"/projects/{WP}/finance", token=T["accounts"]), 200)
+    check("summary: revised value, invoiced, received, margin", abs(fs["revised_value"] - mongo.contracts.find_one({"_id": ObjectId(CON)})["revised_value"]) < 0.02
+          and fs["invoiced"] > 0 and "margin" in fs and fs["change_orders"]["approved"]["count"] == 2, fs)
+    expect("site has no money summary", call("GET", f"/projects/{WP}/finance", token=T["site"]), 403)
+    rep_ = expect("company finance report", call("GET", "/reports/finance", token=T["owner"]), 200)
+    check("report: projects, ageing, change orders by reason, costs by category", any(r["project_id"] == WP for r in rep_["projects"])
+          and len(rep_["ageing"]) == 5 and any(c["reason"] == "Client request" for c in rep_["change_orders"]) and rep_["by_category"], list(rep_))
+    rs = expect("sales sees the report", call("GET", "/reports/finance", token=T["sales"]), 200)
+    check("sales: totals only, no cost or margin", not rs["money_view"] and "margin" not in rs["total"] and "by_category" not in rs, rs["total"])
 finally:
     for c in mongo.costs.find({"company_id": CID, "project_id": {"$in": projects}}):
         mongo.costs.update_one({"_id": c["_id"]}, {"$set": {"status": "void"}})
     mongo.invoices.delete_many({"company_id": CID, "$or": [{"project_id": {"$in": projects + won_projects}}, {"lead_id": {"$in": leads}}]})
     mongo.receipts.delete_many({"company_id": CID, "project_id": {"$in": projects + won_projects}})
+    mongo.change_orders.delete_many({"company_id": CID, "project_id": {"$in": projects + won_projects}})
     for p_ in projects + won_projects:
         call("DELETE", f"/projects/{p_}", token=T["owner"])
         mongo.followups.delete_many({"company_id": CID, "related.id": p_})

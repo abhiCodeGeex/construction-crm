@@ -108,8 +108,9 @@ def invoice_row(cid_, row_id):
     ct = c.get("totals") or {}
     ratio = (ct.get("taxable") or c["value"]) / (ct.get("total") or c["value"]) if c["value"] else 1
     amount = row["amount"]
-    taxable = r2(amount * ratio)
-    line = {"id": t.sid(), "description": f"{row['name']} ({row['pct']:g}% of contract {c['number']})", "qty": 1,
+    taxable = r2(row["taxable"]) if "taxable" in row else r2(amount * ratio)  # a change order row carries its own tax
+    desc = row["name"] if row.get("co_id") else f"{row['name']} ({row['pct']:g}% of contract {c['number']})"
+    line = {"id": t.sid(), "description": desc, "qty": 1,
             "rate": taxable, "amount": taxable, "tax_pct": r2((amount - taxable) / taxable * 100) if taxable else 0, "tax": r2(amount - taxable)}
     inv = t.insert("invoices", {**base_doc("schedule", p, c), "schedule_row_id": row_id, "schedule_row": row["name"],
                                 "early_reason": early, "lines": [line], **totals([line])})

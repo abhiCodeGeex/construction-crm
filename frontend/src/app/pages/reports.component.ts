@@ -14,7 +14,7 @@ import { AuthService } from '../core/auth.service';
   imports: [FormsModule, ButtonModule, CardModule, InputTextModule, MessageModule, TableModule],
   template: `
     <div class="page-head">
-      <div><h1>Reports</h1><p class="muted">Sales conversion and follow-up discipline. Finance and project reports arrive with their phases.</p></div>
+      <div><h1>Reports</h1><p class="muted">Sales conversion, follow-up discipline and project money.</p></div>
       @if (auth.can('leads')) {
         <div class="row gap">
           <input aria-label="From date" title="From date" pInputText type="date" [(ngModel)]="from" /> <span class="muted">to</span> <input aria-label="To date" title="To date" pInputText type="date" [(ngModel)]="to" />
@@ -130,6 +130,41 @@ import { AuthService } from '../core/auth.service';
       </p-table>
       </p-card>
     }
+    @if (fin(); as f) {
+      <p-card header="Project money" styleClass="mt">
+        <p-table [value]="f.projects" size="small" [scrollable]="true">
+          <ng-template #header><tr><th>Project</th><th class="right">Value (revised)</th><th class="right">Invoiced</th><th class="right">Received</th>
+            <th class="right">Owed</th><th class="right">To invoice</th>@if (f.money_view) { <th class="right">Budget</th><th class="right">Actual</th><th class="right">Margin</th> }</tr></ng-template>
+          <ng-template #body let-r><tr><td>{{ r.code }} {{ r.name }}</td><td class="right">{{ fmt(r.revised_value) }}</td><td class="right">{{ fmt(r.invoiced) }}</td>
+            <td class="right">{{ fmt(r.received) }}</td><td class="right" [class.c-warn]="r.receivable > 0">{{ fmt(r.receivable) }}</td><td class="right">{{ fmt(r.to_invoice) }}</td>
+            @if (f.money_view) { <td class="right">{{ fmt(r.budget) }}</td><td class="right" [class.c-bad]="r.budget && r.actual > r.budget">{{ fmt(r.actual) }}</td>
+              <td class="right" [class.c-bad]="r.margin < 0">{{ fmt(r.margin) }}@if (r.margin_pct !== null) { <span class="muted small"> {{ r.margin_pct }}%</span> }</td> }</tr></ng-template>
+          <ng-template #footer><tr><th>Total</th><th class="right">{{ fmt(f.total.revised_value) }}</th><th class="right">{{ fmt(f.total.invoiced) }}</th>
+            <th class="right">{{ fmt(f.total.received) }}</th><th class="right">{{ fmt(f.total.receivable) }}</th><th class="right">{{ fmt(f.total.to_invoice) }}</th>
+            @if (f.money_view) { <th class="right">{{ fmt(f.total.budget) }}</th><th class="right">{{ fmt(f.total.actual) }}</th><th class="right">{{ fmt(f.total.margin) }}</th> }</tr></ng-template>
+          <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No projects.</td></tr></ng-template>
+        </p-table>
+      </p-card>
+      <div class="grid2 mt">
+        <p-card header="Owed by clients, by age">
+          @for (b of f.ageing; track b.key) { <div class="row-between"><span>{{ b.label }}</span><strong [class.c-bad]="b.key !== 'current' && b.total > 0">{{ fmt(b.total) }}</strong></div> }
+        </p-card>
+        <p-card header="Approved change orders by reason">
+          @for (c of f.change_orders; track c.reason) { <div class="row-between"><span>{{ c.reason }} <span class="muted small">× {{ c.count }}</span></span><strong>{{ fmt(c.total) }}</strong></div> }
+          @empty { <span class="muted small">None yet.</span> }
+        </p-card>
+        @if (f.money_view) {
+          <p-card header="Costs by category">
+            @for (c of f.by_category; track c.category) { <div class="row-between"><span>{{ c.category }}</span><strong>{{ fmt(c.total) }}</strong></div> }
+            @empty { <span class="muted small">No approved costs yet.</span> }
+          </p-card>
+          <p-card header="Stages over budget">
+            @for (o of f.over_budget; track o.project_id + o.stage) { <div class="row-between"><span>{{ o.project }} · {{ o.stage }}</span><strong class="c-bad">+{{ fmt(o.over) }}</strong></div> }
+            @empty { <span class="muted small">None.</span> }
+          </p-card>
+        }
+      </div>
+    }
   `,
 })
 export class ReportsComponent implements OnInit {
@@ -138,6 +173,7 @@ export class ReportsComponent implements OnInit {
   s = signal<any>(null);
   fu = signal<any[] | null>(null);
   services = signal<string[]>([]);
+  fin = signal<any>(null);
   label = SERVICE_LABEL;
   from = '';
   to = '';
@@ -147,6 +183,7 @@ export class ReportsComponent implements OnInit {
   async ngOnInit() {
     await this.load();
     if (this.canFollowups()) this.fu.set(await this.api.get('/reports/followups'));
+    if (this.auth.can('reports')) this.fin.set(await this.api.get('/reports/finance'));
   }
 
   async load() {

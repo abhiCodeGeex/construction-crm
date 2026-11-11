@@ -367,7 +367,7 @@ Source: requirements §12 (finance: costs per stage with budget control, invoice
 | 1 | Cost entries (stage, category, vendor, bill files, approval), stage spent and 80 % / 100 % alerts, dashboard budget vs actual, health budget part, rate library actuals | **Done** |
 | 2 | Invoices from payment-schedule rows (milestone achieved → due), manual invoices, tax, numbering, print, send by email | **Done** |
 | 3 | Receipts against invoices, lead advances applied, overdue reminders and escalation, receivables | **Done** |
-| 4 | Change orders (request → price → client approval → contract, schedule, stage budget and dates), finance reports, Finance + Change orders screens leave SOON | Planned |
+| 4 | Change orders (request → price → client approval → contract, schedule, stage budget and dates), finance reports, Finance + Change orders screens leave SOON | **Done** |
 
 ## E1. Requirement → implementation → test
 | § | Requirement | Implementation | Test |
@@ -445,6 +445,10 @@ Block 1 notes: a cost is recorded on the project's **Money** tab (Owner, PM, Acc
 Block 2 notes: a draft invoice has no number; **sending** issues the next INV number (formats for INV and CRN sit next to PRJ in Settings), so deleted drafts leave no gaps. The contract's payment schedule and *Raise invoice* are on the project's Money tab; an advance invoiced before the win joins the project when the lead is won. Printing is the invoice page (`/app/invoices/<id>`) with the browser's print, not a separate print endpoint. A project with sent invoices cannot be deleted.
 
 Block 3 notes: a receipt must be allocated in full to open invoices of its project (no unallocated money on account yet). A lead advance is applied whole to one invoice and then cannot be voided on the lead. Voiding a receipt takes the money back off its invoices and the contract payment returns to *invoiced*. Receivables (Finance) age the unpaid balance by days past due. The optional client email reminder is not built yet.
+
+Block 4 notes: a change order is numbered CO on creation (format in Settings with PRJ / INV / CRN). Editing a priced order sends it back to draft. With a signed contract an approved change becomes a payment-schedule row (due on approval, or when its stage's gate milestone is achieved) and is invoiced from the schedule with its own tax; without a contract it is invoiced directly. The time impact moves the stage's open tasks and everything that depends on them; once a baseline exists it is logged as a *client change* delay. Adding new tasks from a change order is not built (add them on the stage). Reports: project money on Reports (totals for anyone with Reports; budget, actual and margin only for roles that see finance) and a money summary on the project's Money tab.
+
+**Phase E is complete.**
 
 ---
 

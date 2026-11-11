@@ -20,7 +20,7 @@ export const NAV: NavItem[] = [
   { area: 'documents', label: 'Documents & drawings', icon: 'pi pi-folder-open', section: 'Delivery' },
   { area: 'selections', label: 'Selections', icon: 'pi pi-palette', section: 'Delivery' },
   { area: 'site', label: 'Site reports', icon: 'pi pi-camera', section: 'Delivery' },
-  { area: 'change_orders', label: 'Change orders', icon: 'pi pi-sync', section: 'Delivery' },
+  { area: 'change_orders', label: 'Change orders', icon: 'pi pi-sync', section: 'Delivery', ready: true, path: '/app/change-orders' },
   { area: 'procurement', label: 'Procurement', icon: 'pi pi-truck', section: 'Money' },
   { area: 'finance', label: 'Finance', icon: 'pi pi-wallet', section: 'Money', ready: true, path: '/app/finance' },
   { area: 'reports', label: 'Reports', icon: 'pi pi-chart-bar', section: 'Money', ready: true, path: '/app/reports' },

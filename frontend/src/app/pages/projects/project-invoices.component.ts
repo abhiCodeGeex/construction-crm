@@ -38,6 +38,7 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
               <td>{{ r.name }} <span class="muted small">{{ r.pct }}%</span></td>
               <td class="small">@switch (r.trigger) {
                 @case ('signing') { On signing }
+                @case ('approval') { On approval of the change }
                 @case ('date') { On {{ r.date | date: 'd MMM y' }} }
                 @default { {{ r.stage }} complete @if (r.milestone?.due) { <span class="muted">(due {{ r.milestone.due | date: 'd MMM' }})</span> } }
               }</td>

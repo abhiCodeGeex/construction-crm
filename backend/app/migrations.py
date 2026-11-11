@@ -188,6 +188,12 @@ def m014_receipts():
     db.receipts.create_index([("company_id", 1), ("project_id", 1), ("date", -1)])
 
 
+def m015_change_orders():
+    """Phase E block 4: change orders per project and by status (the unanswered reminder)."""
+    db.change_orders.create_index([("company_id", 1), ("project_id", 1), ("created_at", -1)])
+    db.change_orders.create_index([("company_id", 1), ("status", 1), ("sent_at", 1)])
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -203,6 +209,7 @@ MIGRATIONS = [
     ("012_finance", m012_finance),
     ("013_invoices", m013_invoices),
     ("014_receipts", m014_receipts),
+    ("015_change_orders", m015_change_orders),
 ]
 
 

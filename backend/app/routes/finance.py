@@ -280,6 +280,15 @@ def approve_cost(cid):
     c = t.update("costs", cid, ch)
     budget.recalc_stage(p, c["stage_id"])
     learn(c)
+    if over and d["overspend_reason"] == "client_change":
+        from .change_orders import new_co
+        price = round(over * (1 + settings()["overspend_markup_pct"] / 100), 2)
+        co = new_co(p, {"stage_id": c["stage_id"], "title": f"Overspend: {c['description']}"[:150], "reason": "client_request",
+                        "description": f"{c['stage_name']} went {money_text(over)} over its budget because the client changed something "
+                                       f"(cost {c['description']}). Draft for the client to pay; review before sending.",
+                        "lines": [{"description": c["description"], "qty": 1, "cost_rate": over, "price_rate": price}]},
+                    {"from_cost_id": cid})
+        c = t.update("costs", cid, {"change_order_id": str(co["_id"]), "change_order_number": co["number"]})
     ev.log(str(p["_id"]), "cost", f"Cost approved: {c['description']} {money_text(c['amount'])}"
            + (f" — over budget ({OVERSPEND_REASONS[c['overspend_reason']]})" if over else ""))
     decided(c, p, f"Approved: {c['description']} {money_text(c['amount'])}")

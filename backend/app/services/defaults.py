@@ -309,4 +309,6 @@ NOTIFY_EVENTS.update({
     "receipt_recorded": ("Payment received", False),
     "invoice_due": ("Invoice due soon", False),
     "invoice_overdue": ("Invoice overdue", False),
+    "co_decided": ("Change order approved or rejected", False),
+    "co_waiting": ("Change order not answered by the client", False),
 })

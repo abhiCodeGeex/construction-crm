@@ -282,8 +282,18 @@ def check_invoices(now):
                         project_id=inv.get("project_id"), key=f"inv-late7:{iid}:{due}", level="warn")
 
 
+def check_change_orders(now):
+    """A change order sent to the client and not answered in 3 days -> the project's managers, once."""
+    for co in db.change_orders.find({"company_id": g.cid, "status": "sent", "sent_at": {"$lt": now - timedelta(days=3)}}):
+        p = db.projects.find_one({"_id": oid(co["project_id"])})
+        if p:
+            notify.send("co_waiting", project_events.managers(p), f"Change order {co['number']} ({co['title']}, {p['name']}) "
+                        f"sent {co['sent_at'].date().isoformat()}: no answer from the client yet", f"/app/projects/{p['_id']}?tab=changes",
+                        project_id=co["project_id"], key=f"co-wait:{co['_id']}", level="warn")
+
+
 CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
-          check_compliance, check_meetings, check_health, check_invoices]
+          check_compliance, check_meetings, check_health, check_invoices, check_change_orders]
 
 
 def run_once(now=None):

@@ -783,7 +783,7 @@ def present_contract(c):
     for r in data["payment_schedule"]:
         if r.get("status") in ("invoiced", "paid"):
             continue
-        if r["trigger"] == "signing":
+        if r["trigger"] in ("signing", "approval"):  # "approval": a change order paid when it is approved
             r["state"] = "due"
         elif r["trigger"] == "date":
             r["state"] = "due" if r["date"] <= today else "upcoming"
