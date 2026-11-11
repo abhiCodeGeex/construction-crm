@@ -75,6 +75,13 @@ finance_before = mongo.companies.find_one({"_id": ObjectId(CID)}, {"finance": 1}
 projects, contacts, rates, leads, won_projects = [], [], [], [], []
 
 
+def worker(now=None):
+    from app import create_app
+    from app.worker import run_once
+    with create_app().app_context():
+        run_once(now)
+
+
 def bell(user, **q):
     return list(mongo.notifications.find({"company_id": CID, "user_id": U[user], **q}))
 
@@ -229,7 +236,8 @@ try:
     check("client details on the invoice", adv["client_name"] == f"PE Client {RUN}" and adv["client_email"] == f"pe{RUN}@example.test", adv)
     expect("a row is invoiced once", call("POST", f"/contracts/{CON}/schedule/{sign_row['id']}/invoice", {}, T["owner"]), 409)
 
-    w = expect("lead won", call("POST", f"/leads/{L['id']}/win", {"pm_id": U["pm"]}, T["sales"]), 200)
+    w = expect("lead won with an advance", call("POST", f"/leads/{L['id']}/win", {"pm_id": U["pm"], "advance": {
+        "kind": "Token / booking advance", "amount": 20000, "date": day(0), "mode": "UPI", "reference": f"UPI{RUN}"}}, T["sales"]), 200)
     WP = w["project_id"]
     won_projects.append(WP)
     pi = call("GET", f"/projects/{WP}/invoices", token=T["pm"])[1]
@@ -296,10 +304,83 @@ try:
     allinv = call("GET", f"/invoices?project_id={WP}", token=T["accounts"])[1]
     check("company invoice list", {i["kind"] for i in allinv} == {"schedule", "manual", "credit_note"}, [i["kind"] for i in allinv])
     expect("a project with sent invoices cannot be deleted", call("DELETE", f"/projects/{WP}", token=T["owner"]), 409)
+
+    # ================= block 3 · receipts, advances, receivables, reminders =================
+    rv = call("GET", f"/projects/{WP}/receipts", token=T["accounts"])[1]
+    advance = next(a for a in rv["advances"] if a["amount"] == 20000)
+    check("the lead's advance is listed on the project", advance["number"].startswith("RCT") and not advance.get("applied_invoice_id"), rv["advances"])
+    expect("an advance needs an open invoice", call("POST", f"/lead_receipts/{advance['id']}/apply", {"invoice_id": cn["id"]}, T["accounts"]), 400)
+    ap = expect("apply the advance to the advance-on-signing invoice", call("POST", f"/lead_receipts/{advance['id']}/apply", {"invoice_id": adv["id"]}, T["accounts"]), 200)
+    check("part paid by the advance", ap["status"] == "part_paid" and ap["paid"] == 20000 and ap["payments"][0]["kind"] == "advance", ap)
+    expect("an advance is applied once", call("POST", f"/lead_receipts/{advance['id']}/apply", {"invoice_id": man["id"]}, T["accounts"]), 409)
+    expect("an applied advance cannot be voided", call("POST", f"/lead_receipts/{advance['id']}/void", {"reason": "x"}, T["owner"]), 409)
+
+    left_adv = ap["balance"]
+    man_now = call("GET", f"/invoices/{man['id']}", token=T["accounts"])[1]
+    body = {"amount": left_adv + 500, "date": day(0), "mode": "Bank transfer", "reference": f"NEFT{RUN}",
+            "allocations": [{"invoice_id": adv["id"], "amount": left_adv}, {"invoice_id": man["id"], "amount": 500}]}
+    expect("bad mode", call("POST", f"/projects/{WP}/receipts", {**body, "mode": "Barter"}, T["accounts"]), 400)
+    expect("no future receipt", call("POST", f"/projects/{WP}/receipts", {**body, "date": day(1)}, T["accounts"]), 400)
+    expect("reference for non-cash", call("POST", f"/projects/{WP}/receipts", {**body, "reference": ""}, T["accounts"]), 400)
+    expect("allocations required", call("POST", f"/projects/{WP}/receipts", {**body, "allocations": []}, T["accounts"]), 400)
+    expect("allocate the whole amount", call("POST", f"/projects/{WP}/receipts", {**body, "amount": left_adv + 600}, T["accounts"]), 400)
+    expect("not more than the balance", call("POST", f"/projects/{WP}/receipts", {**body, "amount": left_adv + 1, "allocations": [
+        {"invoice_id": adv["id"], "amount": left_adv + 1}]}, T["accounts"]), 400)
+    expect("each invoice once", call("POST", f"/projects/{WP}/receipts", {**body, "allocations": [
+        {"invoice_id": man["id"], "amount": 250}, {"invoice_id": man["id"], "amount": 250}], "amount": 500}, T["accounts"]), 400)
+    expect("a credit note is not paid", call("POST", f"/projects/{WP}/receipts", {**body, "amount": 500, "allocations": [
+        {"invoice_id": cn["id"], "amount": 500}]}, T["accounts"]), 400)
+    expect("site cannot record receipts", call("POST", f"/projects/{WP}/receipts", body, T["site"]), 403)
+    rc = expect("one payment settles two invoices", call("POST", f"/projects/{WP}/receipts", body, T["accounts"]), 201)
+    a2 = call("GET", f"/invoices/{adv['id']}", token=T["accounts"])[1]
+    m2 = call("GET", f"/invoices/{man['id']}", token=T["accounts"])[1]
+    check("receipt numbered RCT", rc["number"].startswith("RCT") and len(rc["allocations"]) == 2)
+    check("advance invoice paid", a2["status"] == "paid" and a2["balance"] == 0, (a2["status"], a2["balance"]))
+    check("manual invoice part paid", m2["status"] == "part_paid" and abs(m2["balance"] - (man_now["balance"] - 500)) < 0.02, (m2["status"], m2["balance"]))
+    rows = {r["id"]: r for r in call("GET", f"/projects/{WP}/invoices", token=T["pm"])[1]["contract"]["payment_schedule"]}
+    check("the contract payment shows paid", rows[sign_row["id"]].get("status") == "paid", rows[sign_row["id"]])
+    check("PM told of the payment", any(rc["number"] in n["text"] for n in bell("pm", event="receipt_recorded")))
+    expect("a paid invoice cannot be voided", call("POST", f"/invoices/{adv['id']}/void", {"reason": "x"}, T["accounts"]), 409)
+    expect("credit note limited to what is left to pay", call("POST", f"/invoices/{man['id']}/credit-note",
+                                                           {"amount": m2["balance"] + 1, "reason": "x"}, T["accounts"]), 400)
+
+    unpaid = call("GET", "/invoices?status=unpaid", token=T["accounts"])[1]
+    check("unpaid list has the part-paid invoice, not the paid one", man["id"] in [i["id"] for i in unpaid] and adv["id"] not in [i["id"] for i in unpaid])
+    rec = call("GET", "/finance/receivables", token=T["accounts"])[1]
+    mine = next(r for r in rec["rows"] if r["id"] == man["id"])
+    check("receivables: balance in the not-yet-due bucket", mine["bucket"] == "current" and abs(mine["balance"] - m2["balance"]) < 0.02
+          and any(b["key"] == "current" and b["total"] >= m2["balance"] for b in rec["buckets"]), mine)
+    check("receivables by client", any(c["client"] == f"PE Client {RUN}" for c in rec["by_client"]))
+    expect("site cannot see receivables", call("GET", "/finance/receivables", token=T["site"]), 403)
+
+    # overdue reminders
+    mongo.invoices.update_one({"_id": ObjectId(man["id"])}, {"$set": {"due_date": day(-8)}})
+    worker()
+    worker()
+    late = [n for n in bell("accounts", event="invoice_overdue") if man_now["number"] in n["text"]]
+    check("overdue: accounts told once", len(late) == 1, [n["text"] for n in late])
+    check("overdue: the project's PM told", any(man_now["number"] in n["text"] for n in bell("pm", event="invoice_overdue")))
+    check("7 days late: owners told", any("days overdue" in n["text"] and man_now["number"] in n["text"] for n in bell("owner", event="invoice_overdue")))
+    check("a paid invoice is never chased", not [n for n in bell("accounts") if a2["number"] in n["text"] and n["event"] in ("invoice_due", "invoice_overdue")])
+    rec = call("GET", "/finance/receivables", token=T["accounts"])[1]
+    check("receivables: now 1-30 days late", next(r for r in rec["rows"] if r["id"] == man["id"])["bucket"] == "d30")
+
+    # void a receipt
+    expect("PM cannot void a receipt", call("POST", f"/receipts/{rc['id']}/void", {"reason": "x"}, T["pm"]), 403)
+    expect("void needs a reason", call("POST", f"/receipts/{rc['id']}/void", {}, T["accounts"]), 400)
+    expect("accounts voids the receipt", call("POST", f"/receipts/{rc['id']}/void", {"reason": f"Bounced {RUN}"}, T["accounts"]), 200)
+    a3 = call("GET", f"/invoices/{adv['id']}", token=T["accounts"])[1]
+    m3 = call("GET", f"/invoices/{man['id']}", token=T["accounts"])[1]
+    check("void takes the money back", a3["status"] == "part_paid" and a3["paid"] == 20000 and m3["status"] == "sent" and m3["paid"] == 0,
+          (a3["status"], a3["paid"], m3["status"], m3["paid"]))
+    rows = {r["id"]: r for r in call("GET", f"/projects/{WP}/invoices", token=T["pm"])[1]["contract"]["payment_schedule"]}
+    check("the contract payment is back to invoiced", rows[sign_row["id"]].get("status") == "invoiced")
+    expect("voided twice", call("POST", f"/receipts/{rc['id']}/void", {"reason": "x"}, T["accounts"]), 409)
 finally:
     for c in mongo.costs.find({"company_id": CID, "project_id": {"$in": projects}}):
         mongo.costs.update_one({"_id": c["_id"]}, {"$set": {"status": "void"}})
     mongo.invoices.delete_many({"company_id": CID, "$or": [{"project_id": {"$in": projects + won_projects}}, {"lead_id": {"$in": leads}}]})
+    mongo.receipts.delete_many({"company_id": CID, "project_id": {"$in": projects + won_projects}})
     for p_ in projects + won_projects:
         call("DELETE", f"/projects/{p_}", token=T["owner"])
         mongo.followups.delete_many({"company_id": CID, "related.id": p_})

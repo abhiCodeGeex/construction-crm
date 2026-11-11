@@ -379,6 +379,8 @@ def void_receipt(rid):
     r = t.get("lead_receipts", rid)
     if r.get("status") == "void":
         abort(409, "Already void")
+    if r.get("applied_invoice_id"):
+        abort(409, f"This advance settles invoice {r.get('applied_invoice_number')}; it cannot be voided")
     reason = ((request.get_json(force=True) or {}).get("reason") or "").strip() or abort(400, "Say why the receipt is void")
     t.update("lead_receipts", rid, {"status": "void", "void_reason": reason, "voided_at": t.now(), "voided_by": g.user.get("name")})
     log(r["lead_id"], "receipt", f"Receipt {r['number']} ({money_text(r['amount'])}) voided — {reason}")

@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, input, output, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -8,6 +8,7 @@ import { CheckboxModule } from 'primeng/checkbox';
 import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
+import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 import { TextareaModule } from 'primeng/textarea';
@@ -25,7 +26,7 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
 @Component({
   selector: 'app-project-invoices',
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule,
-    TableModule, TagModule, TextareaModule, TooltipModule],
+    SelectModule, TableModule, TagModule, TextareaModule, TooltipModule],
   template: `
     @if (data(); as d) {
       @if (d.contract; as c) {
@@ -73,7 +74,7 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
                 <p-button label="Send" size="small" (onClick)="askSend(i)" />
                 <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="remove(i)" ariaLabel="Delete" pTooltip="Delete" />
               }
-              @if (d.can_write && i.kind !== 'credit_note' && ['sent', 'part_paid', 'paid'].includes(i.status) && i.credited < i.total) {
+              @if (d.can_write && i.kind !== 'credit_note' && ['sent', 'part_paid'].includes(i.status) && i.balance > 0) {
                 <p-button label="Credit note" size="small" [text]="true" (onClick)="askCredit(i)" />
               }
               @if (d.can_void && i.status === 'sent' && i.kind !== 'credit_note' && !i.credited && !i.paid) {
@@ -84,7 +85,67 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
         </ng-template>
         <ng-template #emptymessage><tr><td colspan="8" class="muted">No invoices yet.</td></tr></ng-template>
       </p-table>
+
+      @if (rc(); as r) {
+        @if (r.advances.length) {
+          <h3 class="mt">Advances taken on the lead</h3>
+          <p-table [value]="r.advances" styleClass="p-datatable-sm">
+            <ng-template #body let-a>
+              <tr>
+                <td>{{ a.number }} · {{ a.kind }}</td><td>{{ a.date | date: 'd MMM y' }}</td><td>{{ a.mode }}</td>
+                <td class="num">{{ fmt(a.amount) }}</td>
+                <td class="right">@if (a.applied_invoice_number) { <span class="small muted">applied to {{ a.applied_invoice_number }}</span> }
+                  @else if (r.can_write && openInvoices().length) { <p-button label="Apply to invoice" size="small" [text]="true" (onClick)="askApply(a)" /> }</td>
+              </tr>
+            </ng-template>
+          </p-table>
+        }
+        <div class="row-between mt mb">
+          <h3 class="m0">Payments received</h3>
+          @if (r.can_write && openInvoices().length) { <p-button label="Record payment" icon="pi pi-plus" size="small" (onClick)="openPay()" /> }
+        </div>
+        <p-table [value]="r.receipts" styleClass="p-datatable-sm">
+          <ng-template #header><tr><th>Receipt</th><th>Date</th><th>Mode</th><th>For</th><th class="num">Amount</th><th></th></tr></ng-template>
+          <ng-template #body let-x>
+            <tr [class.muted]="x.status === 'void'">
+              <td>{{ x.number }}@if (x.status === 'void') { <div class="small c-bad">Void: {{ x.void_reason }}</div> }</td>
+              <td>{{ x.date | date: 'd MMM y' }}</td>
+              <td>{{ x.mode }}@if (x.reference) { <div class="small muted">{{ x.reference }}</div> }</td>
+              <td class="small">@for (a of x.allocations; track a.invoice_id) { <div>{{ a.invoice_number }} · {{ fmt(a.amount) }}</div> }</td>
+              <td class="num">{{ fmt(x.amount) }}</td>
+              <td class="right">@if (r.can_void && x.status !== 'void') { <p-button label="Void" size="small" [text]="true" severity="secondary" (onClick)="askVoidReceipt(x)" /> }</td>
+            </tr>
+          </ng-template>
+          <ng-template #emptymessage><tr><td colspan="6" class="muted">No payments yet.</td></tr></ng-template>
+        </p-table>
+      }
     }
+
+    <p-dialog header="Record a payment" [modal]="true" [(visible)]="payDlg" [style]="{ width: '40rem' }" [breakpoints]="{ '700px': '98vw' }">
+      <div class="stack">
+        <div class="grid3">
+          <label class="field req"><span>Date</span><input pInputText type="date" [(ngModel)]="pf.date" fluid /></label>
+          <label class="field req"><span>Mode</span><p-select [options]="rc()?.modes ?? []" [(ngModel)]="pf.mode" fluid appendTo="body" /></label>
+          <label class="field" [class.req]="pf.mode !== 'Cash'"><span>Reference</span><input pInputText [(ngModel)]="pf.reference" placeholder="UTR / cheque no." fluid /></label>
+        </div>
+        <div class="small muted">How much of this payment goes to each invoice:</div>
+        @for (a of pf.allocations; track a.invoice_id) {
+          <div class="alloc-row"><span>{{ a.number }} <span class="small muted">· {{ fmt(a.balance) }} left</span></span>
+            <p-inputnumber [(ngModel)]="a.amount" [min]="0" [max]="a.balance" [inputStyle]="{ width: '100%' }" /></div>
+        }
+        <label class="field"><span>Note</span><input pInputText [(ngModel)]="pf.note" fluid /></label>
+        <div class="row-between"><strong>Total {{ fmt(payTotal()) }}</strong>
+          <p-button label="Record" icon="pi pi-check" [disabled]="!payTotal() || !pf.mode || (pf.mode !== 'Cash' && !pf.reference)" (onClick)="savePay()" /></div>
+      </div>
+    </p-dialog>
+
+    <p-dialog header="Apply the advance" [modal]="true" [(visible)]="applyDlg" [style]="{ width: '28rem' }">
+      <div class="stack">
+        <p class="m0">{{ pendingAdvance?.number }} · {{ fmt(pendingAdvance?.amount) }} settles part of:</p>
+        <p-select [options]="openInvoices()" optionLabel="label" optionValue="id" [(ngModel)]="applyTo" fluid appendTo="body" placeholder="Choose an invoice" />
+        <div class="row right"><p-button label="Apply" [disabled]="!applyTo" (onClick)="apply()" /></div>
+      </div>
+    </p-dialog>
 
     <p-dialog [header]="f.id ? 'Edit invoice' : 'New invoice'" [modal]="true" [(visible)]="dlg" [style]="{ width: '44rem' }" [breakpoints]="{ '760px': '98vw' }">
       <div class="stack">
@@ -120,7 +181,7 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
       </div>
     </p-dialog>
 
-    <p-dialog [header]="reasonFor === 'early' ? 'Invoice before it is due' : reasonFor === 'void' ? 'Void invoice' : 'Credit note'" [modal]="true"
+    <p-dialog [header]="reasonFor === 'early' ? 'Invoice before it is due' : reasonFor === 'void' ? 'Void invoice' : reasonFor === 'receipt' ? 'Void payment' : 'Credit note'" [modal]="true"
               [(visible)]="reasonDlg" [style]="{ width: '28rem' }">
       <div class="stack">
         @if (reasonFor === 'credit') {
@@ -136,6 +197,7 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
     .nowrap { white-space: nowrap; }
     .line-row { display: grid; grid-template-columns: minmax(0, 3fr) 5rem 7rem 5rem auto; gap: .4rem; align-items: center; }
     @media (max-width: 640px) { .line-row { grid-template-columns: 1fr 1fr; } }
+    .alloc-row { display: grid; grid-template-columns: minmax(0, 1fr) 10rem; gap: .5rem; align-items: center; }
   `,
 })
 export class ProjectInvoicesComponent implements OnInit {
@@ -152,15 +214,60 @@ export class ProjectInvoicesComponent implements OnInit {
   pending: any = null;
   private pendingRow: any = null;
   sendEmail = true;
-  reason = ''; reasonFor: 'early' | 'void' | 'credit' = 'void';
+  reason = ''; reasonFor: 'early' | 'void' | 'credit' | 'receipt' = 'void';
   creditAmount: number | null = null;
+  rc = signal<any>(null);
+  payDlg = false; applyDlg = false;
+  pf: any = { allocations: [] };
+  pendingAdvance: any = null;
+  applyTo: string | null = null;
+  openInvoices = computed(() => (this.data()?.invoices ?? [])
+    .filter((i: any) => i.kind !== 'credit_note' && ['sent', 'part_paid'].includes(i.status))
+    .map((i: any) => ({ ...i, label: `${i.number} · ${this.fmt(i.balance)} left` })));
 
   async ngOnInit() {
     await this.load();
   }
 
   async load() {
-    this.data.set(await this.api.get(`/projects/${this.projectId()}/invoices`));
+    const [inv, rc] = await Promise.all([this.api.get(`/projects/${this.projectId()}/invoices`), this.api.get(`/projects/${this.projectId()}/receipts`)]);
+    this.data.set(inv);
+    this.rc.set(rc);
+  }
+
+  openPay() {
+    this.pf = { date: new Date().toISOString().slice(0, 10), mode: 'Bank transfer', reference: '', note: '',
+      allocations: this.openInvoices().map((i: any) => ({ invoice_id: i.id, number: i.number, balance: i.balance, amount: null })) };
+    this.payDlg = true;
+  }
+
+  payTotal() {
+    return (this.pf.allocations ?? []).reduce((a: number, x: any) => a + (x.amount || 0), 0);
+  }
+
+  async savePay() {
+    const allocations = this.pf.allocations.filter((a: any) => a.amount > 0).map((a: any) => ({ invoice_id: a.invoice_id, amount: a.amount }));
+    await this.api.post(`/projects/${this.projectId()}/receipts`, { date: this.pf.date, mode: this.pf.mode, reference: this.pf.reference,
+      note: this.pf.note, amount: Math.round(this.payTotal() * 100) / 100, allocations }, 'Payment recorded');
+    this.payDlg = false;
+    await this.refresh();
+  }
+
+  askApply(a: any) {
+    this.pendingAdvance = a;
+    this.applyTo = null;
+    this.applyDlg = true;
+  }
+
+  async apply() {
+    await this.api.post(`/lead_receipts/${this.pendingAdvance.id}/apply`, { invoice_id: this.applyTo }, 'Advance applied');
+    this.applyDlg = false;
+    await this.refresh();
+  }
+
+  askVoidReceipt(x: any) {
+    this.pending = x;
+    this.open('receipt');
   }
 
   fmt(v: number) {
@@ -226,7 +333,7 @@ export class ProjectInvoicesComponent implements OnInit {
     this.open('credit');
   }
 
-  private open(what: 'early' | 'void' | 'credit') {
+  private open(what: 'early' | 'void' | 'credit' | 'receipt') {
     this.reasonFor = what;
     this.reason = '';
     this.reasonDlg = true;
@@ -235,6 +342,7 @@ export class ProjectInvoicesComponent implements OnInit {
   async sendReason() {
     if (this.reasonFor === 'early') await this.raise(this.pending, this.pendingRow, this.reason);
     else if (this.reasonFor === 'void') await this.api.post(`/invoices/${this.pending.id}/void`, { reason: this.reason }, 'Invoice voided');
+    else if (this.reasonFor === 'receipt') await this.api.post(`/receipts/${this.pending.id}/void`, { reason: this.reason }, 'Payment voided');
     else await this.api.post(`/invoices/${this.pending.id}/credit-note`, { amount: this.creditAmount, reason: this.reason }, 'Credit note issued');
     this.reasonDlg = false;
     await this.refresh();

@@ -17,6 +17,7 @@ from ..services import notify, project_events as ev, sales
 from .finance import settings, finance_project
 from .lead_money import a_date, money_text
 from .lead_steps import num
+from ..services.defaults import PAYMENT_MODES
 from .proposals import present_contract, branding
 
 bp = Blueprint("invoices", __name__)
@@ -39,6 +40,12 @@ def totals(lines):
 
 def balance(inv):
     return r2(inv["total"] - inv.get("credited", 0) - inv.get("paid", 0))
+
+
+def status_for(inv):
+    if balance(inv) <= 0:
+        return "paid"
+    return "part_paid" if inv.get("paid") else "sent"
 
 
 def present(inv):
@@ -253,9 +260,9 @@ def credit_note(iid):
         abort(409, "A credit note is issued against a sent invoice")
     d = request.get_json(force=True) or {}
     amount = r2(num(d.get("amount"), "Amount", required=True, positive=True))
-    room = r2(inv["total"] - inv.get("credited", 0))
+    room = balance(inv)
     if amount > room:
-        abort(400, f"A credit note cannot exceed what is left on the invoice ({money_text(room)})")
+        abort(400, f"A credit note cannot exceed what is left to pay on the invoice ({money_text(room)})")
     reason = (d.get("reason") or "").strip() or abort(400, "Say why the credit is given")
     ratio = inv["subtotal"] / inv["total"] if inv["total"] else 1
     taxable = r2(amount * ratio)
@@ -269,8 +276,7 @@ def credit_note(iid):
                                "paid": 0, "credited": 0, "notes": None, "lines": [line], **totals([line]), "sent_at": t.now(),
                                "created_by_name": g.user.get("name")})
     credited = r2(inv.get("credited", 0) + amount)
-    status = "paid" if r2(inv["total"] - credited - inv.get("paid", 0)) <= 0 else inv["status"]
-    t.update("invoices", iid, {"credited": credited, "status": status})
+    t.update("invoices", iid, {"credited": credited, "status": status_for({**inv, "credited": credited})})
     if inv.get("project_id"):
         ev.log(inv["project_id"], "cost", f"Credit note {cn['number']} against {inv['number']}: {money_text(amount)} — {reason}")
     return jsonify(present(cn)), 201
@@ -299,8 +305,11 @@ def project_invoices(pid):
 @api("finance", write=False)
 def list_invoices():
     q = visible_query()
+    if request.args.get("status") == "unpaid":
+        q["status"] = {"$in": ["sent", "part_paid"]}
+        q["kind"] = {"$ne": "credit_note"}
     for k in ("status", "kind", "project_id"):
-        if request.args.get(k):
+        if request.args.get(k) and not (k == "status" and request.args[k] == "unpaid"):
             if k == "project_id" and "project_id" in q and request.args[k] not in q["project_id"]["$in"]:
                 return jsonify([])
             q[k] = request.args[k]
@@ -315,3 +324,162 @@ def get_invoice(iid):
     data["company"] = branding(g.company)
     data["credit_notes"] = [present(c) for c in t.find("invoices", {"credit_of": iid}, sort=[("created_at", 1)])]
     return jsonify(data)
+
+
+# ---------------- block 3: receipts against invoices ----------------
+def check_payment(d):
+    """Same rules as a lead receipt (lead_money.check_receipt): mode, amount, not in the future, reference unless cash."""
+    if d.get("mode") not in PAYMENT_MODES:
+        abort(400, f"Mode must be one of: {', '.join(PAYMENT_MODES)}")
+    amount = r2(num(d.get("amount"), "Amount", required=True, positive=True))
+    day = a_date(d.get("date"), "Date")
+    if day > sales.today():
+        abort(400, "A receipt cannot be dated in the future")
+    if d["mode"] != "Cash" and not (d.get("reference") or "").strip():
+        abort(400, "Enter the transaction / cheque reference")
+    return amount, day
+
+
+def apply_payment(inv, amount, entry):
+    """Add (or with a negative amount take back) money received against an invoice; status follows the balance."""
+    paid = r2(inv.get("paid", 0) + amount)
+    pays = [x for x in inv.get("payments") or [] if x["id"] != entry["id"]] + ([entry] if amount > 0 else [])
+    upd = t.update("invoices", str(inv["_id"]), {"paid": paid, "payments": pays, "status": status_for({**inv, "paid": paid})})
+    if upd.get("schedule_row_id") and upd.get("contract_id") and (upd["status"] == "paid") != (inv["status"] == "paid"):
+        _row_status(upd, "paid" if upd["status"] == "paid" else "invoiced")
+    return upd
+
+
+def _row_status(inv, status):
+    c = db.contracts.find_one({"_id": oid(inv["contract_id"])})
+    if c:
+        rows = [{**r, "status": status} if r.get("invoice_id") == str(inv["_id"]) else r for r in c["payment_schedule"]]
+        db.contracts.update_one({"_id": c["_id"]}, {"$set": {"payment_schedule": rows}})
+
+
+def open_invoice(iid, pid):
+    inv = db.invoices.find_one({"_id": oid(iid), "company_id": g.cid}) if iid else None
+    if not inv or inv.get("project_id") != pid or inv["kind"] == "credit_note" or inv["status"] not in ("sent", "part_paid"):
+        abort(400, "Choose an open (sent, not fully paid) invoice of this project")
+    return inv
+
+
+def tell(p, text):
+    notify.send("receipt_recorded", list(dict.fromkeys(ev.managers(p) + notify.role_users("accounts"))), text,
+                f"/app/projects/{p['_id']}?tab=money", project_id=str(p["_id"]))
+
+
+@bp.get("/projects/<pid>/receipts")
+@api("finance", write=False)
+def project_receipts(pid):
+    finance_project(pid)
+    advances = [serialize(r) for r in t.find("lead_receipts", {"project_id": pid, "status": "received"}, sort=[("date", 1)])]
+    return jsonify({"receipts": serialize(t.find("receipts", {"project_id": pid}, sort=[("date", -1), ("created_at", -1)])),
+                    "advances": advances, "modes": PAYMENT_MODES, "can_write": can("finance", True),
+                    "can_void": g.role in ("owner", "accounts")})
+
+
+@bp.post("/projects/<pid>/receipts")
+@api("finance")
+def add_receipt(pid):
+    p = finance_project(pid)
+    d = request.get_json(force=True) or {}
+    amount, day = check_payment(d)
+    allocs, seen = [], set()
+    for a in d.get("allocations") or []:
+        if a.get("invoice_id") in seen:
+            abort(400, "Each invoice once per receipt")
+        seen.add(a.get("invoice_id"))
+        inv = open_invoice(a.get("invoice_id"), pid)
+        part = r2(num(a.get("amount"), f"Amount for {inv['number']}", required=True, positive=True))
+        if part > balance(inv):
+            abort(400, f"{inv['number']} has {money_text(balance(inv))} left to pay")
+        allocs.append((inv, part))
+    if not allocs:
+        abort(400, "Say which invoice(s) this payment settles")
+    if abs(sum(x for _, x in allocs) - amount) > 0.01:
+        abort(400, f"Allocate the whole {money_text(amount)} to invoices")
+    rc = t.insert("receipts", {"number": t.next_number("RCT", "RCT"), "project_id": pid, "project_name": p["name"],
+                               "project_code": p.get("code"), "client_id": p.get("client_id"), "amount": amount, "date": day,
+                               "mode": d["mode"], "reference": (d.get("reference") or "").strip() or None,
+                               "note": (d.get("note") or "").strip()[:300] or None, "status": "received",
+                               "allocations": [{"invoice_id": str(i["_id"]), "invoice_number": i["number"], "amount": x} for i, x in allocs],
+                               "created_by_name": g.user.get("name")})
+    for inv, part in allocs:
+        apply_payment(inv, part, {"id": str(rc["_id"]), "kind": "receipt", "number": rc["number"], "amount": part, "date": day})
+    text = f"{money_text(amount)} received on {p['name']} ({d['mode']}), receipt {rc['number']} for " + \
+        ", ".join(i["number"] for i, _ in allocs)
+    ev.log(pid, "cost", text)
+    tell(p, text)
+    return jsonify(serialize(rc)), 201
+
+
+@bp.post("/receipts/<rid>/void")
+@api("finance")
+def void_receipt(rid):
+    rc = t.get("receipts", rid)
+    finance_project(rc["project_id"])
+    if g.role not in ("owner", "accounts"):
+        abort(403, "Only an Owner or Accounts can void a receipt")
+    if rc["status"] == "void":
+        abort(409, "Already void")
+    reason = ((request.get_json(force=True) or {}).get("reason") or "").strip() or abort(400, "Say why the receipt is void")
+    for a in rc["allocations"]:
+        inv = db.invoices.find_one({"_id": oid(a["invoice_id"])})
+        if inv:
+            apply_payment(inv, -a["amount"], {"id": rid})
+    upd = t.update("receipts", rid, {"status": "void", "void_reason": reason[:300], "voided_at": t.now(), "voided_by": g.user.get("name")})
+    ev.log(rc["project_id"], "cost", f"Receipt {rc['number']} ({money_text(rc['amount'])}) voided: {reason}")
+    return jsonify(serialize(upd))
+
+
+@bp.post("/lead_receipts/<rid>/apply")
+@api("finance")
+def apply_advance(rid):
+    """An advance taken on the lead (moved to the project on the win) settles one of the project's invoices."""
+    adv = t.get("lead_receipts", rid)
+    if not adv.get("project_id"):
+        abort(409, "This advance is not on a project yet")
+    p = finance_project(adv["project_id"])
+    if adv.get("status") != "received" or adv.get("applied_invoice_id"):
+        abort(409, "This advance is already applied or void")
+    inv = open_invoice((request.get_json(force=True) or {}).get("invoice_id"), adv["project_id"])
+    if adv["amount"] > balance(inv) + 0.01:
+        abort(400, f"The advance ({money_text(adv['amount'])}) is more than {inv['number']} has left to pay ({money_text(balance(inv))})")
+    apply_payment(inv, adv["amount"], {"id": rid, "kind": "advance", "number": adv["number"], "amount": adv["amount"], "date": adv["date"]})
+    t.update("lead_receipts", rid, {"applied_invoice_id": str(inv["_id"]), "applied_invoice_number": inv["number"], "applied_at": t.now()})
+    text = f"Advance {adv['number']} ({money_text(adv['amount'])}) applied to {inv['number']}"
+    ev.log(adv["project_id"], "cost", text)
+    tell(p, text)
+    return jsonify(present(t.get("invoices", str(inv["_id"]))))
+
+
+# ---------------- receivables ----------------
+BUCKETS = (("current", "Not yet due"), ("d30", "1-30 days late"), ("d60", "31-60 days late"), ("d90", "61-90 days late"),
+           ("d90p", "Over 90 days late"))
+
+
+def bucket(days_late):
+    if days_late <= 0:
+        return "current"
+    return "d30" if days_late <= 30 else "d60" if days_late <= 60 else "d90" if days_late <= 90 else "d90p"
+
+
+@bp.get("/finance/receivables")
+@api("finance", write=False)
+def receivables():
+    from datetime import date
+    q = {**visible_query(), "status": {"$in": ["sent", "part_paid"]}, "kind": {"$ne": "credit_note"}}
+    today = date.fromisoformat(sales.today())
+    rows, sums, by_client = [], {k: 0.0 for k, _ in BUCKETS}, {}
+    for inv in t.find("invoices", q, sort=[("due_date", 1)]):
+        late = (today - date.fromisoformat(inv["due_date"])).days if inv.get("due_date") else 0
+        b, bal = bucket(late), balance(inv)
+        sums[b] = r2(sums[b] + bal)
+        name = inv.get("client_name") or "-"
+        c = by_client.setdefault(name, {"client": name, "balance": 0.0, "oldest_days": 0})
+        c["balance"] = r2(c["balance"] + bal)
+        c["oldest_days"] = max(c["oldest_days"], late)
+        rows.append({**present(inv), "days_late": max(late, 0), "bucket": b})
+    return jsonify({"rows": rows, "buckets": [{"key": k, "label": label, "total": sums[k]} for k, label in BUCKETS],
+                    "total": r2(sum(sums.values())), "by_client": sorted(by_client.values(), key=lambda x: -x["balance"])})

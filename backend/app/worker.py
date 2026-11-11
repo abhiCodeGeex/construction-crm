@@ -256,8 +256,34 @@ def check_health(now):
                         level="warn")
 
 
+def check_invoices(now):
+    """Unpaid invoices (Phase E): 3 days before the due date and on it -> Accounts; a day late -> Accounts and the
+    project's managers; 7 days late -> the Owners. Keys carry the due date, so a re-dated invoice is chased again;
+    paid and void invoices never are."""
+    today = now.date()
+    accounts = notify.role_users("accounts")
+    for inv in db.invoices.find({"company_id": g.cid, "status": {"$in": ["sent", "part_paid"]}, "kind": {"$ne": "credit_note"},
+                                 "due_date": {"$ne": None}}):
+        due = inv["due_date"]
+        days = (datetime.fromisoformat(due).date() - today).days
+        left = round(inv["total"] - inv.get("credited", 0) - inv.get("paid", 0), 2)
+        what = f"{inv['number']} ({inv.get('client_name') or 'client'}, {inv.get('project_name') or ''}): {left:,.0f} left to pay"
+        link, iid = f"/app/invoices/{inv['_id']}", str(inv["_id"])
+        if 0 < days <= 3:
+            notify.send("invoice_due", accounts, f"Due {due}: {what}", link, project_id=inv.get("project_id"), key=f"inv-due3:{iid}:{due}")
+        elif days == 0:
+            notify.send("invoice_due", accounts, f"Due today: {what}", link, project_id=inv.get("project_id"), key=f"inv-due0:{iid}:{due}")
+        if days < 0:
+            p = db.projects.find_one({"_id": oid(inv["project_id"])}) if inv.get("project_id") else None
+            notify.send("invoice_overdue", accounts + (project_events.managers(p) if p else []), f"Overdue since {due}: {what}",
+                        link, project_id=inv.get("project_id"), key=f"inv-late:{iid}:{due}", level="warn")
+        if days <= -7:
+            notify.send("invoice_overdue", project_events.owners(), f"{-days} days overdue: {what}", link,
+                        project_id=inv.get("project_id"), key=f"inv-late7:{iid}:{due}", level="warn")
+
+
 CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
-          check_compliance, check_meetings, check_health]
+          check_compliance, check_meetings, check_health, check_invoices]
 
 
 def run_once(now=None):

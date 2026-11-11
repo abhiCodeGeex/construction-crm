@@ -183,6 +183,11 @@ def m013_invoices():
     db.invoices.create_index([("company_id", 1), ("status", 1), ("due_date", 1)])
 
 
+def m014_receipts():
+    """Phase E block 3: receipts per project."""
+    db.receipts.create_index([("company_id", 1), ("project_id", 1), ("date", -1)])
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -197,6 +202,7 @@ MIGRATIONS = [
     ("011_plan_meetings", m011_plan_meetings),
     ("012_finance", m012_finance),
     ("013_invoices", m013_invoices),
+    ("014_receipts", m014_receipts),
 ]
 
 

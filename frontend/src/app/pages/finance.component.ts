@@ -27,7 +27,36 @@ const COST_SEV: Record<string, 'secondary' | 'success' | 'danger' | 'warn'> = {
       </div>
     </div>
     <p-selectbutton class="mb block" [options]="views" [(ngModel)]="view" optionLabel="label" optionValue="value" [allowEmpty]="false" (onChange)="load()" />
-    @if (view === 'invoices') {
+    @if (view === 'receivables') {
+      @if (recv(); as r) {
+        <div class="stats">
+          @for (b of r.buckets; track b.key) {
+            <div class="stat-card"><div><small>{{ b.label }}</small><strong [class.c-bad]="b.key !== 'current' && b.total > 0">{{ fmt(b.total) }}</strong></div></div>
+          }
+        </div>
+        <div class="grid2">
+          <div>
+            <h3 class="mt0">By client</h3>
+            <p-table [value]="r.by_client" styleClass="p-datatable-sm">
+              <ng-template #header><tr><th>Client</th><th class="num">Owed</th><th class="num">Oldest</th></tr></ng-template>
+              <ng-template #body let-c><tr><td>{{ c.client }}</td><td class="num">{{ fmt(c.balance) }}</td>
+                <td class="num" [class.c-bad]="c.oldest_days > 0">{{ c.oldest_days > 0 ? c.oldest_days + ' days late' : 'not due' }}</td></tr></ng-template>
+              <ng-template #emptymessage><tr><td colspan="3" class="muted">Nothing owed.</td></tr></ng-template>
+            </p-table>
+          </div>
+          <div>
+            <h3 class="mt0">Open invoices · {{ fmt(r.total) }}</h3>
+            <p-table [value]="r.rows" styleClass="p-datatable-sm" [paginator]="r.rows.length > 15" [rows]="15">
+              <ng-template #header><tr><th>Invoice</th><th>Due</th><th class="num">Left to pay</th></tr></ng-template>
+              <ng-template #body let-i><tr>
+                <td><a [routerLink]="['/app/invoices', i.id]">{{ i.number }}</a><div class="small muted">{{ i.client_name }} · {{ i.project_code }}</div></td>
+                <td [class.c-bad]="i.days_late > 0">{{ i.due_date | date: 'd MMM y' }}@if (i.days_late > 0) { <div class="small">{{ i.days_late }} days late</div> }</td>
+                <td class="num">{{ fmt(i.balance) }}</td></tr></ng-template>
+            </p-table>
+          </div>
+        </div>
+      }
+    } @else if (view === 'invoices') {
       <div class="row gap wrap mb">
         <p-selectbutton [options]="invStatuses" [(ngModel)]="invStatus" optionLabel="label" optionValue="value" [allowEmpty]="false" (onChange)="load()" />
         <span class="muted small grow right">{{ invoices().length }} · balance {{ fmt(balance()) }}</span>
@@ -81,12 +110,13 @@ export class FinanceComponent implements OnInit {
   statuses = [{ label: 'Waiting approval', value: 'submitted' }, { label: 'Approved', value: 'approved' },
     { label: 'Drafts', value: 'draft' }, { label: 'Rejected', value: 'rejected' }, { label: 'Void', value: 'void' }, { label: 'All', value: '' }];
   status = 'submitted';
-  views = [{ label: 'Costs', value: 'costs' }, { label: 'Invoices', value: 'invoices' }];
+  views = [{ label: 'Costs', value: 'costs' }, { label: 'Invoices', value: 'invoices' }, { label: 'Receivables', value: 'receivables' }];
   view = 'costs';
   invoices = signal<any[]>([]);
-  invStatuses = [{ label: 'Unpaid', value: 'sent' }, { label: 'Drafts', value: 'draft' }, { label: 'Paid', value: 'paid' },
+  recv = signal<any>(null);
+  invStatuses = [{ label: 'Unpaid', value: 'unpaid' }, { label: 'Drafts', value: 'draft' }, { label: 'Paid', value: 'paid' },
     { label: 'Void', value: 'void' }, { label: 'All', value: '' }];
-  invStatus = 'sent';
+  invStatus = 'unpaid';
   kind = INVOICE_KIND;
   isev = INVOICE_SEV;
   category: string | null = null;
@@ -96,6 +126,10 @@ export class FinanceComponent implements OnInit {
   }
 
   async load() {
+    if (this.view === 'receivables') {
+      this.recv.set(await this.api.get('/finance/receivables'));
+      return;
+    }
     if (this.view === 'invoices') {
       this.invoices.set(await this.api.get(`/invoices${this.invStatus ? '?status=' + this.invStatus : ''}`));
       return;

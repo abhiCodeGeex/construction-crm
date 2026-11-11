@@ -41,7 +41,7 @@ PROJECT_EVENTS = {"project_pm", "project_added", "task_assigned", "task_due", "t
                   "stage_done", "milestone_achieved", "milestone_late", "issue_raised"}
 
 
-FINANCE_EVENTS = {"cost_approval", "cost_decided", "budget_alert"}
+FINANCE_EVENTS = {"cost_approval", "cost_decided", "budget_alert", "receipt_recorded", "invoice_due", "invoice_overdue"}
 
 GROUPS = ["Leads & sales", "Projects", "Finance", "Contacts"]
 

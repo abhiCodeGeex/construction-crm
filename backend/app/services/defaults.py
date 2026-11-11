@@ -306,4 +306,7 @@ NOTIFY_EVENTS.update({
     "cost_approval": ("Cost waiting for your approval", True),
     "cost_decided": ("Your cost approved or rejected", False),
     "budget_alert": ("Stage budget 80% / 100% spent", False),
+    "receipt_recorded": ("Payment received", False),
+    "invoice_due": ("Invoice due soon", False),
+    "invoice_overdue": ("Invoice overdue", False),
 })

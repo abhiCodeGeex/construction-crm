@@ -366,7 +366,7 @@ Source: requirements §12 (finance: costs per stage with budget control, invoice
 |---|---|---|
 | 1 | Cost entries (stage, category, vendor, bill files, approval), stage spent and 80 % / 100 % alerts, dashboard budget vs actual, health budget part, rate library actuals | **Done** |
 | 2 | Invoices from payment-schedule rows (milestone achieved → due), manual invoices, tax, numbering, print, send by email | **Done** |
-| 3 | Receipts against invoices, lead advances applied, overdue reminders and escalation, receivables | Planned |
+| 3 | Receipts against invoices, lead advances applied, overdue reminders and escalation, receivables | **Done** |
 | 4 | Change orders (request → price → client approval → contract, schedule, stage budget and dates), finance reports, Finance + Change orders screens leave SOON | Planned |
 
 ## E1. Requirement → implementation → test
@@ -443,6 +443,8 @@ Decisions taken to start building (the owner can change any of them; each is one
 Block 1 notes: a cost is recorded on the project's **Money** tab (Owner, PM, Accounts; Site Supervisor for site expenses); the company list is **Finance**. A project with approved costs cannot be deleted until they are voided. Cost entries appear in the project timeline under *Money* only for roles that can see finance.
 
 Block 2 notes: a draft invoice has no number; **sending** issues the next INV number (formats for INV and CRN sit next to PRJ in Settings), so deleted drafts leave no gaps. The contract's payment schedule and *Raise invoice* are on the project's Money tab; an advance invoiced before the win joins the project when the lead is won. Printing is the invoice page (`/app/invoices/<id>`) with the browser's print, not a separate print endpoint. A project with sent invoices cannot be deleted.
+
+Block 3 notes: a receipt must be allocated in full to open invoices of its project (no unallocated money on account yet). A lead advance is applied whole to one invoice and then cannot be voided on the lead. Voiding a receipt takes the money back off its invoices and the contract payment returns to *invoiced*. Receivables (Finance) age the unpaid balance by days past due. The optional client email reminder is not built yet.
 
 ---
 

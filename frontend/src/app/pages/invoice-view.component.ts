@@ -64,6 +64,10 @@ import { INVOICE_KIND, INVOICE_SEV } from './projects/project-invoices.component
         @if (i.reason) { <p class="notes">Reason: {{ i.reason }}</p> }
         @if (i.company.footer) { <footer class="small muted">{{ i.company.footer }}</footer> }
       </article>
+      @if (i.payments?.length) {
+        <div class="no-print mt"><strong>Payments</strong>
+          @for (x of i.payments; track x.id) { <div>{{ x.number }} · {{ x.date | date: 'd MMM y' }} · {{ fmt(x.amount) }} {{ x.kind === 'advance' ? '(advance taken on the lead)' : '' }}</div> }</div>
+      }
       @if (i.credit_notes?.length) {
         <div class="no-print mt"><strong>Credit notes</strong>
           @for (c of i.credit_notes; track c.id) { <div><a [routerLink]="['/app/invoices', c.id]">{{ c.number }}</a> · {{ fmt(c.total) }} · {{ c.reason }}</div> }</div>
