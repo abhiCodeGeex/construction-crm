@@ -590,8 +590,12 @@ def loss_reason(d):
 def win_lead(lead, d, bid=None):
     """Won -> Phase B project with the lead's client, service, area, value and referral. Linked bids follow."""
     from .projects import new_project
+    from .lead_money import check_receipt
     _id = str(lead["_id"])
     pm = project_manager(d.get("pm_id"))
+    advance = d.get("advance")
+    if advance and advance.get("amount"):
+        check_receipt(advance)  # before the project exists, so a bad advance cannot leave a half-won lead
     extra = []
     if lead.get("owner_id") and lead["owner_id"] != d["pm_id"]:
         extra.append({"user_id": lead["owner_id"], "name": lead.get("owner_name"), "project_role": "Sales", "access": "view"})

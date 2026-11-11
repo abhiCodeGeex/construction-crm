@@ -194,6 +194,7 @@ def save_stages(_id, p):
 
 def present(p, full=True):
     data = t.out(p)
+    data.pop("lead_handover", None)  # served by /projects/<id>/handover, which hides its money from restricted roles
     data["progress"] = project_progress(p)
     data["budget_total"] = round(sum(s.get("budget", 0) or 0 for s in p.get("stages", [])), 2)
     m = member(p)

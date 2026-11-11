@@ -187,8 +187,11 @@ try:
         {"company_id": CID, "user_id": U["owner"], "event": "approval_needed", "text": {"$regex": pc["number"]}}))
     expect("§5 sales cannot approve", call("POST", f"{PC}/approval/decide", {"approve": True}, T["sales"]), 403)
     expect("§5 owner approves", call("POST", f"{PC}/approval/decide", {"approve": True}, T["owner"]), 200)
-    call("PUT", PC, {"intro": "Changed after approval"}, T["sales"])
-    check("§5 editing clears the approval", call("POST", f"{PC}/send", {"channel": "whatsapp"}, T["sales"])[0] == 409)
+    kept = call("PUT", PC, {"intro": "Changed after approval", "discount_pct": 20, "payment_schedule": sched}, T["sales"])[1]
+    check("§5 saving unchanged prices keeps the approval (the builder saves before Send)", kept["approval"]["status"] == "approved", kept["approval"])
+    call("PUT", PC, {"discount_pct": 21}, T["sales"])
+    check("§5 changing prices clears the approval", call("POST", f"{PC}/send", {"channel": "whatsapp"}, T["sales"])[0] == 409)
+    call("PUT", PC, {"discount_pct": 20}, T["sales"])
     call("POST", f"{PC}/approval", {}, T["sales"])
     call("POST", f"{PC}/approval/decide", {"approve": True}, T["owner"])
     sc = expect("§5 send", call("POST", f"{PC}/send", {"channel": "whatsapp"}, T["sales"]), 200)

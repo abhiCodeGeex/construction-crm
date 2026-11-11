@@ -333,7 +333,8 @@ def delete_expense(xid):
     return jsonify({"ok": True})
 
 
-def record_receipt(lead, d):
+def check_receipt(d):
+    """Validate a receipt before anything is written; returns (amount, date)."""
     if d.get("kind") not in RECEIPT_KINDS:
         abort(400, f"Kind must be one of: {', '.join(RECEIPT_KINDS)}")
     if d.get("mode") not in PAYMENT_MODES:
@@ -344,6 +345,11 @@ def record_receipt(lead, d):
         abort(400, "A receipt cannot be dated in the future")
     if d["mode"] != "Cash" and not (d.get("reference") or "").strip():
         abort(400, "Enter the transaction / cheque reference")
+    return amount, rd
+
+
+def record_receipt(lead, d):
+    amount, rd = check_receipt(d)
     _id = str(lead["_id"])
     r = t.insert("lead_receipts", {"lead_id": _id, "lead_title": lead["title"], "number": t.next_number("RCT", "RCT"),
                                    "kind": d["kind"], "amount": amount, "date": rd, "mode": d["mode"],

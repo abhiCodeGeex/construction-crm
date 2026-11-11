@@ -680,6 +680,11 @@ try:
                                                         headers={"Content-Type": f"multipart/form-data; boundary={boundary}", "Authorization": f"Bearer {T['sales']}"})).read())
     call("POST", f"/leads/{V['id']}/files", {"key": fk["key"], "folder": "client_drawings"}, T["sales"])
     mails.clear()
+    projects_before = mongo.projects.count_documents({"company_id": CID, "lead_id": V["id"]})
+    expect("C+2.7 bad advance refused", call("POST", f"/leads/{V['id']}/win", {"pm_id": U["pm"], "advance": {
+        "kind": "Design fee advance", "amount": 40000, "date": day(0), "mode": "Bank transfer"}}, T["sales"]), 400)
+    check("C+2.7 bad advance leaves the lead open and makes no project", get(V["id"])["status"] == "open"
+          and mongo.projects.count_documents({"company_id": CID, "lead_id": V["id"]}) == projects_before)
     w = expect("C+2.7 win with an advance", call("POST", f"/leads/{V['id']}/win", {"pm_id": U["pm"], "advance": {
         "kind": "Design fee advance", "amount": 40000, "date": day(0), "mode": "Bank transfer", "reference": f"NEFT{RUN}"}}, T["sales"]), 200)
     PID = w["project_id"]
@@ -695,6 +700,7 @@ try:
     check("C+2.7 receipts moved (the advance included)", sorted(r["amount"] for r in ho["receipts"]) == [25000, 40000], ho.get("receipts"))
     hs = call("GET", f"/projects/{PID}/handover", token=login("site@skyline.test"))
     check("C+2.7 no money for site staff", hs[0] in (200, 404) and (hs[0] == 404 or ("receipts" not in hs[1] and "value" not in (hs[1]["accepted_proposal"] or {}))), hs)
+    check("C+2.7 project details don't carry the hand-over (its money is only served by /handover)", "lead_handover" not in pj, list(pj))
     hf = [f for f in call("GET", f"/followups?related_id={PID}", token=T["pm"])[1] if f["title"].startswith("Hand-off meeting")]
     check("C+2.7 hand-off meeting for the PM", len(hf) == 1 and hf[0]["owner_id"] == U["pm"])
     check("C+2.7 PM told", any(x["event"] == "project_pm" and x["lead_id"] == V["id"] for x in bell("pm")))

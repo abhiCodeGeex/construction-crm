@@ -433,7 +433,9 @@ def update_proposal(pid):
     if "payment_schedule" in d:
         ch["payment_schedule"] = clean_schedule(d["payment_schedule"], lead["service"])
     merged = compute({**p, **ch})
-    ch.update(items=merged["items"], totals=merged["totals"], value=merged["value"], approval=None)
+    ch.update(items=merged["items"], totals=merged["totals"], value=merged["value"])
+    if merged["totals"] != p.get("totals") or merged["value"] != p.get("value"):
+        ch["approval"] = None  # an approval covers the prices it was given; text-only edits keep it
     upd = t.update("proposals", pid, ch)
     log(p["lead_id"], "proposal", f"Proposal {p['number']} edited — {money_text(upd['value'])}", proposal_id=pid)
     return jsonify(staff_view(upd))
