@@ -230,6 +230,13 @@ def m021_payments():
     db.payment_links.create_index([("company_id", 1), ("events.payment_id", 1)])
 
 
+def m022_messages():
+    """Phase G blocks 3-4: portal threads per project and contact, and WhatsApp messages (the plan's quota counts them)."""
+    db.messages.create_index([("company_id", 1), ("project_id", 1), ("contact_id", 1), ("created_at", 1)])
+    db.messages.create_index([("company_id", 1), ("channel", 1), ("direction", 1), ("created_at", -1)])
+    db.messages.create_index([("company_id", 1), ("provider_id", 1)])
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -252,6 +259,7 @@ MIGRATIONS = [
     ("019_site_reports", m019_site_reports),
     ("020_portal_actions", m020_portal_actions),
     ("021_payments", m021_payments),
+    ("022_messages", m022_messages),
 ]
 
 

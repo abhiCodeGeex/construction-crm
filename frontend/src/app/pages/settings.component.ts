@@ -147,6 +147,27 @@ import { AuthService } from '../core/auth.service';
             </div>
             @if (canEdit()) { <div class="row right"><p-button label="Save" icon="pi pi-check" size="small" (onClick)="savePay()" /></div> }
           </p-card>
+          <p-card header="WhatsApp" styleClass="mt">
+            <div class="stack">
+              <small class="muted">Replies, transmittals, invoices and reminders also go by WhatsApp to contacts who opted in. Not set up: messages are only logged.</small>
+              <label class="field"><span>Provider</span><p-select [options]="waProviders()" optionLabel="label" optionValue="value" [(ngModel)]="wa.provider" [showClear]="true" placeholder="Off (log only)" [disabled]="!canEdit()" fluid appendTo="body" /></label>
+              @if (wa.provider === 'whatsapp_cloud') {
+                <div class="grid2">
+                  <label class="field"><span>Phone number id</span><input pInputText [(ngModel)]="wa.phone_number_id" [disabled]="!canEdit()" fluid /></label>
+                  <label class="field"><span>Access token</span><input pInputText type="password" [(ngModel)]="wa.access_token" [placeholder]="wa.access_token_set ? 'saved — type to replace' : ''" [disabled]="!canEdit()" fluid /></label>
+                </div>
+              }
+              @if (wa.provider) {
+                <div class="grid2">
+                  <label class="field"><span>App secret (webhook signature)</span><input pInputText type="password" [(ngModel)]="wa.app_secret" [placeholder]="wa.app_secret_set ? 'saved — type to replace' : ''" [disabled]="!canEdit()" fluid /></label>
+                  <label class="field"><span>Verify token</span><input pInputText [(ngModel)]="wa.verify_token" [disabled]="!canEdit()" fluid /></label>
+                </div>
+                <small class="muted">Webhook address: <code>{{ origin }}{{ wa.webhook_url }}</code></small>
+              }
+              <small [class.c-good]="wa.ready" [class.muted]="!wa.ready">{{ wa.ready ? 'WhatsApp sending is on.' : 'WhatsApp is off: messages are logged, not sent.' }}</small>
+            </div>
+            @if (canEdit()) { <div class="row right"><p-button label="Save" icon="pi pi-check" size="small" (onClick)="saveWa()" /></div> }
+          </p-card>
           <p-card header="Daily site reports" styleClass="mt">
             <label class="field"><span>Cut-off time</span><input pInputText type="time" [(ngModel)]="site.cutoff" [disabled]="!canEdit()" />
               <small class="muted">No report by this time on a working day: the site supervisor is reminded; still none the next day: the PM.</small></label>
@@ -287,6 +308,7 @@ export class SettingsComponent implements OnInit {
   folders: Record<string, string> = {};
   site: any = { cutoff: '19:00' };
   pay: any = {};
+  wa: any = {};
   origin = window.location.origin;
   folderKeys = [{ key: 'all', label: 'Every project' }, { key: 'architecture', label: 'Architecture' }, { key: 'construction', label: 'Construction' },
     { key: 'interior', label: 'Interior design' }];
@@ -294,7 +316,7 @@ export class SettingsComponent implements OnInit {
   tf: any = { stages: [] };
 
   async ngOnInit() {
-    await Promise.all([this.loadCompany(), this.loadTemplates(), this.loadRoles(), this.loadAudit(), this.loadCalendar(), this.loadFinance(), this.loadFolders(), this.loadSite(), this.loadPay()]);
+    await Promise.all([this.loadCompany(), this.loadTemplates(), this.loadRoles(), this.loadAudit(), this.loadCalendar(), this.loadFinance(), this.loadFolders(), this.loadSite(), this.loadPay(), this.loadWa()]);
   }
 
   async loadCalendar() {
@@ -304,6 +326,23 @@ export class SettingsComponent implements OnInit {
 
   toggleDay(i: number, on: boolean) {
     this.cal.working_days = on ? [...new Set([...this.cal.working_days, i])].sort() : this.cal.working_days.filter((d: number) => d !== i);
+  }
+
+  waProviders() {
+    return Object.entries(this.wa.providers ?? {}).map(([value, label]) => ({ value, label }));
+  }
+
+  async loadWa() {
+    try {
+      this.wa = await this.api.get('/settings/messaging');
+    } catch {
+      this.wa = {};
+    }
+  }
+
+  async saveWa() {
+    const { provider, phone_number_id, access_token, app_secret, verify_token } = this.wa;
+    this.wa = await this.api.put('/settings/messaging', { provider: provider || null, phone_number_id, access_token, app_secret, verify_token }, 'Saved');
   }
 
   payProviders() {

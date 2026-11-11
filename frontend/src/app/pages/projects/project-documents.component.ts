@@ -148,6 +148,7 @@ import { Api, label } from '../../core/api.service';
         <label class="field req"><span>Documents (current revision)</span><p-multiselect [options]="docOpts()" optionLabel="label" optionValue="id" [(ngModel)]="tf.documents" [filter]="true" display="chip" fluid appendTo="body" /></label>
         <label class="field"><span>Note</span><input pInputText [(ngModel)]="tf.note" fluid /></label>
         <label class="check"><p-checkbox [(ngModel)]="tf.email" [binary]="true" ariaLabel="Email the files" /> Email them the files</label>
+        <label class="check"><p-checkbox [(ngModel)]="tf.whatsapp" [binary]="true" ariaLabel="Tell them on WhatsApp" /> Also tell them on WhatsApp (those who opted in)</label>
         <p class="small muted m0">Issued revisions are kept for good. Issuing drawings to the client offers the stage's “Drawings issued to the client” check.</p>
         <div class="row right"><p-button label="Issue" icon="pi pi-send" [disabled]="!tf.to?.length || !tf.purpose || !tf.documents?.length" (onClick)="sendTransmittal()" /></div>
       </div>
@@ -276,7 +277,7 @@ export class ProjectDocumentsComponent implements OnInit {
 
   async openTransmittal() {
     if (!this.trs()) await this.loadView();
-    this.tf = { to: [], purpose: 'for_information', documents: [], note: '', email: true };
+    this.tf = { to: [], purpose: 'for_information', documents: [], note: '', email: true, whatsapp: false };
     this.trDlg = true;
   }
 

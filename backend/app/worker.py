@@ -344,9 +344,38 @@ def check_site_reports(now):
                         f"/app/projects/{pid}?tab=site", project_id=pid, key=f"sr-miss2:{pid}:{yday.isoformat()}", level="warn")
 
 
+def check_client_reminders(now):
+    """The client is reminded once: an invoice the day after its due date, a selection choice 3 days before it is due.
+    By email, and by WhatsApp when they opted in. Keys carry the date, so a re-dated item is reminded again."""
+    from .services import messaging
+    from .routes.lead_money import money_text
+    today = now.date()
+    yday, in3 = (today - timedelta(days=1)).isoformat(), (today + timedelta(days=3)).isoformat()
+
+    def remind(contact_id, key, subject, text, project_id):
+        c = db.contacts.find_one({"_id": oid(contact_id), "company_id": g.cid}) if contact_id else None
+        if not c or db.reminders.find_one({"company_id": g.cid, "key": key}):
+            return
+        mail = notify.deliver(g.company, c.get("email"), subject, text + f"\n\n{g.company['name']}") if c.get("email") else "no email"
+        whats = messaging.notify_contact(c, f"{g.company['name']}: {text}", "reminder", key)
+        db.reminders.insert_one({"company_id": g.cid, "key": key, "contact_id": contact_id, "project_id": project_id,
+                                 "email": mail, "whatsapp": whats, "at": now})
+
+    for inv in db.invoices.find({"company_id": g.cid, "status": {"$in": ["sent", "part_paid"]}, "kind": {"$ne": "credit_note"}, "due_date": yday}):
+        left = round(inv["total"] - inv.get("credited", 0) - inv.get("paid", 0), 2)
+        remind(inv.get("client_id"), f"client-inv:{inv['_id']}:{inv['due_date']}", f"Reminder: invoice {inv['number']}",
+               f"Invoice {inv['number']} ({inv.get('project_name') or ''}) was due on {inv['due_date']}; {money_text(left)} is left to pay. "
+               "You can pay it from your portal.", inv.get("project_id"))
+    for s in db.selections.find({"company_id": g.cid, "status": {"$in": ["open", "options_sent"]}, "due_date": in3}):
+        p = db.projects.find_one({"_id": oid(s["project_id"])}) or {}
+        remind(p.get("client_id"), f"client-sel:{s['_id']}:{s['due_date']}", f"Please choose: {s['item']}",
+               f"Please choose your {s['item']} for {p.get('name', '')} by {s['due_date']} — the options are in your portal.", s["project_id"])
+
+
 CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
           check_compliance, check_meetings, check_health, check_invoices, check_change_orders,
-          check_transmittals, check_selections, check_site_reports]
+          check_transmittals, check_selections, check_site_reports,
+          check_client_reminders]
 
 
 def run_once(now=None):

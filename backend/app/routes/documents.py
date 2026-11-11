@@ -340,6 +340,15 @@ def send_transmittal(pid):
         for r in recipients:
             emailed[r["contact_id"]] = notify.deliver(g.company, r["email"], f"Transmittal {number}: {p['name']}", body, files)
         tr = t.update("transmittals", tid, {"emailed": emailed})
+    if d.get("whatsapp"):
+        from ..services import messaging
+        wa = {}
+        for r in recipients:
+            c = db.contacts.find_one({"_id": oid(r["contact_id"]), "company_id": g.cid}) or {}
+            wa[r["contact_id"]] = messaging.notify_contact(c, f"{g.company['name']}: transmittal {number} for {p['name']} "
+                                                             f"({TRANSMITTAL_PURPOSES[d['purpose']].lower()}) — "
+                                                             f"{len(items)} document(s). Open your portal to view them.", "transmittal", tid) or "not sent"
+        tr = t.update("transmittals", tid, {"whatsapp": wa})
     ev.log(pid, "file", f"Transmittal {number} ({TRANSMITTAL_PURPOSES[d['purpose']]}) to {', '.join(r['name'] for r in recipients)}: "
            + ", ".join(f"{it['number'] or it['name']} {it['rev']}" for it in items))
     notify.send("transmittal_sent", ev.managers(p), f"{number} sent to {', '.join(r['name'] for r in recipients)} ({len(items)} document(s), "

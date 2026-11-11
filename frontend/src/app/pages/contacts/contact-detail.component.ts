@@ -40,11 +40,19 @@ const PORTAL_ROLE: Record<string, string> = { client: 'client', developer: 'clie
             @for (t of c.types; track t) { <p-tag [value]="typeLabel[t]" severity="secondary" /> }
             @if (c.compliance_alert) { <p-tag [value]="c.compliance_alert === 'expired' ? 'Compliance expired' : 'Compliance expiring'" [severity]="sev[c.compliance_alert]" icon="pi pi-exclamation-triangle" /> }
             @if (c.org_name) { <span class="muted">{{ c.designation }} at <a [routerLink]="['/app/contacts', c.org_id]">{{ c.org_name }}</a></span> }
+            @if (c.whatsapp_opt_in) { <p-tag value="WhatsApp: opted in" severity="success" icon="pi pi-whatsapp" [pTooltip]="'Since ' + (c.whatsapp_opt_in.at | date: 'd MMM y') + ' · ' + c.whatsapp_opt_in.how" /> }
+            @else if (c.whatsapp_opt_out) { <p-tag value="WhatsApp: opted out" severity="secondary" /> }
           </div>
         </div>
         <div class="row gap">
           @if (canEdit()) {
             @if (!h()?.portal_user && auth.can('users', 'rw')) { <p-button label="Portal access" icon="pi pi-globe" [outlined]="true" (onClick)="openInvite()" /> }
+            @if (c.phone) {
+              @if (c.whatsapp_opt_in) {
+                <p-button label="WhatsApp" icon="pi pi-whatsapp" [outlined]="true" (onClick)="openWa()" />
+                <p-button label="Opt out" size="small" [text]="true" severity="secondary" (onClick)="setOpt(false)" />
+              } @else { <p-button label="WhatsApp opt-in" icon="pi pi-whatsapp" [text]="true" (onClick)="optDlg = true" /> }
+            }
             <p-button label="Delete" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="remove()" />
             <p-button label="Save" icon="pi pi-check" [loading]="busy()" (onClick)="save()" />
           }
@@ -221,6 +229,20 @@ const PORTAL_ROLE: Record<string, string> = { client: 'client', developer: 'clie
       </p-tabs>
     }
 
+    <p-dialog header="WhatsApp opt-in" [modal]="true" [(visible)]="optDlg" [style]="{ width: '26rem' }">
+      <div class="stack">
+        <p class="m0 small">Only contacts who agreed get WhatsApp messages. How did they agree?</p>
+        <p-select [options]="optHows" [(ngModel)]="optHow" fluid appendTo="body" />
+        <div class="row right"><p-button label="Record opt-in" (onClick)="setOpt(true)" /></div>
+      </div>
+    </p-dialog>
+    <p-dialog header="Send on WhatsApp" [modal]="true" [(visible)]="waDlg" [style]="{ width: '30rem' }" [breakpoints]="{ '640px': '96vw' }">
+      <div class="stack">
+        <p-select [options]="templates()" optionLabel="name" optionValue="id" [(ngModel)]="waTpl" (onChange)="previewWa()" placeholder="Choose a WhatsApp template" fluid appendTo="body" />
+        <textarea pTextarea rows="4" [(ngModel)]="waText" fluid aria-label="Message"></textarea>
+        <div class="row right"><p-button label="Send" icon="pi pi-send" [disabled]="!waTpl || !waText.trim() || waText.includes('{{')" (onClick)="sendWa()" /></div>
+      </div>
+    </p-dialog>
     <p-dialog header="Give portal access" [modal]="true" [(visible)]="invite" [style]="{ width: '28rem' }" [breakpoints]="{ '640px': '96vw' }">
       <form class="stack" (ngSubmit)="sendInvite()">
         <p class="muted small">Portal users are free and only see projects where this contact is on the team.</p>
@@ -268,6 +290,42 @@ export class ContactDetailComponent implements OnInit {
   label = label;
   invite = false;
   inv: any = {};
+
+  optDlg = false;
+  waDlg = false;
+  optHow = 'Verbal';
+  optHows = ['Verbal', 'Written', 'WhatsApp message', 'Portal tick'];
+  templates = signal<any[]>([]);
+  waTpl: string | null = null;
+  waText = '';
+
+  async setOpt(on: boolean) {
+    await this.api.put(`/contacts/${this.id()}/whatsapp`, on ? { opt_in: true, how: this.optHow } : { opt_in: false }, on ? 'Opted in' : 'Opted out');
+    this.optDlg = false;
+    await this.load();
+  }
+
+  async openWa() {
+    this.templates.set((await this.api.get('/message_templates')).filter((x: any) => x.channel === 'whatsapp'));
+    this.waTpl = null;
+    this.waText = '';
+    this.waDlg = true;
+  }
+
+  async previewWa() {
+    if (this.waTpl) this.waText = (await this.api.post(`/message_templates/${this.waTpl}/render`, { contact_id: this.id() })).text;
+  }
+
+  async sendWa() {
+    const m = await this.api.post(`/message_templates/${this.waTpl}/send`, { contact_id: this.id(), text: this.waText });
+    this.waDlg = false;
+    this.toast(m.status);
+  }
+
+  private toast(status: string) {
+    this.confirm.confirm({ header: status === 'sent' ? 'Sent on WhatsApp' : status === 'logged' ? 'Logged (WhatsApp is not set up)' : 'Not sent',
+      icon: 'pi pi-whatsapp', message: status === 'failed' ? 'Check the number and the opt-in.' : '', acceptLabel: 'OK', rejectVisible: false });
+  }
 
   async ngOnInit() {
     await this.load();

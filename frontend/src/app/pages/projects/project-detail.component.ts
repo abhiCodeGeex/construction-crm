@@ -33,6 +33,7 @@ import { ProjectChangeOrdersComponent } from './project-change-orders.component'
 import { ProjectDocumentsComponent } from './project-documents.component';
 import { ProjectSelectionsComponent } from './project-selections.component';
 import { ProjectSiteReportsComponent } from './project-site-reports.component';
+import { ProjectMessagesComponent } from './project-messages.component';
 import { ProjectActivityComponent, ProjectHealthComponent } from './project-insights.component';
 
 const DESIGN = ['architecture', 'interior'];
@@ -42,7 +43,7 @@ const DESIGN = ['architecture', 'interior'];
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, KnobModule,
     MessageModule, MultiSelectModule, ProgressBarModule, SelectButtonModule, SelectModule, SliderModule, TableModule, TabsModule,
     TagModule, TextareaModule, TooltipModule, GanttComponent, MapPickerComponent, FollowupDialogComponent, CheckboxModule,
-    TaskPanelComponent, ProjectMeetingsComponent, ProjectActivityComponent, ProjectHealthComponent, ProjectMoneyComponent, ProjectChangeOrdersComponent, ProjectDocumentsComponent, ProjectSelectionsComponent, ProjectSiteReportsComponent],
+    TaskPanelComponent, ProjectMeetingsComponent, ProjectActivityComponent, ProjectHealthComponent, ProjectMoneyComponent, ProjectChangeOrdersComponent, ProjectDocumentsComponent, ProjectSelectionsComponent, ProjectSiteReportsComponent, ProjectMessagesComponent],
   template: `
     @if (p(); as p) {
       <div class="page-head">
@@ -76,6 +77,7 @@ const DESIGN = ['architecture', 'interior'];
           @if (auth.can('selections')) { <p-tab value="selections"><i class="pi pi-palette mr"></i>Selections</p-tab> }
           @if (auth.can('finance') || auth.user()?.role === 'site') { <p-tab value="money"><i class="pi pi-wallet mr"></i>Money</p-tab> }
           @if (auth.can('change_orders') || auth.can('finance')) { <p-tab value="changes"><i class="pi pi-sync mr"></i>Change orders</p-tab> }
+          @if (auth.can('messages')) { <p-tab value="messages"><i class="pi pi-comments mr"></i>Messages</p-tab> }
           <p-tab value="meetings"><i class="pi pi-calendar-plus mr"></i>Meetings</p-tab>
           <p-tab value="followups"><i class="pi pi-bell mr"></i>Follow-ups</p-tab>
           <p-tab value="activity"><i class="pi pi-list mr"></i>Activity</p-tab>
@@ -364,6 +366,7 @@ const DESIGN = ['architecture', 'interior'];
           <p-tabpanel value="site">@if (tab === 'site') { <app-project-site-reports [projectId]="p.id" /> }</p-tabpanel>
           <p-tabpanel value="selections">@if (tab === 'selections') { <app-project-selections [projectId]="p.id" /> }</p-tabpanel>
           <p-tabpanel value="changes">@if (tab === 'changes') { <app-project-change-orders [projectId]="p.id" (changed)="reload()" /> }</p-tabpanel>
+          <p-tabpanel value="messages">@if (tab === 'messages') { <app-project-messages [projectId]="p.id" /> }</p-tabpanel>
           <p-tabpanel value="meetings">@if (tab === 'meetings') { <app-project-meetings [project]="p" [contacts]="contacts()" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="activity">@if (tab === 'activity') { <app-project-activity [projectId]="p.id" /> }</p-tabpanel>
           <p-tabpanel value="followups">

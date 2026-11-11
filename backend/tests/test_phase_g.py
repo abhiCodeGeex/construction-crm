@@ -88,8 +88,11 @@ U = {u["email"].split("@")[0]: u["id"] for u in users if u["kind"] == "staff"}
 CID = mongo.users.find_one({"email": "owner@skyline.test"})["company_id"]
 CLIENT_CONTACT = mongo.users.find_one({"email": "client@skyline.test"})["contact_id"]
 CONSULT_CONTACT = mongo.users.find_one({"email": "consultant@skyline.test"})["contact_id"]
-company_before = mongo.companies.find_one({"_id": ObjectId(CID)}, {"document_folders": 1, "site_settings": 1, "payments": 1})
+company_before = mongo.companies.find_one({"_id": ObjectId(CID)}, {"document_folders": 1, "site_settings": 1, "payments": 1, "messaging": 1})
+client_before = mongo.contacts.find_one({"_id": ObjectId(mongo.users.find_one({"email": "client@skyline.test"})["contact_id"])},
+                                        {"phone": 1, "whatsapp_opt_in": 1, "whatsapp_opt_out": 1})
 projects, keys, contacts_made, rates_made = [], [], [], []
+tpls = []
 SIG = "data:image/png;base64," + "iVBORw0KGgo" * 40
 
 
@@ -285,6 +288,95 @@ try:
     inv2 = call("POST", f"/projects/{pid}/invoices", {"lines": [{"description": "x", "qty": 1, "rate": 100, "tax_pct": 0}]}, T["pm"])[1]
     call("POST", f"/invoices/{inv2['id']}/send", {}, T["pm"])
     expect("payments off: no link", call("POST", f"/portal/invoices/{inv2['id']}/pay", {}, T["client"]), 409)
+
+    # ================= block 3 · message threads =================
+    T["estimator"] = login("estimator@skyline.test")
+    expect("client's thread starts empty", call("GET", f"/portal/projects/{pid}/messages", token=T["client"]), 200)
+    expect("a message needs text", call("POST", f"/portal/projects/{pid}/messages", {"text": " "}, T["client"]), 400)
+    m1 = expect("client writes", call("POST", f"/portal/projects/{pid}/messages", {"text": f"When does tiling start? {RUN}"}, T["client"]), 201)
+    check("PM told of the portal message", any(f"When does tiling start? {RUN}" in n["text"] for n in bell("pm", event="portal_message")))
+    check("the consultant's thread is separate", call("GET", f"/portal/projects/{pid}/messages", token=T["consultant"])[1] == [])
+    th = expect("staff: threads of the project", call("GET", f"/projects/{pid}/threads", token=T["pm"]), 200)
+    cl = next(x for x in th if x["contact_id"] == CLIENT_CONTACT)
+    check("client's thread unread 1, consultant's empty", cl["unread"] == 1 and next(x for x in th if x["contact_id"] == CONSULT_CONTACT)["last"] is None, th)
+    expect("sales not on the project", call("GET", f"/projects/{pid}/threads", token=T["sales"]), 404)
+    expect("estimator has no messages", call("GET", "/inbox", token=T["estimator"]), 403)
+    msgs = expect("open the thread", call("GET", f"/projects/{pid}/threads/{CLIENT_CONTACT}", token=T["pm"]), 200)
+    check("read on opening", msgs[0]["text"].startswith("When does tiling") and call("GET", f"/projects/{pid}/threads", token=T["pm"])[1][0]["unread"] == 0)
+    expect("no thread with someone not on the project", call("GET", f"/projects/{pid}/threads/{str(ObjectId())}", token=T["pm"]), 404)
+    r1 = expect("PM replies", call("POST", f"/projects/{pid}/threads/{CLIENT_CONTACT}", {"text": f"Next Monday {RUN}"}, T["pm"]), 201)
+    check("reply emailed (result kept), no WhatsApp yet", r1["emailed"] and r1.get("whatsapp") is None, r1)
+    cm_ = call("GET", f"/portal/projects/{pid}/messages", token=T["client"])[1]
+    check("client sees the reply", [x["side"] for x in cm_] == ["contact", "team"] and cm_[1]["text"] == f"Next Monday {RUN}")
+    ib = expect("PM's inbox", call("GET", "/inbox", token=T["pm"]), 200)
+    check("inbox lists the thread", any(x["project_id"] == pid and x["contact_id"] == CLIENT_CONTACT for x in ib["threads"]), ib)
+    call("POST", f"/portal/projects/{pid}/messages", {"text": f"Thanks {RUN}"}, T["client"])
+    check("unread counted again", call("GET", "/inbox", token=T["pm"])[1]["unread"] >= 1)
+
+    # ================= block 4 · WhatsApp =================
+    APP = f"appsec_{RUN}"
+    expect("PM cannot set up WhatsApp", call("PUT", "/settings/messaging", {"provider": "sandbox", "app_secret": APP}, T["pm"]), 403)
+    ms_ = expect("owner sets up the sandbox", call("PUT", "/settings/messaging", {"provider": "sandbox", "app_secret": APP, "verify_token": f"vt{RUN}"}, T["owner"]), 200)
+    check("secrets never sent back", "app_secret" not in ms_ and ms_["app_secret_set"] and ms_["ready"], ms_)
+    mongo.contacts.update_one({"_id": ObjectId(CLIENT_CONTACT)}, {"$set": {"phone": f"98{RUN}"}})
+    wc = expect("a contact", call("POST", "/contacts", {"name": f"WA Person {RUN}", "kind": "person", "types": ["client"], "phone": f"97{RUN}"}, T["owner"]), 201)
+    contacts_made.append(wc["id"])
+    tpl = expect("template", call("POST", "/message_templates", {"name": f"Hello {RUN}", "channel": "whatsapp", "body": "Hello {{client}}, from {{company}}"}, T["owner"]), 201)
+    tpls.append(tpl["id"])
+    nm = expect("send without opt-in", call("POST", f"/message_templates/{tpl['id']}/send", {"contact_id": wc["id"]}, T["sales"]), 201)
+    check("refused without opt-in (stored as failed)", nm["status"] == "failed" and "opted" in nm["error"], nm)
+    expect("opt-in: how", call("PUT", f"/contacts/{wc['id']}/whatsapp", {"opt_in": True}, T["sales"]), 400)
+    expect("opt-in recorded", call("PUT", f"/contacts/{wc['id']}/whatsapp", {"opt_in": True, "how": "Verbal"}, T["sales"]), 200)
+    used_before = mongo.messages.count_documents({"company_id": CID, "channel": "whatsapp", "direction": "out"})
+    sm = expect("send the template", call("POST", f"/message_templates/{tpl['id']}/send", {"contact_id": wc["id"]}, T["sales"]), 201)
+    check("sent with the merge filled, counted against the plan", sm["status"] == "sent" and sm["text"] == f"Hello WA Person {RUN}, from " + mongo.companies.find_one({"_id": ObjectId(CID)})["name"]
+          and sm["to"] == f"9197{RUN}" and mongo.messages.count_documents({"company_id": CID, "channel": "whatsapp", "direction": "out"}) == used_before + 1, sm)
+
+    def wh(body, secret=APP):
+        raw = json.dumps(body).encode()
+        return raw_post(f"/webhooks/messages/{CID}", raw, {"X-Hub-Signature-256": "sha256=" + _hm.new(secret.encode(), raw, _h.sha256).hexdigest(),
+                                                           "Content-Type": "application/json"})
+
+    status = lambda pid_, st: {"entry": [{"changes": [{"value": {"statuses": [{"id": pid_, "status": st}]}}]}]}
+    expect("bad signature", wh(status(sm["provider_id"], "delivered"), "wrong"), 400)
+    expect("delivered", wh(status(sm["provider_id"], "delivered")), 200)
+    expect("an older status is ignored", wh(status(sm["provider_id"], "sent")), 200)
+    check("status moves forward only", mongo.messages.find_one({"_id": ObjectId(sm["id"])})["status"] == "delivered")
+    sm2 = call("POST", f"/message_templates/{tpl['id']}/send", {"contact_id": wc["id"]}, T["sales"])[1]
+    failed = {"entry": [{"changes": [{"value": {"statuses": [{"id": sm2["provider_id"], "status": "failed", "errors": [{"title": "Number not on WhatsApp"}]}]}}]}]}
+    wh(failed)
+    check("a failed message tells its sender", any("Number not on WhatsApp" in n["text"] for n in bell("sales", event="whatsapp_failed")))
+    st_, ch_ = 0, ""
+    req = urllib.request.Request(BASE + f"/webhooks/messages/{CID}?hub.mode=subscribe&hub.verify_token=vt{RUN}&hub.challenge=abc{RUN}")
+    with urllib.request.urlopen(req) as r_:
+        st_, ch_ = r_.status, r_.read().decode()
+    check("Meta's verify handshake", st_ == 200 and ch_ == f"abc{RUN}")
+    wh({"entry": [{"changes": [{"value": {"messages": [{"from": f"9197{RUN}", "id": "wamid.in1", "text": {"body": "STOP"}}]}}]}]})
+    check("STOP opts out", mongo.contacts.find_one({"_id": ObjectId(wc["id"])}).get("whatsapp_opt_in") is None)
+    nm2 = call("POST", f"/message_templates/{tpl['id']}/send", {"contact_id": wc["id"]}, T["sales"])[1]
+    check("after STOP nothing is sent", nm2["status"] == "failed")
+
+    po = expect("client opts in from the portal", call("PUT", "/portal/whatsapp", {"opt_in": True}, T["client"]), 200)
+    check("portal opt-in", po["opt_in"] and call("GET", "/portal/whatsapp", token=T["client"])[1]["opt_in"])
+    r2 = call("POST", f"/projects/{pid}/threads/{CLIENT_CONTACT}", {"text": f"Site visit at 10 {RUN}"}, T["pm"])[1]
+    check("a reply also goes by WhatsApp once opted in", r2.get("whatsapp") == "sent", r2.get("whatsapp"))
+    k9 = up("wa-doc")
+    d9 = call("POST", f"/projects/{pid}/documents", {"folder": "Contract", "name": f"Brochure {RUN}", "kind": "other", "file_key": k9}, T["pm"])[1]
+    tr9 = expect("transmittal also by WhatsApp", call("POST", f"/projects/{pid}/transmittals", {"to": [people["Client"]], "purpose": "for_information",
+                                                                                                 "documents": [d9["id"]], "email": False, "whatsapp": True}, T["pm"]), 201)
+    check("WhatsApp result per person", tr9["whatsapp"][people["Client"]] == "sent", tr9.get("whatsapp"))
+
+    # decision G-6: the client is reminded of an overdue invoice once
+    inv3 = call("POST", f"/projects/{pid}/invoices", {"lines": [{"description": f"Reminder test {RUN}", "qty": 1, "rate": 500, "tax_pct": 0}]}, T["pm"])[1]
+    call("POST", f"/invoices/{inv3['id']}/send", {}, T["pm"])
+    mongo.invoices.update_one({"_id": ObjectId(inv3["id"])}, {"$set": {"due_date": day(-1)}})
+    worker()
+    worker()
+    rem = list(mongo.reminders.find({"company_id": CID, "key": {"$regex": inv3["id"]}}))
+    check("overdue invoice: the client reminded once, by WhatsApp too", len(rem) == 1 and rem[0]["whatsapp"] == "sent", rem)
+    call("PUT", "/settings/messaging", {"provider": None}, T["owner"])
+    lg = call("POST", f"/message_templates/{tpl['id']}/send", {"contact_id": CLIENT_CONTACT}, T["sales"])[1]
+    check("not set up: log only, not counted", lg["status"] == "logged" and lg["direction"] == "logged", lg)
 finally:
     for p_ in projects:
         mongo.costs.update_many({"company_id": CID, "project_id": p_}, {"$set": {"status": "void"}})
@@ -297,6 +389,18 @@ finally:
         mongo.files.delete_one({"key": k})
     mongo.notifications.delete_many({"company_id": CID, "text": {"$regex": RUN}})
     mongo.payment_links.delete_many({"company_id": CID, "project_id": {"$in": projects}})
+    mongo.messages.delete_many({"company_id": CID, "$or": [{"project_id": {"$in": projects}}, {"text": {"$regex": RUN}},
+                                                            {"contact_id": {"$in": [CLIENT_CONTACT] + contacts_made}, "channel": "whatsapp"}]})
+    mongo.reminders.delete_many({"company_id": CID, "project_id": {"$in": projects}})
+    for t_ in tpls:
+        call("DELETE", f"/message_templates/{t_}", token=T["owner"])
+    for c_ in contacts_made:
+        call("DELETE", f"/contacts/{c_}", token=T["owner"])
+    mongo.contacts.update_one({"_id": ObjectId(CLIENT_CONTACT)}, {"$set": {k: client_before.get(k) for k in ("phone", "whatsapp_opt_in", "whatsapp_opt_out")}})
+    if company_before.get("messaging") is not None:
+        mongo.companies.update_one({"_id": ObjectId(CID)}, {"$set": {"messaging": company_before["messaging"]}})
+    else:
+        mongo.companies.update_one({"_id": ObjectId(CID)}, {"$unset": {"messaging": ""}})
     if company_before.get("payments") is not None:
         mongo.companies.update_one({"_id": ObjectId(CID)}, {"$set": {"payments": company_before["payments"]}})
     else:

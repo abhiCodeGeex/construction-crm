@@ -25,7 +25,7 @@ export const NAV: NavItem[] = [
   { area: 'finance', label: 'Finance', icon: 'pi pi-wallet', section: 'Money', ready: true, path: '/app/finance' },
   { area: 'reports', label: 'Reports', icon: 'pi pi-chart-bar', section: 'Money', ready: true, path: '/app/reports' },
   { area: 'followups', label: 'Follow-ups', icon: 'pi pi-bell', section: 'Team', ready: true, path: '/app/followups' },
-  { area: 'messages', label: 'Inbox', icon: 'pi pi-comments', section: 'Team' },
+  { area: 'messages', label: 'Inbox', icon: 'pi pi-comments', section: 'Team', ready: true, path: '/app/inbox' },
   { area: 'users', label: 'Users & roles', icon: 'pi pi-users', section: 'Admin', ready: true, path: '/app/users' },
   { area: 'settings', label: 'Company settings', icon: 'pi pi-cog', section: 'Admin', ready: true, path: '/app/settings' },
 ];

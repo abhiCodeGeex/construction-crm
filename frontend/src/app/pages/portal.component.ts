@@ -11,11 +11,12 @@ import { ThemeService } from '../core/theme.service';
 import { ChangePasswordComponent } from '../shared/change-password.component';
 import { PortalActionsComponent } from './portal-actions.component';
 import { PortalInvoicesComponent } from './portal-invoices.component';
+import { PortalMessagesComponent } from './portal-messages.component';
 
 /** Portal for clients, vendors, subcontractors and consultants: only projects where they are on the team (§13). */
 @Component({
   selector: 'app-portal',
-  imports: [DatePipe, AvatarModule, ButtonModule, CardModule, ProgressBarModule, TagModule, ChangePasswordComponent, PortalActionsComponent, PortalInvoicesComponent],
+  imports: [DatePipe, AvatarModule, ButtonModule, CardModule, ProgressBarModule, TagModule, ChangePasswordComponent, PortalActionsComponent, PortalInvoicesComponent, PortalMessagesComponent],
   template: `
     <header class="portal-top">
       <div class="logo"><span class="mark"><i class="pi pi-building"></i></span> {{ me()?.company?.name ?? 'Portal' }}</div>
@@ -78,6 +79,7 @@ import { PortalInvoicesComponent } from './portal-invoices.component';
             <h4>Site photos</h4>
             <div class="photos">@for (ph of photos(); track ph.url) { <a [href]="ph.url" target="_blank" rel="noopener" [title]="ph.caption || ph.date"><img [src]="ph.url" [alt]="ph.caption || 'Site photo'" /></a> }</div>
           }
+          <app-portal-messages [projectId]="p.id" />
           <h4>Project team</h4>
           <div class="chips">@for (m of p.team; track m.name + m.project_role) { <span class="chip static">{{ m.name }} · {{ m.project_role }}</span> }</div>
         </p-card>
@@ -93,7 +95,7 @@ import { PortalInvoicesComponent } from './portal-invoices.component';
             </p-card>
           } @empty { <p class="muted">You have not been added to a project yet.</p> }
         </div>
-        <p class="muted small mt">Approving and choosing online, invoices and messages arrive in a later release. You never see the firm's internal costs.</p>
+        <p class="muted small mt">You never see the firm's internal costs.</p>
       }
     </main>
   `,

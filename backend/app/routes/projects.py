@@ -505,6 +505,7 @@ def delete_project(_id):
     db.selections.delete_many({"company_id": g.cid, "project_id": _id})
     db.site_reports.delete_many({"company_id": g.cid, "project_id": _id})
     db.document_comments.delete_many({"company_id": g.cid, "project_id": _id})
+    db.messages.delete_many({"company_id": g.cid, "project_id": _id, "channel": "portal"})
     db.notifications.delete_many({"company_id": g.cid, "project_id": _id})  # no bell entry may point at it
     for coll in ("project_comments", "project_activity", "project_meetings", "project_delays"):
         db[coll].delete_many({"company_id": g.cid, "project_id": _id})

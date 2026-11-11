@@ -549,8 +549,8 @@ Source: requirements §13 (client portal: portal users see their projects and ap
 |---|---|---|
 | 1 | Portal approvals: stage sign-off, change orders, selection choice, drawing approval, transmittal acknowledgement, consultant and client comments on documents; "Waiting on you" becomes actionable; PM notified | **Done** |
 | 2 | Invoices and receipts in the portal; payment-provider interface; Razorpay (test mode first) pay links; webhook → receipt; provider keys in Settings | **Done** |
-| 3 | Project message threads between each portal user and the team; staff **Inbox** (area `messages`) leaves SOON | Planned |
-| 4 | WhatsApp / SMS gateway: provider settings, opt-in, sending templates, transmittals, invoices and reminders; delivery status webhook; *log only* when not set up | Planned |
+| 3 | Project message threads between each portal user and the team; staff **Inbox** (area `messages`) leaves SOON | **Done** |
+| 4 | WhatsApp / SMS gateway: provider settings, opt-in, sending templates, transmittals, invoices and reminders; delivery status webhook; *log only* when not set up | **Done** |
 
 ## G1. Requirement → implementation → test
 | § | Requirement | Implementation | Test |
@@ -619,6 +619,10 @@ Source: requirements §13 (client portal: portal users see their projects and ap
 | Retention, progress-% claims paid online | With retention *(E4, to confirm)* |
 
 Block 1–2 notes: portal approvals reuse the staff code (`signoff_stage`, `decide_change_order`, `choose_option`, `set_drawing_status`, `ack_transmittal`, `record_receipt`) and record method *Portal* with the IP. The portal's *For you to act on* lists what the person may do; a stage's sign-off is asked for only when it is the last thing missing. Consultants comment on or return drawings (returned → work in progress); the team replies on the Documents tab's Comments view, closes a comment or turns it into a task. Payments: Razorpay Payment Links, plus a **sandbox** provider (no network, no real money) for demos and tests whose checkout page calls the same signed webhook. A sent invoice email carries the pay link when payments are on; staff can copy a link from the Money tab.
+
+Block 3–4 notes: threads are private per portal contact per project; the Inbox and the project's Messages tab show them unread first; a staff reply is emailed and, once the contact opted in, sent on WhatsApp. WhatsApp: Meta Cloud API plus a **sandbox** provider for demos and tests; not set up → messages are stored as *logged* and do not count against the plan. Opt-in is recorded per contact (staff, or the person in the portal); an inbound STOP opts out. Templates can be sent from a contact; transmittals and invoice sends can also go on WhatsApp (a portal or pay link, never the file). The worker reminds the client once of an overdue invoice and of a selection due in 3 days (decision 6). Inbound messages other than STOP are stored against the contact; routing them into a project thread is later.
+
+**Phase G is complete.**
 
 Decisions taken to start building (the owner can change any of them):
 1. **Payments:** Razorpay first (test mode until live keys are entered), Stripe later behind the same interface. A client may pay part of an invoice online (any amount up to the balance). The company absorbs the gateway fee; nothing is added to the invoice.

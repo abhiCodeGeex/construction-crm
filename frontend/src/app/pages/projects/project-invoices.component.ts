@@ -178,6 +178,7 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
         <p class="m0">Sending issues the invoice number. It can then only be changed by a credit note.</p>
         @if (pending?.client_email) {
           <label class="check"><p-checkbox [(ngModel)]="sendEmail" [binary]="true" ariaLabel="Email it to the client" /> Email it to {{ pending.client_email }}</label>
+          <label class="check"><p-checkbox [(ngModel)]="sendWa" [binary]="true" ariaLabel="WhatsApp" /> Also on WhatsApp (if the client opted in)</label>
         } @else { <p class="small muted m0">The client has no email address; share the printed invoice.</p> }
         <div class="row right"><p-button label="Send" icon="pi pi-send" (onClick)="send()" /></div>
       </div>
@@ -216,6 +217,7 @@ export class ProjectInvoicesComponent implements OnInit {
   pending: any = null;
   private pendingRow: any = null;
   sendEmail = true;
+  sendWa = false;
   reason = ''; reasonFor: 'early' | 'void' | 'credit' | 'receipt' = 'void';
   creditAmount: number | null = null;
   rc = signal<any>(null);
@@ -319,7 +321,7 @@ export class ProjectInvoicesComponent implements OnInit {
   }
 
   async send() {
-    await this.api.post(`/invoices/${this.pending.id}/send`, { email: this.sendEmail && !!this.pending.client_email }, 'Invoice sent');
+    await this.api.post(`/invoices/${this.pending.id}/send`, { email: this.sendEmail && !!this.pending.client_email, whatsapp: this.sendWa }, 'Invoice sent');
     this.sendDlg = false;
     await this.refresh();
   }

@@ -33,6 +33,7 @@ export const routes: Routes = [
       { path: 'projects', canActivate: [staffGuard], data: { area: 'projects' }, loadComponent: () => import('./pages/projects/projects.component').then((m) => m.ProjectsComponent) },
       { path: 'projects/:id', canActivate: [staffGuard], data: { area: 'projects' }, loadComponent: () => import('./pages/projects/project-detail.component').then((m) => m.ProjectDetailComponent) },
       { path: 'invoices/:id', canActivate: [staffGuard], data: { area: 'finance' }, loadComponent: () => import('./pages/invoice-view.component').then((m) => m.InvoiceViewComponent) },
+      { path: 'inbox', canActivate: [staffGuard], data: { area: 'messages' }, loadComponent: () => import('./pages/inbox.component').then((m) => m.InboxComponent) },
       { path: 'site-reports', canActivate: [staffGuard], data: { area: 'site' }, loadComponent: () => import('./pages/site-reports.component').then((m) => m.SiteReportsComponent) },
       { path: 'selections', canActivate: [staffGuard], data: { area: 'selections' }, loadComponent: () => import('./pages/selections.component').then((m) => m.SelectionsComponent) },
       { path: 'documents', canActivate: [staffGuard], data: { area: 'documents' }, loadComponent: () => import('./pages/documents.component').then((m) => m.DocumentsComponent) },

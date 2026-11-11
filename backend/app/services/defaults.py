@@ -337,4 +337,6 @@ NOTIFY_EVENTS.update({
     "site_report_missing": ("Daily site report missing", False),
     "site_delay": ("Delay reported on site", False),
     "document_comment": ("Comment on a document from the client or a consultant", False),
+    "portal_message": ("Message from the client portal", True),
+    "whatsapp_failed": ("WhatsApp message failed", False),
 })

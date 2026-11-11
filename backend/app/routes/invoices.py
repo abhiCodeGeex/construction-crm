@@ -234,6 +234,14 @@ def send_invoice(iid):
             text += f"\n\nPay online: {make_link(upd)['url']}"
         result = notify.deliver(g.company, inv.get("client_email"), f"Invoice {upd['number']} from {g.company['name']}", text)
         upd = t.update("invoices", iid, {"emailed": result})
+    if d.get("whatsapp") and upd.get("client_id"):
+        from ..services import messaging, payments as pay
+        c = db.contacts.find_one({"_id": oid(upd["client_id"]), "company_id": g.cid}) or {}
+        msg = f"{g.company['name']}: invoice {upd['number']} for {money_text(upd['total'])}, due {upd['due_date']}."
+        if pay.enabled(g.company) and upd.get("project_id"):
+            from .payments import make_link
+            msg += f" Pay online: {make_link(upd)['url']}"
+        upd = t.update("invoices", iid, {"whatsapp": messaging.notify_contact(c, msg, "invoice", iid) or "not sent"})
     if inv.get("project_id"):
         ev.log(inv["project_id"], "cost", f"Invoice {upd['number']} sent: {money_text(upd['total'])}, due {upd['due_date']}"
                + (f" — email {result}" if result else ""))
