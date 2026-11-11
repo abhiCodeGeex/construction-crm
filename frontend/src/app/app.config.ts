@@ -1,7 +1,7 @@
 import { ApplicationConfig, ErrorHandler, provideZoneChangeDetection } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
-import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { provideRouter, withComponentInputBinding, withInMemoryScrolling } from '@angular/router';
 import { definePreset } from '@primeng/themes';
 import Aura from '@primeng/themes/aura';
 import { MessageService, ConfirmationService } from 'primeng/api';
@@ -25,7 +25,7 @@ const BuildSuite = definePreset(Aura, {
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
-    provideRouter(routes, withComponentInputBinding()),
+    provideRouter(routes, withComponentInputBinding(), withInMemoryScrolling({ scrollPositionRestoration: 'enabled' })),
     provideHttpClient(withInterceptors([authInterceptor])),
     provideAnimationsAsync(),
     providePrimeNG({ theme: { preset: BuildSuite, options: { darkModeSelector: '.app-dark' } }, ripple: true }),

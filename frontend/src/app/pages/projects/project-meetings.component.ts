@@ -32,6 +32,7 @@ import { AuthService } from '../../core/auth.service';
             <div class="small">With: {{ attendees(m) || '—' }}</div></div>
           <div class="row gap">
             @if (canEdit() && m.status !== 'published') {
+              <p-button label="Edit" icon="pi pi-calendar" size="small" [text]="true" (onClick)="openEdit(m)" />
               <p-button label="Minutes" icon="pi pi-pencil" size="small" [text]="true" (onClick)="openMinutes(m)" />
               <p-button label="Publish" icon="pi pi-send" size="small" (onClick)="publish(m)" />
             }
@@ -150,9 +151,20 @@ export class ProjectMeetingsComponent implements OnInit {
     this.planDlg = true;
   }
 
+  openEdit(m: any) {
+    const d = new Date(m.at);
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    this.f = { id: m.id, title: m.title, at: local, place: m.place ?? '', agenda: m.agenda ?? '',
+      staff: (m.staff ?? []).map((s: any) => s.user_id), contacts: (m.contacts ?? []).map((c: any) => c.contact_id) };
+    this.planDlg = true;
+  }
+
   async savePlan() {
     // the browser's local time goes to the server in UTC (shown back in local time)
-    await this.api.post(`/projects/${this.project().id}/meetings`, { ...this.f, at: new Date(this.f.at).toISOString() }, 'Meeting planned — attendees told');
+    const { id, ...body } = this.f;
+    body.at = new Date(this.f.at).toISOString();
+    if (id) await this.api.put(`/projects/${this.project().id}/meetings/${id}`, body, 'Meeting updated');
+    else await this.api.post(`/projects/${this.project().id}/meetings`, body, 'Meeting planned — attendees told');
     this.planDlg = false;
     await this.load();
     this.changed.emit();

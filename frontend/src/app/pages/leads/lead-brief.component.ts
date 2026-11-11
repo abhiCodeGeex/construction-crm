@@ -96,7 +96,7 @@ import { AuthService } from '../../core/auth.service';
                 <label class="field"><span>{{ k.label }}</span><textarea pTextarea rows="2" [(ngModel)]="f[k.key]" [disabled]="!editable()" fluid></textarea></label>
               }
             </div>
-            <label class="check"><p-checkbox [(ngModel)]="f.complete" [binary]="true" [disabled]="!editable()" /> The brief is complete (estimators are told it is ready)</label>
+            <label class="check"><p-checkbox [(ngModel)]="f.complete" [binary]="true" [disabled]="!editable()" ariaLabel="The brief is complete" /> The brief is complete (estimators are told it is ready)</label>
             @if (editable()) {
               <div class="row gap right">
                 @if (d.brief && !d.brief.client_confirmed) { <p-button label="Client confirmed" icon="pi pi-verified" [outlined]="true" (onClick)="confirmDlg = true" /> }

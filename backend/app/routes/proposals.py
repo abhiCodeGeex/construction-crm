@@ -351,7 +351,8 @@ def create_proposal(_id):
         abort(400, "Valid until must be in the future")
     if d.get("file_key") and not db.files.find_one({"company_id": g.cid, "key": d["file_key"]}):
         abort(400, "Upload the proposal file first")
-    version = db.proposals.count_documents({"company_id": g.cid, "lead_id": _id}) + 1
+    last = db.proposals.find_one({"company_id": g.cid, "lead_id": _id}, {"version": 1}, sort=[("version", -1)])
+    version = (last or {}).get("version", 0) + 1  # max + 1: deleted drafts never free a number
     p = compute({**base, "type": ptype, "lead_id": _id, "lead_title": lead["title"], "number": t.next_number("PRO", "PRO"),
                  "version": version, "title": (d.get("title") or f"{PROPOSAL_TYPES[ptype]} v{version}").strip(),
                  "valid_until": valid, "file_key": d.get("file_key") or (src or {}).get("file_key"), "status": "draft",

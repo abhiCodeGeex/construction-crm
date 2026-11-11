@@ -133,6 +133,9 @@ def publish(_id, mid):
     missing = [a["text"][:40] for a in m["actions"] if not (a.get("stage_id") and a.get("due"))]
     if missing:
         abort(400, f"Each action needs a stage and a due date: {', '.join(missing)}")
+    from .project_work import _open_stage
+    for a in m["actions"]:
+        _open_stage(p, find_stage(p, a["stage_id"]))  # actions cannot land in a closed stage
     held = m["at"].strftime("%d %b %Y")
     for a in m["actions"]:
         stage = find_stage(p, a["stage_id"])

@@ -186,6 +186,12 @@ def save_stages(_id, p):
     """Every stage / task / milestone write ends here, so the notifications follow every change (B+1)."""
     normalize(p)
     old = db.projects.find_one({"_id": oid(_id), "company_id": g.cid}) or {}
+    old_ends = {s["id"]: s.get("end") for s in old.get("stages", [])}
+    for s in p["stages"]:
+        for m in s.get("milestones", []):
+            # an open gate that was due on its stage end moves with it; a date set by hand stays
+            if m.get("gate") and m["status"] != "achieved" and s.get("end") and m.get("due") == old_ends.get(s["id"]):
+                m["due"] = s["end"]
     ends = [s["end"] for s in p["stages"] if s.get("end")]
     saved = t.update("projects", _id, {"stages": p["stages"], "planned_end": max(ends) if ends else None})
     project_events.stage_changes(old, saved)
@@ -835,6 +841,8 @@ def add_task(_id, sid):
     p = load(_id)
     stage = find_stage(p, sid)
     require_edit(p, stage)
+    from .project_work import _open_stage
+    _open_stage(p, stage)
     task = {"id": t.sid(), "status": "todo", "progress": 0, "depends_on": [], "assignee_id": None,
             "assignee_name": None, "priority": "normal", "checklist": [], "files": []}
     task.update(clean_task(request.get_json(force=True) or {}, p))
@@ -956,8 +964,10 @@ def update_milestone(_id, mid):
 @api("projects", write=False)
 def delete_milestone(_id, mid):
     p = load(_id)
-    stage, _ = find_ms(p, mid)
+    stage, ms = find_ms(p, mid)
     require_edit(p, stage)
+    if ms.get("gate"):
+        abort(409, f"“{ms['name']}” closes the stage {stage['name']} and cannot be deleted")
     stage["milestones"] = [m for m in stage["milestones"] if m["id"] != mid]
     return jsonify(present(save_stages(_id, p)))
 

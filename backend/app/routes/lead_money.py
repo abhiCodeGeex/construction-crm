@@ -182,7 +182,8 @@ def list_estimates(_id):
 def create_estimate(_id):
     lead = open_lead(_id)
     d = request.get_json(force=True) or {}
-    version = db.estimates.count_documents({"company_id": g.cid, "lead_id": _id}) + 1
+    last = db.estimates.find_one({"company_id": g.cid, "lead_id": _id}, {"version": 1}, sort=[("version", -1)])
+    version = (last or {}).get("version", 0) + 1  # max + 1: deleted drafts never free a number
     base = {"lines": [], "overhead_pct": 0.0, "markup_pct": 0.0, "discount_pct": 0.0, "tax_pct": float(g.company.get("tax_rate") or 0)}
     if d.get("copy_from"):
         src, _ = load_estimate(d["copy_from"])

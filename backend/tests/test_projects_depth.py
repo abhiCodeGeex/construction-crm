@@ -257,6 +257,15 @@ try:
     con = stage_of(proj(pid), service="construction")
     check("ready once the issue is closed", con["gate"]["missing"] == [], con["gate"])
     expect("PM closes a ready stage", call("PUT", f"/projects/{pid}/milestones/{gid}", {"status": "achieved"}, T["pm"]), 200)
+    expect("a closed stage takes no new task", call("POST", f"/projects/{pid}/stages/{con['id']}/tasks",
+                                                    {"title": "Late add", "start": day(0), "end": day(1)}, T["pm"]), 409)
+    expect("a gate milestone cannot be deleted", call("DELETE", f"/projects/{pid}/milestones/{inte['gate']['milestone_id']}", token=T["pm"]), 409)
+    moved = stage_of(expect("move the interior stage end", call("PUT", f"/projects/{pid}/stages/{inte['id']}", {"end": day(300)}, T["pm"]), 200),
+                     service="interior")
+    gate = next(m for m in moved["milestones"] if m.get("gate"))
+    check("an open gate follows its stage end", gate["due"] == moved["end"] == day(300), (gate["due"], moved["end"]))
+    back = stage_of(call("PUT", f"/projects/{pid}/stages/{inte['id']}", {"end": inte["end"]}, T["pm"])[1], service="interior")
+    check("and back again", next(m for m in back["milestones"] if m.get("gate"))["due"] == back["end"], back["end"])
     expect("bad issue stage", call("POST", f"/projects/{pid}/issues", {"title": "x", "stage_id": "nope"}, T["pm"]), 404)
 
     expect("sign-off: method required", call("POST", f"/projects/{pid}/stages/{inte['id']}/signoff", {"name": "Mr C"}, T["pm"]), 400)

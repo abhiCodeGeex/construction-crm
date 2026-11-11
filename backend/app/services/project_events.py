@@ -12,7 +12,7 @@ Who is told
 """
 from flask import g
 
-from ..db import db
+from ..db import db, oid
 from . import notify
 
 PM_ROLE = "Project Manager"
@@ -25,7 +25,8 @@ def link(p):
 def managers(p):
     """Staff on the team with the Project Manager role; when there is none, every Owner."""
     ids = [m["user_id"] for m in p.get("team", []) if m.get("user_id") and m.get("project_role") == PM_ROLE]
-    return ids or owners()
+    active = {str(u["_id"]) for u in db.users.find({"_id": {"$in": [oid(i) for i in ids]}, "active": {"$ne": False}}, {"_id": 1})}
+    return [i for i in ids if i in active] or owners()  # a deactivated PM falls back to the Owners
 
 
 def owners():
