@@ -126,6 +126,11 @@ import { AuthService } from '../core/auth.service';
             </div>
             @if (canEdit()) { <div class="row right"><p-button label="Save folders" icon="pi pi-check" size="small" (onClick)="saveFolders()" /></div> }
           </p-card>
+          <p-card header="Daily site reports" styleClass="mt">
+            <label class="field"><span>Cut-off time</span><input pInputText type="time" [(ngModel)]="site.cutoff" [disabled]="!canEdit()" />
+              <small class="muted">No report by this time on a working day: the site supervisor is reminded; still none the next day: the PM.</small></label>
+            @if (canEdit()) { <div class="row right"><p-button label="Save" icon="pi pi-check" size="small" (onClick)="saveSite()" /></div> }
+          </p-card>
           <p-card header="Costs" styleClass="mt">
             <div class="grid2">
               <label class="field"><span>Site expense limit</span><p-inputnumber [(ngModel)]="fin.site_expense_limit" [min]="0" [disabled]="!canEdit()" fluid />
@@ -259,13 +264,14 @@ export class SettingsComponent implements OnInit {
   cal: any = { weekdays: [], working_days: [], holidays: [] };
   fin: any = {};
   folders: Record<string, string> = {};
+  site: any = { cutoff: '19:00' };
   folderKeys = [{ key: 'all', label: 'Every project' }, { key: 'architecture', label: 'Architecture' }, { key: 'construction', label: 'Construction' },
     { key: 'interior', label: 'Interior design' }];
   tplDlg = false;
   tf: any = { stages: [] };
 
   async ngOnInit() {
-    await Promise.all([this.loadCompany(), this.loadTemplates(), this.loadRoles(), this.loadAudit(), this.loadCalendar(), this.loadFinance(), this.loadFolders()]);
+    await Promise.all([this.loadCompany(), this.loadTemplates(), this.loadRoles(), this.loadAudit(), this.loadCalendar(), this.loadFinance(), this.loadFolders(), this.loadSite()]);
   }
 
   async loadCalendar() {
@@ -275,6 +281,14 @@ export class SettingsComponent implements OnInit {
 
   toggleDay(i: number, on: boolean) {
     this.cal.working_days = on ? [...new Set([...this.cal.working_days, i])].sort() : this.cal.working_days.filter((d: number) => d !== i);
+  }
+
+  async loadSite() {
+    this.site = await this.api.get('/settings/site');
+  }
+
+  async saveSite() {
+    this.site = await this.api.put('/settings/site', { cutoff: this.site.cutoff }, 'Saved');
   }
 
   async loadFolders() {

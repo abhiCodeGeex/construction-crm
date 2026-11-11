@@ -5,7 +5,7 @@ import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { ProgressBarModule } from 'primeng/progressbar';
 import { TagModule } from 'primeng/tag';
-import { Api, SERVICE_COLOR, SERVICE_LABEL, STATUS_SEVERITY, label } from '../core/api.service';
+import { Api, SERVICE_COLOR, SERVICE_LABEL, STATUS_SEVERITY, label, money } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { ThemeService } from '../core/theme.service';
 import { ChangePasswordComponent } from '../shared/change-password.component';
@@ -55,6 +55,23 @@ import { ChangePasswordComponent } from '../shared/change-password.component';
                 <span class="grow small">{{ m.name }}</span><small>{{ m.due | date: 'mediumDate' }}</small></div>
             }
           }
+          @if (docs().length) {
+            <h4>Documents and drawings</h4>
+            @for (d of docs(); track d.url) { <div class="ms-row"><i class="pi pi-file"></i><a class="grow small" [href]="d.url" target="_blank" rel="noopener">@if (d.number) { {{ d.number }} } {{ d.name }}</a><small class="muted">{{ d.rev }} · {{ d.date | date: 'mediumDate' }}</small></div> }
+          }
+          @if (sels().length) {
+            <h4>Your selections</h4>
+            @for (s of sels(); track s.item + s.room) {
+              <div class="ms-row"><span class="grow small"><strong>{{ s.item }}</strong>@if (s.room) { · {{ s.room }} }
+                @if (s.chosen) { — you chose {{ s.chosen }} } @else if (s.due_date) { — please choose by {{ s.due_date | date: 'mediumDate' }} }</span>
+                <small class="muted">{{ label(s.status) }}</small></div>
+              @if (!s.chosen) { <div class="opts small muted">@for (o of s.options; track o.name) { <span>{{ o.name }}@if (o.brand) { ({{ o.brand }}) } · {{ money(o.price) }}</span> }</div> }
+            }
+          }
+          @if (photos().length) {
+            <h4>Site photos</h4>
+            <div class="photos">@for (ph of photos(); track ph.url) { <a [href]="ph.url" target="_blank" rel="noopener" [title]="ph.caption || ph.date"><img [src]="ph.url" [alt]="ph.caption || 'Site photo'" /></a> }</div>
+          }
           <h4>Project team</h4>
           <div class="chips">@for (m of p.team; track m.name + m.project_role) { <span class="chip static">{{ m.name }} · {{ m.project_role }}</span> }</div>
         </p-card>
@@ -70,9 +87,14 @@ import { ChangePasswordComponent } from '../shared/change-password.component';
             </p-card>
           } @empty { <p class="muted">You have not been added to a project yet.</p> }
         </div>
-        <p class="muted small mt">Approvals, invoices and messages arrive in a later release. You never see the firm's internal costs.</p>
+        <p class="muted small mt">Approving and choosing online, invoices and messages arrive in a later release. You never see the firm's internal costs.</p>
       }
     </main>
+  `,
+  styles: `
+    .photos { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .photos img { width: 7rem; height: 5rem; object-fit: cover; border-radius: 6px; }
+    .opts { display: flex; flex-wrap: wrap; gap: .3rem .9rem; padding: 0 0 .4rem 1.2rem; }
   `,
 })
 export class PortalComponent implements OnInit {
@@ -86,6 +108,13 @@ export class PortalComponent implements OnInit {
   svc = SERVICE_LABEL;
   color = SERVICE_COLOR;
   label = label;
+  docs = signal<any[]>([]);
+  sels = signal<any[]>([]);
+  photos = signal<any[]>([]);
+
+  money(v: number) {
+    return money(v, this.me()?.company?.currency ?? 'INR');
+  }
 
   async ngOnInit() {
     this.me.set(await this.api.get('/portal/me'));
@@ -94,5 +123,10 @@ export class PortalComponent implements OnInit {
 
   async view(id: string) {
     this.open.set(await this.api.get(`/portal/projects/${id}`));
+    const [d, s, ph] = await Promise.all([this.api.get(`/portal/projects/${id}/documents`), this.api.get(`/portal/projects/${id}/selections`),
+      this.api.get(`/portal/projects/${id}/photos`)]);
+    this.docs.set(d);
+    this.sels.set(s);
+    this.photos.set(ph.photos);
   }
 }

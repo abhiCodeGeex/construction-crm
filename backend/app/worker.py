@@ -319,9 +319,34 @@ def check_selections(now):
                     key=f"sel-{'late' if late else 'due'}:{s['_id']}:{s['due_date']}", level="warn" if late else "info")
 
 
+def check_site_reports(now):
+    """Active projects with a site supervisor: no report by the company's cut-off on a working day -> the supervisor(s);
+    still none the next day -> the project's managers. On-hold and finished projects are quiet."""
+    from .routes.site_reports import site_settings, SUPERVISOR
+    from .services import workdays
+    st = site_settings()
+    local = now + timedelta(minutes=st["tz_offset_min"])
+    today, yday = local.date(), local.date() - timedelta(days=1)
+    hh, mm = (int(x) for x in st["cutoff"].split(":"))
+    after_cutoff = (local.hour, local.minute) >= (hh, mm)
+    cal = workdays.calendar()
+    for p in db.projects.find({"company_id": g.cid, "status": "active"}):
+        sups = [m["user_id"] for m in p.get("team", []) if m.get("project_role") == SUPERVISOR and m.get("user_id")]
+        if not sups:
+            continue
+        pid = str(p["_id"])
+        if after_cutoff and workdays.is_working(today, cal) and not db.site_reports.find_one({"company_id": g.cid, "project_id": pid, "date": today.isoformat()}, {"_id": 1}):
+            notify.send("site_report_missing", sups, f"{p['name']}: today's site report is not written yet", f"/app/projects/{pid}?tab=site",
+                        project_id=pid, key=f"sr-miss:{pid}:{today.isoformat()}", level="warn")
+        if workdays.is_working(yday, cal) and p.get("start", "") <= yday.isoformat() and \
+                not db.site_reports.find_one({"company_id": g.cid, "project_id": pid, "date": yday.isoformat()}, {"_id": 1}):
+            notify.send("site_report_missing", project_events.managers(p), f"{p['name']}: no site report for {yday.isoformat()}",
+                        f"/app/projects/{pid}?tab=site", project_id=pid, key=f"sr-miss2:{pid}:{yday.isoformat()}", level="warn")
+
+
 CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
           check_compliance, check_meetings, check_health, check_invoices, check_change_orders,
-          check_transmittals, check_selections]
+          check_transmittals, check_selections, check_site_reports]
 
 
 def run_once(now=None):

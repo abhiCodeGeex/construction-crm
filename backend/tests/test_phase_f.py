@@ -274,6 +274,87 @@ try:
     check("late choice: PM reminded once", len([n for n in bell("pm", event="selection_due") if f"Wallpaper {RUN}" in n["text"]]) == 1)
     mine = next(x for x in call("GET", f"/projects/{pid}/selections", token=T["designer"])[1]["selections"] if x["id"] == sel["id"])
     check("designer (finance read) sees the option cost", "unit_cost" in mine["options"][0] and "cost" in mine["options"][0])
+
+    # ================= block 4 · daily site reports, portal =================
+    from datetime import datetime as _dt
+    from app.services import workdays as _wd  # noqa: E402
+    CAL = call("GET", "/settings/calendar", token=T["owner"])[1]
+    expect("designer has no site reports", call("GET", f"/projects/{pid}/site-reports", token=T["designer"]), 403)
+    sl = expect("site supervisor's list", call("GET", f"/projects/{pid}/site-reports", token=T["site"]), 200)
+    check("site supervisor can write", sl["can_write"] and not sl["has_today"])
+    expect("no future report", call("POST", f"/projects/{pid}/site-reports", {"date": day(1)}, T["site"]), 400)
+    expect("no old report by the site", call("POST", f"/projects/{pid}/site-reports", {"date": day(-3)}, T["site"]), 409)
+    expect("work needs a stage", call("POST", f"/projects/{pid}/site-reports", {"work": [{"stage_id": "x", "note": "y"}]}, T["site"]), 400)
+    ph = up("site-day")
+    rep = expect("today's report", call("POST", f"/projects/{pid}/site-reports", {
+        "weather": {"kind": "Rain", "note": "Light showers"}, "manpower": [{"trade": "Mason", "count": 4}, {"trade": "Helper", "count": 2}],
+        "work": [{"stage_id": cons["id"], "note": f"Footing excavation {RUN}"}], "materials": "Cement 50 bags",
+        "photos": [{"key": ph, "caption": "Excavation", "shareable": True}]}, T["site"]), 201)
+    check("headcount and weather", rep["headcount"] == 6 and rep["weather"]["kind"] == "Rain" and rep["editable"], rep)
+    expect("one report a day", call("POST", f"/projects/{pid}/site-reports", {}, T["site"]), 409)
+    expect("bad weather", call("PUT", f"/site-reports/{rep['id']}", {"weather": {"kind": "Snowstorm"}}, T["site"]), 400)
+    expect("edit today", call("PUT", f"/site-reports/{rep['id']}", {"visitors": "Structural consultant"}, T["site"]), 200)
+    pj = call("GET", f"/projects/{pid}", token=T["owner"])[1]
+    photo_item = next(c for c in next(x for x in pj["stages"] if x["id"] == cons["id"])["checklist"] if "photo" in c["text"].lower())
+    check("photos of a construction stage offer its check", photo_item.get("suggested") and not photo_item["done"], photo_item)
+    expect("issue needs a title", call("POST", f"/site-reports/{rep['id']}/issues", {}, T["site"]), 400)
+    ri = expect("issue from the site", call("POST", f"/site-reports/{rep['id']}/issues", {"title": f"Water logging {RUN}", "severity": "high",
+                                                                                        "stage_id": cons["id"]}, T["site"]), 201)
+    iss = mongo.project_issues.find_one({"company_id": CID, "site_report_id": rep["id"]})
+    check("became a project issue", iss and iss["severity"] == "high" and ri["issues"][0]["issue_id"] == str(iss["_id"]))
+    check("managers told of the high issue", any(f"Water logging {RUN}" in n["text"] for n in bell("pm", event="issue_raised")))
+    gate = next(x for x in call("GET", f"/projects/{pid}", token=T["owner"])[1]["stages"] if x["id"] == cons["id"])["gate"]
+    check("the high issue holds the stage gate", any("high-severity" in m for m in gate["missing"]), gate)
+    before = next(x for x in call("GET", f"/projects/{pid}", token=T["owner"])[1]["stages"] if x["id"] == cons["id"])["end"]
+    expect("delay needs a reason", call("POST", f"/site-reports/{rep['id']}/delays", {"stage_id": cons["id"], "days": 1}, T["site"]), 400)
+    rd = expect("delay from the site", call("POST", f"/site-reports/{rep['id']}/delays", {"reason": "weather", "stage_id": cons["id"], "days": 1,
+                                                                                        "note": f"Rain {RUN}"}, T["site"]), 201)
+    dl = mongo.project_delays.find_one({"company_id": CID, "site_report_id": rep["id"]})
+    check("in the delay log with the report as source", dl and dl["source"] == "site_report" and dl["reason"] == "weather" and rd["delays"][0]["days"] == 1)
+    check("the plan does not move", next(x for x in call("GET", f"/projects/{pid}", token=T["owner"])[1]["stages"] if x["id"] == cons["id"])["end"] == before)
+    check("PM told to review the plan", any(f"Rain" in n["text"] or "lost 1" in n["text"] for n in bell("pm", event="site_delay")))
+    mongo.site_reports.update_one({"_id": ObjectId(rep["id"])}, {"$set": {"date": day(-3)}})
+    expect("locked after the next day", call("PUT", f"/site-reports/{rep['id']}", {"visitors": "x"}, T["site"]), 409)
+    expect("an Owner can still correct it", call("PUT", f"/site-reports/{rep['id']}", {"visitors": "Corrected"}, T["owner"]), 200)
+    mongo.site_reports.update_one({"_id": ObjectId(rep["id"])}, {"$set": {"date": day(0)}})
+    dayv = expect("today's reports across projects", call("GET", "/site-reports", token=T["site"]), 200)
+    check("this project reported today", any(r["project_id"] == pid and r["report"] for r in dayv["rows"]))
+    expect("cut-off: a time", call("PUT", "/settings/site", {"cutoff": "7pm"}, T["owner"]), 400)
+    expect("PM cannot set the cut-off", call("PUT", "/settings/site", {"cutoff": "18:30"}, T["pm"]), 403)
+    expect("owner sets the cut-off", call("PUT", "/settings/site", {"cutoff": "18:30"}, T["owner"]), 200)
+
+    # missing report: a second active project with a supervisor and no report
+    p2 = expect("second project", call("POST", "/projects", {"name": f"PhaseF quiet {RUN}", "services": ["construction"], "start": day(-20)}, T["owner"]), 201)
+    projects.append(p2["id"])
+    call("POST", f"/projects/{p2['id']}/team", {"user_id": U["site"], "project_role": "Site Supervisor", "access": "view"}, T["owner"])
+    call("POST", f"/projects/{p2['id']}/team", {"user_id": U["pm"], "project_role": "Project Manager", "access": "edit"}, T["owner"])
+    today_ = date.today()
+    worker(_dt(today_.year, today_.month, today_.day, 17, 45))  # 23:15 local (UTC+5:30), after the cut-off
+    worker(_dt(today_.year, today_.month, today_.day, 17, 50))
+    miss = [n for n in bell("site", event="site_report_missing") if f"PhaseF quiet {RUN}" in n["text"] and "today" in n["text"]]
+    if _wd.is_working(today_.isoformat(), CAL):
+        check("no report by the cut-off: supervisor told once", len(miss) == 1, [n["text"] for n in miss])
+    check("a project that reported is quiet", not [n for n in bell("site", event="site_report_missing") if f"PhaseF {RUN}:" in n["text"]])
+    yday = (today_ - timedelta(days=1)).isoformat()
+    if _wd.is_working(yday, CAL):
+        check("still none the next day: managers told", any(yday in n["text"] and f"PhaseF quiet {RUN}" in n["text"] for n in bell("pm", event="site_report_missing")))
+
+    # the client portal (read only)
+    pp = expect("client: shareable photos", call("GET", f"/portal/projects/{pid}/photos", token=T["client"]), 200)
+    check("only shareable photos", len(pp["photos"]) == 1 and pp["photos"][0]["caption"] == "Excavation")
+    pdocs = expect("client: documents", call("GET", f"/portal/projects/{pid}/documents", token=T["client"]), 200)
+    a101 = next((x for x in pdocs if x["number"] == "A-101"), None)
+    check("a shared drawing: the current revision", a101 and a101["rev"] == "R3", pdocs)
+    expect("un-share the drawing", call("PUT", f"/documents/{doc['id']}", {"shared": False}, T["pm"]), 200)
+    pdocs = call("GET", f"/portal/projects/{pid}/documents", token=T["client"])[1]
+    a101 = next((x for x in pdocs if x["number"] == "A-101"), None)
+    check("not shared: the latest revision issued to the client (R3 went out for comment)", a101 and a101["rev"] == "R3", pdocs)
+    mongo.documents.update_one({"_id": ObjectId(doc["id"])}, {"$set": {"versions.2.sent": []}})  # as if R3 had not been issued
+    pdocs = call("GET", f"/portal/projects/{pid}/documents", token=T["client"])[1]
+    check("…then the client sees R2, the revision issued to them", next((x for x in pdocs if x["number"] == "A-101"), {}).get("rev") == "R2", pdocs)
+    psel = expect("client: selections", call("GET", f"/portal/projects/{pid}/selections", token=T["client"]), 200)
+    opts = [o for x in psel for o in x["options"]]
+    check("selections with prices, never cost", opts and all("cost" not in o and "unit_cost" not in o for o in opts) and any(o["price"] for o in opts), psel[:1])
 finally:
     for p_ in projects:
         mongo.costs.update_many({"company_id": CID, "project_id": p_}, {"$set": {"status": "void"}})

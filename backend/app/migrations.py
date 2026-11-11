@@ -212,6 +212,11 @@ def m018_selections():
     db.selections.create_index([("company_id", 1), ("status", 1), ("due_date", 1)])
 
 
+def m019_site_reports():
+    """Phase F block 4: one site report per project per day."""
+    db.site_reports.create_index([("company_id", 1), ("project_id", 1), ("date", -1)], unique=True)
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -231,6 +236,7 @@ MIGRATIONS = [
     ("016_documents", m016_documents),
     ("017_transmittals", m017_transmittals),
     ("018_selections", m018_selections),
+    ("019_site_reports", m019_site_reports),
 ]
 
 

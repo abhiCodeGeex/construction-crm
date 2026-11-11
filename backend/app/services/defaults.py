@@ -334,4 +334,6 @@ NOTIFY_EVENTS.update({
     "drawing_approved": ("Drawing approved", False),
     "selection_chosen": ("Client choice recorded", False),
     "selection_due": ("Client choice due or overdue", False),
+    "site_report_missing": ("Daily site report missing", False),
+    "site_delay": ("Delay reported on site", False),
 })
