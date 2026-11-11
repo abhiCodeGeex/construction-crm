@@ -372,10 +372,66 @@ def check_client_reminders(now):
                f"Please choose your {s['item']} for {p.get('name', '')} by {s['due_date']} — the options are in your portal.", s["project_id"])
 
 
+def check_procurement(now):
+    """RFQ due tomorrow with suppliers not answered -> Procurement; PO waiting approval 1 day -> approvers, 3 days ->
+    Owners; PO sent and not acknowledged in 2 days -> Procurement; delivery due tomorrow -> site supervisor and
+    Procurement; delivery late -> Procurement and the PM, 3 days -> Owners; vendor bill due in 3 days / overdue ->
+    Accounts. Each once per date."""
+    today = now.date()
+    iso = today.isoformat()
+    tomorrow = (today + timedelta(days=1)).isoformat()
+    proc = notify.role_users("procurement")
+    for r in db.rfqs.find({"company_id": g.cid, "status": "sent", "due_date": tomorrow}):
+        waiting = [s["name"] for s in r["suppliers"] if not any(q["supplier_id"] == s["contact_id"] for q in r["quotes"])]
+        if waiting:
+            notify.send("delivery_due", proc, f"{r['number']} quotes due tomorrow; not answered: {', '.join(waiting)}", "/app/procurement?tab=rfqs",
+                        project_id=r["project_id"], key=f"rfq-due:{r['_id']}:{r['due_date']}")
+    for po in db.purchase_orders.find({"company_id": g.cid, "status": {"$in": ["waiting_approval", "sent", "acknowledged", "part_received", "approved"]}}):
+        p = db.projects.find_one({"_id": oid(po["project_id"])}) or {}
+        link, pid, name = f"/app/purchase-orders/{po['_id']}", po["project_id"], po.get("number") or "PO"
+        if po["status"] == "waiting_approval":
+            since = (po.get("approval") or {}).get("requested_at")
+            days = (now - since).days if since else 0
+            if days >= 1:
+                who = project_events.owners() if "owner" in po["approval"].get("needs", []) else project_events.managers(p)
+                notify.send("po_approval", who, f"Still waiting for approval: PO for {po['vendor_name']} on {po['project_name']}", link,
+                            project_id=pid, key=f"po-wait1:{po['_id']}")
+            if days >= 3:
+                notify.send("po_approval", project_events.owners(), f"3 days waiting: PO for {po['vendor_name']} on {po['project_name']}", link,
+                            project_id=pid, key=f"po-wait3:{po['_id']}", level="warn")
+            continue
+        sent = po.get("sent_at")
+        if po["status"] == "sent" and sent and (now - sent).days >= 2:
+            notify.send("po_acknowledged", proc, f"{name} to {po['vendor_name']} not acknowledged yet", link, project_id=pid, key=f"po-noack:{po['_id']}")
+        due = po.get("expected_date")
+        if not due or po["status"] == "approved":
+            continue
+        sups = [m["user_id"] for m in p.get("team", []) if m.get("project_role") == "Site Supervisor" and m.get("user_id")]
+        if due == tomorrow:
+            notify.send("delivery_due", list(dict.fromkeys(sups + proc)), f"Delivery due tomorrow: {name} from {po['vendor_name']} ({po['project_name']})",
+                        link, project_id=pid, key=f"po-due:{po['_id']}:{due}")
+        elif due < iso:
+            late = (today - datetime.fromisoformat(due).date()).days
+            notify.send("delivery_due", list(dict.fromkeys(proc + project_events.managers(p))), f"Delivery late: {name} from {po['vendor_name']} "
+                        f"was due {due}", link, project_id=pid, key=f"po-late:{po['_id']}:{due}", level="warn")
+            if late >= 3:
+                notify.send("delivery_due", project_events.owners(), f"{late} days late: {name} from {po['vendor_name']} ({po['project_name']})",
+                            link, project_id=pid, key=f"po-late3:{po['_id']}:{due}", level="warn")
+    acc = notify.role_users("accounts")
+    in3 = (today + timedelta(days=3)).isoformat()
+    for b in db.vendor_bills.find({"company_id": g.cid, "status": {"$in": ["approved", "part_paid"]}}):
+        if b["due_date"] == in3:
+            notify.send("bill_due", acc, f"Bill {b['bill_no']} from {b['vendor_name']} due {b['due_date']}", "/app/finance",
+                        project_id=b.get("project_id"), key=f"bill-due:{b['_id']}:{b['due_date']}")
+        elif b["due_date"] < iso:
+            notify.send("bill_due", acc, f"Bill {b['bill_no']} from {b['vendor_name']} overdue since {b['due_date']}", "/app/finance",
+                        project_id=b.get("project_id"), key=f"bill-late:{b['_id']}:{b['due_date']}", level="warn")
+
+
 CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
           check_compliance, check_meetings, check_health, check_invoices, check_change_orders,
           check_transmittals, check_selections, check_site_reports,
-          check_client_reminders]
+          check_client_reminders, check_procurement]
 
 
 def run_once(now=None):

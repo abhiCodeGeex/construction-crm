@@ -9,7 +9,7 @@ from werkzeug.utils import secure_filename
 from .. import tenancy as t
 from ..config import Config
 from ..db import db, serialize
-from ..security import api, auth_required, AREAS, ROLE_PERMS, ROLE_LABELS, INTERNAL_ROLES, effective_perms
+from ..security import api, portal, auth_required, AREAS, ROLE_PERMS, ROLE_LABELS, INTERNAL_ROLES, effective_perms
 from ..services.defaults import SERVICES, TEMPLATE_PRESETS, template_stages, gate_defaults
 from ..services.subscription import limits, usage
 
@@ -142,7 +142,7 @@ def set_role(role):
 
 
 # ---------------- company setup ----------------
-NUMBERED = ("PRJ", "INV", "CRN", "CO")
+NUMBERED = ("PRJ", "INV", "CRN", "CO", "PR", "RFQ", "PO", "GRN")
 SETTINGS_FIELDS = ("name", "city", "gstin", "currency", "tax_rate", "branches", "numbering", "allow_support_login",
                    "modules", "branding")
 CURRENCIES = ("INR", "USD", "EUR", "GBP", "AED", "SGD", "AUD")
@@ -229,13 +229,27 @@ MAX_VIDEO_BYTES = 100 * 1024 * 1024  # site walk-through videos
 @bp.post("/uploads")
 @api(None)
 def upload():
+    return save_upload()
+
+
+PORTAL_ALLOWED = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".heic"}
+
+
+@bp.post("/portal/uploads")
+@portal
+def portal_upload():
+    """A portal user's file (a supplier's invoice, Phase H): PDF or image only."""
+    return save_upload(PORTAL_ALLOWED, "Allowed files: PDF or image")
+
+
+def save_upload(allowed=None, allowed_text=None):
     f = request.files.get("file")
     if not f or not f.filename:
         abort(400, "Choose a file")
     name = secure_filename(f.filename) or "file"
     ext = os.path.splitext(name)[1].lower()
-    if ext not in ALLOWED:
-        abort(400, "Allowed files: PDF, image, Word, Excel / CSV, CAD (DWG, DXF) or video (MP4, MOV)")
+    if ext not in (allowed or ALLOWED):
+        abort(400, allowed_text or "Allowed files: PDF, image, Word, Excel / CSV, CAD (DWG, DXF) or video (MP4, MOV)")
     key = f"{g.cid}_{uuid.uuid4().hex[:12]}_{name}"
     path = os.path.join(Config.UPLOAD_DIR, key)
     f.save(path)

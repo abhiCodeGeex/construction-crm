@@ -108,6 +108,12 @@ def clean(d, p, r=None):
 def list_reports(pid):
     p = access(pid)
     rows = [present(r) for r in t.find("site_reports", {"project_id": pid}, sort=[("date", -1)], limit=120)]
+    grns = {}
+    for gr in t.find("goods_receipts", {"project_id": pid}):  # Phase H: deliveries of the day, read only
+        grns.setdefault(gr["date"], []).append({"number": gr["number"], "po_number": gr["po_number"], "vendor": gr["vendor_name"],
+                                                "lines": [f"{x['accepted']:g} {x.get('unit') or ''} {x['description']}" for x in gr["lines"]]})
+    for r in rows:
+        r["deliveries"] = grns.get(r["date"], [])
     return jsonify({"reports": rows, "weather": WEATHER, "trades": TRADES, "severities": ISSUE_SEVERITIES,
                     "delay_reasons": [{"value": k, "label": v[0]} for k, v in DELAY_REASONS.items()],
                     "stages": [{"id": s["id"], "name": s["name"], "service": s.get("service"),

@@ -489,6 +489,8 @@ def delete_project(_id):
     p = t.get("projects", _id)
     if db.costs.count_documents({"company_id": g.cid, "project_id": _id, "status": "approved"}):
         abort(409, "This project has approved costs; void them first so the money trail is kept")
+    if db.purchase_orders.count_documents({"company_id": g.cid, "project_id": _id, "status": {"$nin": ["draft", "rejected", "cancelled"]}}):
+        abort(409, "This project has purchase orders; cancel them first so the money trail is kept")
     if db.invoices.count_documents({"company_id": g.cid, "project_id": _id, "status": {"$nin": ["draft", "void"]}}):
         abort(409, "This project has invoices; void them first so the money trail is kept")
     t.delete("projects", _id)
@@ -506,6 +508,8 @@ def delete_project(_id):
     db.site_reports.delete_many({"company_id": g.cid, "project_id": _id})
     db.document_comments.delete_many({"company_id": g.cid, "project_id": _id})
     db.messages.delete_many({"company_id": g.cid, "project_id": _id, "channel": "portal"})
+    for coll in ("purchase_requests", "rfqs", "purchase_orders"):  # drafts, rejected and cancelled only by now
+        db[coll].delete_many({"company_id": g.cid, "project_id": _id})
     db.notifications.delete_many({"company_id": g.cid, "project_id": _id})  # no bell entry may point at it
     for coll in ("project_comments", "project_activity", "project_meetings", "project_delays"):
         db[coll].delete_many({"company_id": g.cid, "project_id": _id})

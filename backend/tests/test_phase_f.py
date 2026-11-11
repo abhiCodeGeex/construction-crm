@@ -259,8 +259,9 @@ try:
     expect("forward only (chosen -> ordered skips confirm)", call("POST", f"/selections/{sel['id']}/status", {"status": "ordered"}, T["designer"]), 409)
     expect("confirmed", call("POST", f"/selections/{sel['id']}/status", {"status": "confirmed"}, T["designer"]), 200)
     od = expect("PM orders it", call("POST", f"/selections/{sel['id']}/status", {"status": "ordered"}, T["pm"]), 200)
-    cst = mongo.costs.find_one({"company_id": CID, "selection_id": sel["id"]})
-    check("ordering records the cost in Finance", cst and cst["amount"] == 40000 and od["cost_id"] == str(cst["_id"]) and cst["status"] in ("submitted", "approved"), cst)
+    pr_ = mongo.purchase_requests.find_one({"company_id": CID, "selection_id": sel["id"]})
+    check("ordering goes through procurement (H): a purchase request when the option has no supplier, no cost yet",
+          pr_ and pr_["source"] == "selection" and od.get("pr_id") == str(pr_["_id"]) and not mongo.costs.find_one({"company_id": CID, "selection_id": sel["id"]}), pr_)
     call("DELETE", f"/selections/{empty['id']}", token=T["designer"])
     expect("installed", call("POST", f"/selections/{sel['id']}/status", {"status": "installed"}, T["designer"]), 200)
     item = next(c for c in next(x for x in call("GET", f"/projects/{pid}", token=T["owner"])[1]["stages"] if x["id"] == intr["id"])["checklist"]

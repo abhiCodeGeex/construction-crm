@@ -45,7 +45,10 @@ FINANCE_EVENTS = {"cost_approval", "cost_decided", "budget_alert", "receipt_reco
 
 SITE_EVENTS = {"transmittal_sent", "transmittal_waiting", "drawing_approved", "selection_chosen", "selection_due", "site_report_missing", "site_delay", "document_comment", "portal_message", "whatsapp_failed"}
 
-GROUPS = ["Leads & sales", "Projects", "Finance", "Documents & site", "Contacts"]
+PROCUREMENT_EVENTS = {"pr_raised", "po_approval", "po_decided", "po_acknowledged", "po_delivery_changed", "delivery_due", "goods_rejected",
+                      "bill_on_hold", "bill_due", "vendor_invoice"}
+
+GROUPS = ["Leads & sales", "Projects", "Finance", "Procurement", "Documents & site", "Contacts"]
 
 
 def notify_group(event):
@@ -54,6 +57,8 @@ def notify_group(event):
         return "Projects"
     if event in FINANCE_EVENTS:
         return "Finance"
+    if event in PROCUREMENT_EVENTS:
+        return "Procurement"
     if event in SITE_EVENTS:
         return "Documents & site"
     if event.startswith("compliance"):

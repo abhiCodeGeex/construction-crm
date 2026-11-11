@@ -345,6 +345,13 @@ def put_settings():
         if v > 100:
             abort(400, "Overspend markup % must be at most 100")
         s["overspend_markup_pct"] = v
+    for k, label, cap in (("po_approval_limit", "PO approval limit", None), ("match_rate_tolerance_pct", "Rate tolerance %", 100),
+                          ("match_amount_tolerance", "Amount tolerance", None), ("over_receipt_pct", "Over-receipt %", 100)):
+        if k in d:  # Phase H (procurement)
+            v = num(d[k], label, required=True)
+            if cap is not None and v > cap:
+                abort(400, f"{label} must be at most {cap}")
+            s[k] = v
     db.companies.update_one({"_id": g.company["_id"]}, {"$set": {"finance": s}})
     return jsonify(s)
 

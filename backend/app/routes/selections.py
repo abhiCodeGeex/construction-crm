@@ -235,19 +235,9 @@ def move_status(sid):
     if st not in order[1:] or s["status"] not in order or order.index(st) != order.index(s["status"]) + 1:
         abort(409, f"From {LABELS[s['status']]} the next step is {LABELS.get(order[order.index(s['status']) + 1], '—') if s['status'] in order[:-1] else 'none'}")
     ch = {"status": st, f"{st}_at": t.now(), "history": s.get("history", []) + [{"status": st, "by": g.user.get("name"), "at": t.now()}]}
-    if st == "ordered":
-        opt = chosen(s)
-        if opt["cost"] and can("finance", True):
-            from .finance import submit
-            cost = t.insert("costs", {"project_id": s["project_id"], "project_name": p["name"], "project_code": p.get("code"),
-                                      "stage_id": s["stage_id"], "stage_name": s["stage_name"], "category": "Material",
-                                      "vendor_id": opt.get("supplier_id"), "vendor_name": opt.get("supplier_name"), "date": sales.today(),
-                                      "description": f"{s['item']}: {opt['name']}"[:300], "amount": opt["cost"], "tax": 0, "total": opt["cost"],
-                                      "qty": opt.get("qty"), "unit": opt.get("unit"), "rate_id": opt.get("rate_id"), "rate_name": None,
-                                      "bill_no": None, "files": [], "status": "draft", "kind": "cost", "created_by": g.uid,
-                                      "created_by_name": g.user.get("name"), "selection_id": sid})
-            cost = submit(cost, p)
-            ch.update(cost_id=str(cost["_id"]), cost_status=cost["status"])
+    if st == "ordered":  # Phase H: ordered through procurement — a line on the supplier's draft PO, or a purchase request
+        from .procurement import order_selection
+        ch.update(order_selection(s, p, chosen(s)))
     upd = t.update("selections", sid, ch)
     ev.log(s["project_id"], "file", f"Selection {s['item']}: {LABELS[st].lower()}")
     if st == "installed":

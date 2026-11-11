@@ -299,7 +299,9 @@ VENDOR_TYPES = ["supplier", "subcontractor", "contractor", "consultant"]
 COST_STATUSES = ["draft", "submitted", "approved", "rejected", "void"]
 # why a cost takes a stage over its budget; "client_change" is the one the client pays for (change order)
 OVERSPEND_REASONS = {"client_change": "Client changed something", "our_mistake": "Our mistake", "price_rise": "Price rise"}
-FINANCE_DEFAULTS = {"site_expense_limit": 5000, "overspend_markup_pct": 10, "invoice_due_days": 7}
+FINANCE_DEFAULTS = {"site_expense_limit": 5000, "overspend_markup_pct": 10, "invoice_due_days": 7,
+                    # Phase H (procurement)
+                    "po_approval_limit": 50000, "match_rate_tolerance_pct": 1, "match_amount_tolerance": 100, "over_receipt_pct": 5}
 INVOICE_STATUSES = ["draft", "sent", "part_paid", "paid", "void"]
 
 NOTIFY_EVENTS.update({
@@ -339,4 +341,15 @@ NOTIFY_EVENTS.update({
     "document_comment": ("Comment on a document from the client or a consultant", False),
     "portal_message": ("Message from the client portal", True),
     "whatsapp_failed": ("WhatsApp message failed", False),
+    # Phase H (procurement)
+    "pr_raised": ("Purchase request raised", False),
+    "po_approval": ("Purchase order needs your approval", True),
+    "po_decided": ("Purchase order approved or rejected", False),
+    "po_acknowledged": ("Supplier acknowledged a purchase order", False),
+    "po_delivery_changed": ("Supplier changed a delivery date", False),
+    "delivery_due": ("Delivery due or late", False),
+    "goods_rejected": ("Goods received with rejections", False),
+    "bill_on_hold": ("Vendor bill does not match its PO", True),
+    "bill_due": ("Vendor bill due or overdue", False),
+    "vendor_invoice": ("Supplier uploaded an invoice", False),
 })

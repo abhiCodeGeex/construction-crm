@@ -237,6 +237,17 @@ def m022_messages():
     db.messages.create_index([("company_id", 1), ("provider_id", 1)])
 
 
+def m023_procurement():
+    """Phase H: requests, RFQs and purchase orders per project; POs by supplier and expected date (reminders)."""
+    db.purchase_requests.create_index([("company_id", 1), ("project_id", 1), ("status", 1)])
+    db.rfqs.create_index([("company_id", 1), ("project_id", 1), ("status", 1)])
+    db.purchase_orders.create_index([("company_id", 1), ("project_id", 1), ("status", 1)])
+    db.purchase_orders.create_index([("company_id", 1), ("vendor_id", 1), ("status", 1), ("expected_date", 1)])
+    db.goods_receipts.create_index([("company_id", 1), ("po_id", 1)])
+    db.vendor_bills.create_index([("company_id", 1), ("vendor_id", 1), ("bill_no", 1)])
+    db.costs.create_index([("company_id", 1), ("po_id", 1)])
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -260,6 +271,7 @@ MIGRATIONS = [
     ("020_portal_actions", m020_portal_actions),
     ("021_payments", m021_payments),
     ("022_messages", m022_messages),
+    ("023_procurement", m023_procurement),
 ]
 
 

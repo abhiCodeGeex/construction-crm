@@ -11,12 +11,13 @@ import { ThemeService } from '../core/theme.service';
 import { ChangePasswordComponent } from '../shared/change-password.component';
 import { PortalActionsComponent } from './portal-actions.component';
 import { PortalInvoicesComponent } from './portal-invoices.component';
+import { PortalSupplierComponent } from './portal-supplier.component';
 import { PortalMessagesComponent } from './portal-messages.component';
 
 /** Portal for clients, vendors, subcontractors and consultants: only projects where they are on the team (§13). */
 @Component({
   selector: 'app-portal',
-  imports: [DatePipe, AvatarModule, ButtonModule, CardModule, ProgressBarModule, TagModule, ChangePasswordComponent, PortalActionsComponent, PortalInvoicesComponent, PortalMessagesComponent],
+  imports: [DatePipe, AvatarModule, ButtonModule, CardModule, ProgressBarModule, TagModule, ChangePasswordComponent, PortalActionsComponent, PortalInvoicesComponent, PortalSupplierComponent, PortalMessagesComponent],
   template: `
     <header class="portal-top">
       <div class="logo"><span class="mark"><i class="pi pi-building"></i></span> {{ me()?.company?.name ?? 'Portal' }}</div>
@@ -95,6 +96,7 @@ import { PortalMessagesComponent } from './portal-messages.component';
             </p-card>
           } @empty { <p class="muted">You have not been added to a project yet.</p> }
         </div>
+        <app-portal-supplier [currency]="me()?.company?.currency ?? 'INR'" />
         <p class="muted small mt">You never see the firm's internal costs.</p>
       }
     </main>

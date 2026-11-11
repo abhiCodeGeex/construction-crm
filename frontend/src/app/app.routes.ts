@@ -38,6 +38,8 @@ export const routes: Routes = [
       { path: 'selections', canActivate: [staffGuard], data: { area: 'selections' }, loadComponent: () => import('./pages/selections.component').then((m) => m.SelectionsComponent) },
       { path: 'documents', canActivate: [staffGuard], data: { area: 'documents' }, loadComponent: () => import('./pages/documents.component').then((m) => m.DocumentsComponent) },
       { path: 'change-orders', canActivate: [staffGuard], data: { area: 'change_orders' }, loadComponent: () => import('./pages/change-orders.component').then((m) => m.ChangeOrdersComponent) },
+      { path: 'procurement', canActivate: [staffGuard], data: { area: 'procurement' }, loadComponent: () => import('./pages/procurement.component').then((m) => m.ProcurementComponent) },
+      { path: 'purchase-orders/:id', canActivate: [staffGuard], data: { area: 'procurement' }, loadComponent: () => import('./pages/purchase-order.component').then((m) => m.PurchaseOrderComponent) },
       { path: 'finance', canActivate: [staffGuard], data: { area: 'finance' }, loadComponent: () => import('./pages/finance.component').then((m) => m.FinanceComponent) },
       { path: 'settings', canActivate: [staffGuard], data: { area: 'settings' }, loadComponent: () => import('./pages/settings.component').then((m) => m.SettingsComponent) },
       { path: 'm/:area', canActivate: [staffGuard], loadComponent: () => import('./pages/area.component').then((m) => m.AreaComponent) },

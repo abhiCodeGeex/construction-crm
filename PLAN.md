@@ -641,10 +641,17 @@ Source: requirements for procurement *(section number to confirm — the parked 
 ### Build status
 | Block | Scope | Status |
 |---|---|---|
-| 1 | Purchase requests (site, PM, selections), RFQs to several suppliers, quotes compared side by side, award → draft PO; PR / RFQ / PO / GRN numbering in Settings | Planned |
-| 2 | Purchase orders (from a quote or direct), commitment against the stage budget, approval above a limit or over budget, send by email (print page) and WhatsApp, amendments, cancel; selections *ordered* creates a PO instead of a cost | Planned |
-| 3 | Goods receipts (partial, photos, rejected / returned qty, link to the day's site report), vendor bills with three-way match and tolerance, bill → approved cost with `po_id`, payable status and vendor payments recorded | Planned |
-| 4 | Vendor portal (acknowledge PO, update delivery date, upload invoice), worker reminders, procurement reports, Procurement leaves SOON | Planned |
+| 1 | Purchase requests (site, PM, selections), RFQs to several suppliers, quotes compared side by side, award → draft PO; PR / RFQ / PO / GRN numbering in Settings | **Done** |
+| 2 | Purchase orders (from a quote or direct), commitment against the stage budget, approval above a limit or over budget, send by email (print page) and WhatsApp, amendments, cancel; selections *ordered* creates a PO instead of a cost | **Done** |
+| 3 | Goods receipts (partial, photos, rejected / returned qty, link to the day's site report), vendor bills with three-way match and tolerance, bill → approved cost with `po_id`, payable status and vendor payments recorded | **Done** |
+| 4 | Vendor portal (acknowledge PO, update delivery date, upload invoice), worker reminders, procurement reports, Procurement leaves SOON | **Done** |
+
+
+Block 1–2 notes: Owner, Procurement and Accounts reach every project's procurement; others only projects they are on (404 otherwise). A Site Supervisor raises requests on their projects and never sees prices. The PO number is issued on approval. The approval limit is compared on the PO value **before tax**; above it an Owner approves, and a PO that takes a stage over budget (spent + committed + ordered) needs a project approver with an `OVERSPEND_REASONS` reason. A direct PO above the limit needs a reason. Sending carries the email and, when asked, WhatsApp in one call (no separate `/whatsapp`). An amendment that raises the total puts the PO back to draft for a new approval. Ordering a selection adds the chosen option to the supplier's open draft PO (or opens a request when it has no supplier) and records no cost. Suppliers with an expired compliance document are warned, not blocked. Editing a request or an RFQ after creating it (`PUT`) is not built: cancel and raise again.
+
+Block 3–4 notes: returns are kept on the GRN (`returns[]`) rather than in a `supplier_returns` collection; reversing a whole GRN is not built (return the goods instead). Bills are matched against accepted, not yet billed qty and the rate and amount tolerances; a mismatch goes *on hold* and an Owner or Accounts accepts it with a reason, and its cost then goes through the usual cost approval. A supplier's portal invoice arrives as a *draft* bill that staff check. The supplier portal is one call (`GET /portal/purchase-orders` returns POs, bills and open RFQs); portal users upload through `POST /portal/uploads` (PDF or image only), since `/uploads` is staff only. Reminders count calendar days, not working days, and each fires once per date. The day's site report lists that day's deliveries (read only).
+
+**Phase H is complete.**
 
 ## H1. Requirement → implementation → test
 | § | Requirement | Implementation | Test |

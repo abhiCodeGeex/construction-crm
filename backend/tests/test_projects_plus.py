@@ -230,7 +230,7 @@ try:
           and groups.get("milestone_late") == "Projects" and groups.get("compliance_expired") == "Contacts"
           and groups.get("lead_assigned") == "Leads & sales", groups)
     order = [e["group"] for e in pr["events"]]
-    check("settings grouped in order (each heading once)", order == sorted(order, key=["Leads & sales", "Projects", "Finance", "Documents & site", "Contacts"].index))
+    check("settings grouped in order (each heading once)", order == sorted(order, key=["Leads & sales", "Projects", "Finance", "Procurement", "Documents & site", "Contacts"].index))
     rows = [{**e, "in_app": False} if e["event"] in ("task_due", "task_assigned") else e for e in pr["events"]]
     call("PUT", "/notifications/prefs", {"events": rows}, T["designer"])
     r = call("POST", f"/projects/{pid}/stages/{st2['id']}/tasks", {"title": f"Pref {RUN}", "start": day(0), "end": day(1),

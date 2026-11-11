@@ -179,6 +179,14 @@ import { AuthService } from '../core/auth.service';
                 <small class="muted">The most a Site Supervisor can log in one expense; each waits for the PM's approval.</small></label>
               <label class="field"><span>Overspend markup %</span><p-inputnumber [(ngModel)]="fin.overspend_markup_pct" [min]="0" [max]="100" [disabled]="!canEdit()" fluid />
                 <small class="muted">Added when a client change takes a stage over budget and the client is charged for it.</small></label>
+              <label class="field"><span>Purchase order approval limit</span><p-inputnumber [(ngModel)]="fin.po_approval_limit" [min]="0" [disabled]="!canEdit()" fluid />
+                <small class="muted">A PO above this (before tax) waits for an Owner; within it and the budget, it is approved on submit.</small></label>
+              <label class="field"><span>Over-delivery allowed %</span><p-inputnumber [(ngModel)]="fin.over_receipt_pct" [min]="0" [max]="100" [disabled]="!canEdit()" fluid />
+                <small class="muted">How much more than ordered the site can receive on a PO line.</small></label>
+              <label class="field"><span>Bill rate tolerance %</span><p-inputnumber [(ngModel)]="fin.match_rate_tolerance_pct" [min]="0" [max]="100" [minFractionDigits]="0" [maxFractionDigits]="2" [disabled]="!canEdit()" fluid />
+                <small class="muted">A supplier bill's rate may differ this much from the PO before it goes on hold.</small></label>
+              <label class="field"><span>Bill amount tolerance</span><p-inputnumber [(ngModel)]="fin.match_amount_tolerance" [min]="0" [disabled]="!canEdit()" fluid />
+                <small class="muted">Rounding allowed on a bill's total against PO and receipts.</small></label>
             </div>
             @if (canEdit()) { <div class="row right"><p-button label="Save" icon="pi pi-check" size="small" (onClick)="saveFinance()" /></div> }
           </p-card>
@@ -386,7 +394,9 @@ export class SettingsComponent implements OnInit {
   }
 
   async saveFinance() {
-    this.fin = await this.api.put('/finance/settings', { site_expense_limit: this.fin.site_expense_limit, overspend_markup_pct: this.fin.overspend_markup_pct }, 'Saved');
+    this.fin = await this.api.put('/finance/settings', { site_expense_limit: this.fin.site_expense_limit, overspend_markup_pct: this.fin.overspend_markup_pct,
+      po_approval_limit: this.fin.po_approval_limit, over_receipt_pct: this.fin.over_receipt_pct,
+      match_rate_tolerance_pct: this.fin.match_rate_tolerance_pct, match_amount_tolerance: this.fin.match_amount_tolerance }, 'Saved');
   }
 
   async saveCalendar() {

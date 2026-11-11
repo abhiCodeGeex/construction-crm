@@ -54,13 +54,14 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
 
         <h3 class="mt0">Budget vs actual by stage</h3>
         <p-table [value]="b.stages" styleClass="p-datatable-sm mb">
-          <ng-template #header><tr><th>Stage</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Committed</th><th style="width: 30%">Used</th></tr></ng-template>
+          <ng-template #header><tr><th>Stage</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Committed</th><th class="num" title="On open purchase orders, not billed yet">Ordered</th><th style="width: 30%">Used</th></tr></ng-template>
           <ng-template #body let-s>
             <tr>
               <td>{{ s.name }}</td>
               <td class="num">{{ s.budget ? fmt(s.budget) : '—' }}</td>
               <td class="num" [class.c-bad]="s.level === 'red'">{{ fmt(s.spent) }}</td>
               <td class="num">{{ s.committed ? fmt(s.committed) : '—' }}</td>
+              <td class="num" [class.c-warn]="s.budget && s.spent + s.committed + (s.ordered || 0) > s.budget">{{ s.ordered ? fmt(s.ordered) : '—' }}</td>
               <td>@if (s.budget) {
                 <p-progressbar [value]="s.pct > 100 ? 100 : s.pct" [showValue]="false" [styleClass]="'bar-' + s.level" />
                 <span class="small" [class.c-bad]="s.level === 'red'" [class.c-warn]="s.level === 'amber'">{{ s.pct }}%</span>

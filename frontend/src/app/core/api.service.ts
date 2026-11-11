@@ -49,11 +49,11 @@ export class Api {
     return this.send<T>('DELETE', url, undefined, ok);
   }
 
-  async upload(file: File): Promise<{ key: string; name: string; size: number; url: string }> {
+  async upload(file: File, portal = false): Promise<{ key: string; name: string; size: number; url: string }> {
     const form = new FormData();
     form.append('file', file);
     try {
-      return await firstValueFrom(this.http.post<any>('/api/uploads', form));
+      return await firstValueFrom(this.http.post<any>(portal ? '/api/portal/uploads' : '/api/uploads', form));
     } catch (e) {
       this.toast.add({ severity: 'error', summary: 'Upload failed', detail: errorText(e) });
       (e as any)[HANDLED] = true;
