@@ -496,6 +496,12 @@ def delete_project(_id):
     db.costs.delete_many({"company_id": g.cid, "project_id": _id})  # drafts, submitted, rejected and void only
     db.invoices.delete_many({"company_id": g.cid, "project_id": _id})  # drafts and void only
     db.change_orders.delete_many({"company_id": g.cid, "project_id": _id})
+    from .lead_steps import delete_stored
+    for doc in db.documents.find({"company_id": g.cid, "project_id": _id}):
+        for v in doc.get("versions", []):
+            delete_stored(v["file_key"])
+    db.documents.delete_many({"company_id": g.cid, "project_id": _id})
+    db.transmittals.delete_many({"company_id": g.cid, "project_id": _id})
     db.notifications.delete_many({"company_id": g.cid, "project_id": _id})  # no bell entry may point at it
     for coll in ("project_comments", "project_activity", "project_meetings", "project_delays"):
         db[coll].delete_many({"company_id": g.cid, "project_id": _id})

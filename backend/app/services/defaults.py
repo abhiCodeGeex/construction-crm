@@ -312,3 +312,24 @@ NOTIFY_EVENTS.update({
     "co_decided": ("Change order approved or rejected", False),
     "co_waiting": ("Change order not answered by the client", False),
 })
+
+# ---------------- Phase F: documents, selections, site reports ----------------
+# default document folders: "all" for every project, then per service (Settings -> document folders)
+DOC_FOLDERS = {
+    "all": ["Contract", "Client documents"],
+    "architecture": ["Concept", "Drawings", "Approvals"],
+    "construction": ["Structural", "MEP", "Site photos"],
+    "interior": ["Layouts", "3D views", "Selections"],
+}
+DOC_KINDS = ["drawing", "specification", "contract", "approval", "report", "photo", "other"]
+DRAWING_STATUSES = {"wip": "Work in progress", "for_comment": "For comment", "for_approval": "For approval",
+                    "approved": "Approved", "for_construction": "For construction", "superseded": "Superseded"}
+TRANSMITTAL_PURPOSES = {"for_information": "For information", "for_comment": "For comment", "for_approval": "For approval",
+                        "for_construction": "For construction"}
+DISCIPLINES = ["Architecture", "Structure", "MEP", "Interior", "Landscape", "Other"]
+
+NOTIFY_EVENTS.update({
+    "transmittal_sent": ("Drawings or documents issued", False),
+    "transmittal_waiting": ("Transmittal not acknowledged", False),
+    "drawing_approved": ("Drawing approved", False),
+})

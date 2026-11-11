@@ -459,8 +459,8 @@ Source: requirements for documents & drawings, selections and site reports *(sec
 ### Build status
 | Block | Scope | Status |
 |---|---|---|
-| 1 | Document library: folders, upload, versions / revisions, lead files shown in the library, permissions, quota | Planned |
-| 2 | Drawing register, revision status, transmittals (issue to client / consultant, by email), stage checks ticked from issued drawings | Planned |
+| 1 | Document library: folders, upload, versions / revisions, lead files shown in the library, permissions, quota | **Done** |
+| 2 | Drawing register, revision status, transmittals (issue to client / consultant, by email), stage checks ticked from issued drawings | **Done** |
 | 3 | Selections: rooms, options, allowance vs chosen cost, client choice recorded by staff, link to Phase E cost and change orders | Planned |
 | 4 | Daily site reports: weather, manpower, work done, photos, issues → project issues, delays → delay log; portal read-only view; Documents, Selections, Site reports leave SOON | Planned |
 
@@ -523,4 +523,11 @@ Source: requirements for documents & drawings, selections and site reports *(sec
 | 360° renders and design options (parked draft) | *(to confirm)* — Interior design phase, after G |
 | Product library separate from the rate library | *(to confirm)*; F uses the rate library `product` kind |
 
-Open questions for the owner: (1) Revision naming — R0 / R1, A / B / C, or company setting? (2) Does a confirmed selection create the Phase E cost at confirmation or at ordering? (3) Site report cut-off time and whether reports are needed on every working day or only when work happened. (4) Should clients see site photos only when marked shareable, or all photos? (5) One shared product library for selections, or the rate library's product kind?
+Decisions taken to start building (the owner can change any of them):
+1. **Revisions** are named R0, R1, R2… (a company format can come later).
+2. **A selection becomes a Phase E cost when it is ordered** (submitted, so the stage budget sees it), not when the client confirms.
+3. **Site reports** are due every working day by 19:00 on active projects that have a site supervisor (cut-off editable in Settings).
+4. **Clients see only photos marked shareable** (and documents marked shared or issued to them).
+5. **Selection options use the rate library's *product* items**; no separate product library.
+
+Block 1–2 notes: the library lists lead files and task files in two automatic folders without copying them. Drawings need a number unique on the project; a new revision supersedes the older ones. A transmittal emails the current revisions as attachments to people on the project team and keeps the email result per person; issued revisions can never be deleted. Issuing drawings of a stage to the client marks that stage's *Drawings issued to the client* check as ready to tick (an editor still ticks it).

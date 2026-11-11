@@ -43,7 +43,9 @@ PROJECT_EVENTS = {"project_pm", "project_added", "task_assigned", "task_due", "t
 
 FINANCE_EVENTS = {"cost_approval", "cost_decided", "budget_alert", "receipt_recorded", "invoice_due", "invoice_overdue", "co_decided", "co_waiting"}
 
-GROUPS = ["Leads & sales", "Projects", "Finance", "Contacts"]
+SITE_EVENTS = {"transmittal_sent", "transmittal_waiting", "drawing_approved"}
+
+GROUPS = ["Leads & sales", "Projects", "Finance", "Documents & site", "Contacts"]
 
 
 def notify_group(event):
@@ -52,6 +54,8 @@ def notify_group(event):
         return "Projects"
     if event in FINANCE_EVENTS:
         return "Finance"
+    if event in SITE_EVENTS:
+        return "Documents & site"
     if event.startswith("compliance"):
         return "Contacts"
     return "Leads & sales"

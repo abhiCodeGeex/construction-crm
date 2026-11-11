@@ -292,8 +292,18 @@ def check_change_orders(now):
                         project_id=co["project_id"], key=f"co-wait:{co['_id']}", level="warn")
 
 
+def check_transmittals(now):
+    """Issued for comment or for approval and not acknowledged in 7 days -> the person who sent it, once."""
+    for tr in db.transmittals.find({"company_id": g.cid, "acknowledged": None, "purpose": {"$in": ["for_comment", "for_approval"]},
+                                    "created_at": {"$lt": now - timedelta(days=7)}}):
+        notify.send("transmittal_waiting", [tr["sent_by"]], f"{tr['number']} ({tr['project_name']}) sent {tr['created_at'].date().isoformat()} "
+                    f"to {', '.join(r['name'] for r in tr['to'])}: not acknowledged yet", f"/app/projects/{tr['project_id']}?tab=documents",
+                    project_id=tr["project_id"], key=f"trn-wait:{tr['_id']}", level="warn")
+
+
 CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
-          check_compliance, check_meetings, check_health, check_invoices, check_change_orders]
+          check_compliance, check_meetings, check_health, check_invoices, check_change_orders,
+          check_transmittals]
 
 
 def run_once(now=None):

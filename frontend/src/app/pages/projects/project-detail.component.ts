@@ -30,6 +30,7 @@ import { PRIORITY_SEVERITY, TaskPanelComponent } from './task-panel.component';
 import { ProjectMeetingsComponent } from './project-meetings.component';
 import { ProjectMoneyComponent } from './project-money.component';
 import { ProjectChangeOrdersComponent } from './project-change-orders.component';
+import { ProjectDocumentsComponent } from './project-documents.component';
 import { ProjectActivityComponent, ProjectHealthComponent } from './project-insights.component';
 
 const DESIGN = ['architecture', 'interior'];
@@ -39,7 +40,7 @@ const DESIGN = ['architecture', 'interior'];
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, KnobModule,
     MessageModule, MultiSelectModule, ProgressBarModule, SelectButtonModule, SelectModule, SliderModule, TableModule, TabsModule,
     TagModule, TextareaModule, TooltipModule, GanttComponent, MapPickerComponent, FollowupDialogComponent, CheckboxModule,
-    TaskPanelComponent, ProjectMeetingsComponent, ProjectActivityComponent, ProjectHealthComponent, ProjectMoneyComponent, ProjectChangeOrdersComponent],
+    TaskPanelComponent, ProjectMeetingsComponent, ProjectActivityComponent, ProjectHealthComponent, ProjectMoneyComponent, ProjectChangeOrdersComponent, ProjectDocumentsComponent],
   template: `
     @if (p(); as p) {
       <div class="page-head">
@@ -68,6 +69,7 @@ const DESIGN = ['architecture', 'interior'];
           <p-tab value="team"><i class="pi pi-users mr"></i>Team ({{ p.team.length }})</p-tab>
           <p-tab value="issues"><i class="pi pi-exclamation-circle mr"></i>Issues ({{ dash()?.open_issues ?? 0 }})</p-tab>
           <p-tab value="details"><i class="pi pi-map-marker mr"></i>Details & site</p-tab>
+          @if (auth.can('documents')) { <p-tab value="documents"><i class="pi pi-folder-open mr"></i>Documents</p-tab> }
           @if (auth.can('finance') || auth.user()?.role === 'site') { <p-tab value="money"><i class="pi pi-wallet mr"></i>Money</p-tab> }
           @if (auth.can('change_orders') || auth.can('finance')) { <p-tab value="changes"><i class="pi pi-sync mr"></i>Change orders</p-tab> }
           <p-tab value="meetings"><i class="pi pi-calendar-plus mr"></i>Meetings</p-tab>
@@ -215,7 +217,8 @@ const DESIGN = ['architecture', 'interior'];
                   </div>
                   @for (c of s.checklist; track c.id) {
                     <div class="check-row"><p-checkbox [binary]="true" [ngModel]="c.done" (onChange)="tickStage(s, c, $event.checked)" [disabled]="!canEditStage(s) || s.gate?.closed" />
-                      <span class="grow" [class.strike]="c.done">{{ c.text }} @if (c.done_by) { <small class="muted">· {{ c.done_by }}</small> }</span>
+                      <span class="grow" [class.strike]="c.done">{{ c.text }} @if (c.done_by) { <small class="muted">· {{ c.done_by }}</small> }
+                        @if (!c.done && c.suggested) { <small class="c-good">· ready to tick: {{ c.suggested.number }} sent to the client</small> }</span>
                       @if (canEditStage(s) && !s.gate?.closed) { <p-button icon="pi pi-times" [text]="true" size="small" severity="secondary" (onClick)="removeStageItem(s, c)" ariaLabel="Remove" pTooltip="Remove"/> }</div>
                   }
                   @if (canEditStage(s) && !s.gate?.closed) {
@@ -353,6 +356,7 @@ const DESIGN = ['architecture', 'interior'];
           </p-tabpanel>
 
           <p-tabpanel value="money">@if (tab === 'money') { <app-project-money [project]="p" [contacts]="contacts()" (changed)="reload()" /> }</p-tabpanel>
+          <p-tabpanel value="documents">@if (tab === 'documents') { <app-project-documents [projectId]="p.id" /> }</p-tabpanel>
           <p-tabpanel value="changes">@if (tab === 'changes') { <app-project-change-orders [projectId]="p.id" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="meetings">@if (tab === 'meetings') { <app-project-meetings [project]="p" [contacts]="contacts()" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="activity">@if (tab === 'activity') { <app-project-activity [projectId]="p.id" /> }</p-tabpanel>

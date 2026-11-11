@@ -17,7 +17,7 @@ export const NAV: NavItem[] = [
   { area: 'contacts', label: 'Contacts', icon: 'pi pi-id-card', section: 'Sales', ready: true, path: '/app/contacts' },
   { area: 'proposals', label: 'Proposals & contracts', icon: 'pi pi-file-edit', section: 'Sales', ready: true, path: '/app/proposals' },
   { area: 'projects', label: 'Projects', icon: 'pi pi-building', section: 'Delivery', ready: true, path: '/app/projects' },
-  { area: 'documents', label: 'Documents & drawings', icon: 'pi pi-folder-open', section: 'Delivery' },
+  { area: 'documents', label: 'Documents & drawings', icon: 'pi pi-folder-open', section: 'Delivery', ready: true, path: '/app/documents' },
   { area: 'selections', label: 'Selections', icon: 'pi pi-palette', section: 'Delivery' },
   { area: 'site', label: 'Site reports', icon: 'pi pi-camera', section: 'Delivery' },
   { area: 'change_orders', label: 'Change orders', icon: 'pi pi-sync', section: 'Delivery', ready: true, path: '/app/change-orders' },

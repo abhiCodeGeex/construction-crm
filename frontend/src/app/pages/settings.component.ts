@@ -117,6 +117,15 @@ import { AuthService } from '../core/auth.service';
             </div>
             @if (canEdit()) { <div class="row right mt"><p-button label="Save setup" icon="pi pi-check" (onClick)="saveSetup()" /></div> }
           }
+          <p-card header="Document folders" styleClass="mt">
+            <div class="stack">
+              <small class="muted">Comma-separated. New projects and existing ones show these folders; “From the lead” and “Task files” are added automatically.</small>
+              @for (k of folderKeys; track k.key) {
+                <label class="field"><span>{{ k.label }}</span><input pInputText [(ngModel)]="folders[k.key]" [disabled]="!canEdit()" fluid /></label>
+              }
+            </div>
+            @if (canEdit()) { <div class="row right"><p-button label="Save folders" icon="pi pi-check" size="small" (onClick)="saveFolders()" /></div> }
+          </p-card>
           <p-card header="Costs" styleClass="mt">
             <div class="grid2">
               <label class="field"><span>Site expense limit</span><p-inputnumber [(ngModel)]="fin.site_expense_limit" [min]="0" [disabled]="!canEdit()" fluid />
@@ -249,11 +258,14 @@ export class SettingsComponent implements OnInit {
   setup: any = { branches: [] };
   cal: any = { weekdays: [], working_days: [], holidays: [] };
   fin: any = {};
+  folders: Record<string, string> = {};
+  folderKeys = [{ key: 'all', label: 'Every project' }, { key: 'architecture', label: 'Architecture' }, { key: 'construction', label: 'Construction' },
+    { key: 'interior', label: 'Interior design' }];
   tplDlg = false;
   tf: any = { stages: [] };
 
   async ngOnInit() {
-    await Promise.all([this.loadCompany(), this.loadTemplates(), this.loadRoles(), this.loadAudit(), this.loadCalendar(), this.loadFinance()]);
+    await Promise.all([this.loadCompany(), this.loadTemplates(), this.loadRoles(), this.loadAudit(), this.loadCalendar(), this.loadFinance(), this.loadFolders()]);
   }
 
   async loadCalendar() {
@@ -263,6 +275,17 @@ export class SettingsComponent implements OnInit {
 
   toggleDay(i: number, on: boolean) {
     this.cal.working_days = on ? [...new Set([...this.cal.working_days, i])].sort() : this.cal.working_days.filter((d: number) => d !== i);
+  }
+
+  async loadFolders() {
+    const f = await this.api.get('/settings/document-folders');
+    this.folders = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, (v as string[]).join(', ')]));
+  }
+
+  async saveFolders() {
+    const body = Object.fromEntries(Object.entries(this.folders).map(([k, v]) => [k, v.split(',').map((x) => x.trim()).filter(Boolean)]));
+    await this.api.put('/settings/document-folders', body, 'Folders saved');
+    await this.loadFolders();
   }
 
   async loadFinance() {

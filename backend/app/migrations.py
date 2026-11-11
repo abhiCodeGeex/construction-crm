@@ -194,6 +194,18 @@ def m015_change_orders():
     db.change_orders.create_index([("company_id", 1), ("status", 1), ("sent_at", 1)])
 
 
+def m016_documents():
+    """Phase F block 1: the document library per project (and the file lookup that keeps each file in one place)."""
+    db.documents.create_index([("company_id", 1), ("project_id", 1), ("folder", 1)])
+    db.documents.create_index([("company_id", 1), ("versions.file_key", 1)])
+
+
+def m017_transmittals():
+    """Phase F block 2: transmittals per project and the unacknowledged reminder."""
+    db.transmittals.create_index([("company_id", 1), ("project_id", 1), ("created_at", -1)])
+    db.transmittals.create_index([("company_id", 1), ("acknowledged", 1), ("created_at", 1)])
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -210,6 +222,8 @@ MIGRATIONS = [
     ("013_invoices", m013_invoices),
     ("014_receipts", m014_receipts),
     ("015_change_orders", m015_change_orders),
+    ("016_documents", m016_documents),
+    ("017_transmittals", m017_transmittals),
 ]
 
 
