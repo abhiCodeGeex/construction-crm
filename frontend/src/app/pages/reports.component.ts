@@ -7,11 +7,12 @@ import { MessageModule } from 'primeng/message';
 import { TableModule } from 'primeng/table';
 import { Api, SERVICE_LABEL, money } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
+import { ProcurementReportComponent } from './procurement-report.component';
 
 /** §2 conversion by source / service / salesperson, win-loss reasons, pipeline value; §16 follow-ups per user. */
 @Component({
   selector: 'app-reports',
-  imports: [FormsModule, ButtonModule, CardModule, InputTextModule, MessageModule, TableModule],
+  imports: [FormsModule, ButtonModule, CardModule, InputTextModule, MessageModule, TableModule, ProcurementReportComponent],
   template: `
     <div class="page-head">
       <div><h1>Reports</h1><p class="muted">Sales conversion, follow-up discipline and project money.</p></div>
@@ -23,7 +24,7 @@ import { AuthService } from '../core/auth.service';
       }
     </div>
 
-    @if (!auth.can('leads') && !canFollowups()) { <p-message severity="info" text="Reports available to your role arrive with later phases." /> }
+    @if (!auth.can('leads') && !canFollowups() && !auth.can('reports') && !auth.can('procurement')) { <p-message severity="info" text="No reports are available to your role." /> }
 
     @if (s(); as s) {
       <div class="stats">
@@ -164,6 +165,10 @@ import { AuthService } from '../core/auth.service';
           </p-card>
         }
       </div>
+    }
+    @if (auth.can('procurement')) {
+      <h2 class="mt">Procurement</h2>
+      <app-procurement-report />
     }
   `,
 })

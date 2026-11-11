@@ -320,7 +320,7 @@ NOTIFY_EVENTS.update({
 DOC_FOLDERS = {
     "all": ["Contract", "Client documents"],
     "architecture": ["Concept", "Drawings", "Approvals"],
-    "construction": ["Structural", "MEP", "Site photos"],
+    "construction": ["Drawings", "Structural", "MEP", "Site photos"],
     "interior": ["Layouts", "3D views", "Selections"],
 }
 DOC_KINDS = ["drawing", "specification", "contract", "approval", "report", "photo", "other"]

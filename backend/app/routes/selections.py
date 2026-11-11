@@ -228,7 +228,8 @@ def choose_option(s, p, opt, choice):
 @bp.post("/selections/<sid>/status")
 @api(None)
 def move_status(sid):
-    """Forward only: chosen -> confirmed -> ordered -> installed. Ordering records the cost in Finance."""
+    """Forward only: chosen -> confirmed -> ordered -> installed. Ordering goes through procurement (Phase H):
+    a line on the supplier's draft PO, or a purchase request; the cost is recorded when the supplier's bill is approved."""
     s, p = load_sel(sid)
     st = (request.get_json(force=True) or {}).get("status")
     order = ["chosen", "confirmed", "ordered", "installed"]

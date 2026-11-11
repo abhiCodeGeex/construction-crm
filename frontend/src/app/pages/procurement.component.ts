@@ -14,6 +14,7 @@ import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 import { Api, label, money } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
+import { ProcurementReportComponent } from './procurement-report.component';
 
 export const PO_SEV: Record<string, 'secondary' | 'info' | 'success' | 'warn' | 'danger'> = {
   draft: 'secondary', waiting_approval: 'warn', approved: 'info', rejected: 'danger', sent: 'info', acknowledged: 'info',
@@ -25,13 +26,14 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
 @Component({
   selector: 'app-procurement',
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule, MultiSelectModule,
-    SelectButtonModule, SelectModule, TableModule, TagModule],
+    SelectButtonModule, SelectModule, TableModule, TagModule, ProcurementReportComponent],
   template: `
     <div class="page-head"><div><h1>Procurement</h1>
       <p class="muted">Ask for material, compare suppliers' quotes, order, receive and match the bills. A purchase order is money ordered; only an approved bill is spent.</p></div></div>
     <p-selectbutton class="mb block" [options]="views" [(ngModel)]="view" optionLabel="label" optionValue="value" [allowEmpty]="false" (onChange)="load()" />
 
     @switch (view) {
+      @case ('report') { <app-procurement-report /> }
       @case ('requests') {
         <div class="row gap mb">
           <p-button label="New request" icon="pi pi-plus" size="small" (onClick)="openPr()" />
@@ -242,7 +244,7 @@ export class ProcurementComponent implements OnInit {
   auth = inject(AuthService);
   private api = inject(Api);
   views = [{ label: 'Requests', value: 'requests' }, { label: 'Quotes', value: 'rfqs' }, { label: 'Purchase orders', value: 'pos' },
-    { label: 'Deliveries', value: 'grns' }, { label: 'Bills', value: 'bills' }];
+    { label: 'Deliveries', value: 'grns' }, { label: 'Bills', value: 'bills' }, { label: 'Report', value: 'report' }];
   view = 'requests';
   rows = signal<any[]>([]);
   pay = signal<any>(null);
@@ -280,6 +282,7 @@ export class ProcurementComponent implements OnInit {
   }
 
   async load() {
+    if (this.view === 'report') return;
     const url = { requests: '/purchase-requests?status=open,quoting', rfqs: '/rfqs', pos: '/purchase-orders', grns: '/goods-receipts', bills: '/vendor-bills' }[this.view]!;
     this.rows.set(await this.api.get(url));
     this.picked = [];
