@@ -354,3 +354,158 @@ Source: the projects comparison (Procore, Buildertrend, Houzz Pro, Powerplay / O
 | Health score | Six parts out of 100, each with its reason: work on time (25), forecast finish (15), open issues (15), blocked / waiting (15), kept up to date (15), budget (15, full until costs are recorded in Phase E). Green ≥ 75 on track, amber 50–74 at risk, red < 50 off track. On the overview, the projects list and Home (*Projects at risk*). The managers and Owners are told once when a project turns red | parts sum; red; list; home; notified once |
 | Finish forecast | Per stage, at the pace kept so far (progress per working day since it started): forecast finish and working days late; a stage that should have started with 0 % needs its full length from today. The project forecast is the latest stage forecast, said in plain words (“At the current pace Foundation finishes 9 working days late”) | late stage |
 | Times | Meeting times go to the server in UTC and show in the viewer’s local time, like site visits; emailed and notified times are labelled UTC | browser |
+
+---
+
+# Phase E — Costs, invoices & change orders
+
+Source: requirements §12 (finance: costs per stage with budget control, invoices, payments, "learn from it"), §11 (change orders), §4.7 (budget vs actual on the project dashboard), §5 (contract with a payment schedule tied to milestones — invoicing against it), §16 (payment reminders), §1 (tax, numbering, cost hiding). No separate requirements file is in the repository; section numbers follow the ones this plan and the parked drafts already use, and lines marked *(to confirm)* need the owner's word. Builds on the signed contract and payment schedule (Phase D), stage budgets and the dashboard (Phase B), the health score (B+4), lead receipts and the rate library (C+). Covered by `backend/tests/test_phase_e.py`.
+
+### Build status
+| Block | Scope | Status |
+|---|---|---|
+| 1 | Cost entries (stage, category, vendor, bill files, approval), stage spent and 80 % / 100 % alerts, dashboard budget vs actual, health budget part, rate library actuals | Planned |
+| 2 | Invoices from payment-schedule rows (milestone achieved → due), manual invoices, tax, numbering, print, send by email | Planned |
+| 3 | Receipts against invoices, lead advances applied, overdue reminders and escalation, receivables | Planned |
+| 4 | Change orders (request → price → client approval → contract, schedule, stage budget and dates), finance reports, Finance + Change orders screens leave SOON | Planned |
+
+## E1. Requirement → implementation → test
+| § | Requirement | Implementation | Test |
+|---|---|---|---|
+| §12 | Record every cost against the project and stage | `costs` {project, stage, category (material, labour, subcontract, equipment, transport, consultant, site expense, other), vendor contact (types supplier / subcontractor / contractor / consultant), date, amount, tax, description, qty + unit, rate-library item, bill number, files (via `/uploads`, kept in `files` and counted in the storage quota)}. Written by roles with `finance: rw`; a project editor without finance (Site Supervisor) may log a **site expense** up to a company limit, which always waits for approval | unknown stage / vendor 400; site over the limit 403; file listed in the quota |
+| §12 | Cost approval | Status draft → submitted → approved / rejected (reason). Only **approved** costs count as actual. Approver: a Project Manager on the project or an Owner (same `MANAGER_ROLES`). A cost that takes a stage over its budget needs approval even from Accounts, with *why* (client change, our mistake, price rise) | over-budget cost waits; reason required; rejected not counted |
+| §12 | Budget control per stage | Stage `spent` is recalculated from approved costs on every approve / void (reuse `later/services/budget.py` `stage_spent`, `recalc_stage`, `usage_level`). First crossing of **80 %** → project managers; **100 %** → managers + Owners (`notify.send`, keys per stage and level, so no repeats) | each level once; void drops the level back |
+| §12 | Over budget because the client changed something → client pays | Approving such a cost with reason *client change* offers a **draft change order** for the overspend plus the company's overspend markup (draft `_overspend_change_order`), never sent automatically | draft CO created, status draft |
+| §4.7 | Dashboard: budget vs actual | `GET /projects/<id>/dashboard` already sums approved `costs`; it now also returns per-stage budget / spent / % / level and committed (submitted) costs. Hidden for `HIDE_COST_ROLES` exactly as today | numbers per stage; site response has none |
+| B+4 | Health score — budget part | `project_health.health` part 6 starts counting as soon as the first approved cost exists (today it says "recorded from the Finance phase"); the wording changes to *No costs recorded yet* | 0 / 7 / 15 points cases |
+| §12 | "Learn from it": real costs update the rate library | A cost with a rate item and qty stores the actual unit rate on that `rate_library` item (`actuals` last 10, `last_actual`, `suggested_rate` = average). The rate is **not** overwritten; Settings → Rate library shows the suggestion and *Use suggested rate* (estimator / owner) | suggestion after 3 costs; rate unchanged until accepted |
+| §5 / §12 | Invoice from a payment-schedule row | The contract view (`present_contract`) already marks a row *due* on signing, on its date or when its milestone is achieved. **Raise invoice** on a due row creates the invoice for that row's amount; the row gets `status: invoiced` + `invoice_id`, then `paid` when settled. A row can be invoiced only once; *upcoming* rows need an Owner override with a reason | not-due row refused; second invoice 409; row status follows |
+| §12 | Other invoices | Manual invoice (lines, qty, rate) for extras; **change-order invoice** from an approved CO; credit note against an invoice. No progress-% claims in this phase *(to confirm)* | credit note cannot exceed the invoice |
+| §1 | Tax | Invoice lines are taxable at the company tax rate and label (Settings) unless set per line. A schedule-row invoice splits the row amount into taxable and tax in the contract's own ratio (`contract.totals`, the contract value includes tax), so the row amounts still add up to the contract | row invoice taxable + tax = row amount |
+| §1 | Numbering | `t.next_number("INV", "INV")`, credit notes `CRN`, change orders `CO`, receipts reuse `RCT` (same counter as lead receipts); formats editable in Settings → Branches, tax & numbering alongside `PRJ` | format applied; counters per company |
+| §12 | Receipts against invoices | `receipts` {invoice allocations[], amount, date, mode, reference — same rules as `check_receipt` in `lead_money.py`}. One receipt may settle several invoices; an invoice may take several receipts; status sent → part paid → paid. Lead receipts moved on a win (`lead_receipts.project_id`) show as **advance received** and can be applied to the first invoice (normally *Advance on signing*) | over-allocation 400; part paid; advance applied once |
+| §16 | Overdue invoices: reminders | Worker `check_invoices`: 3 days before due → Accounts; due today; 1 day overdue → Accounts + the project's managers; 7 days → Owners. Keys carry the due date, so a re-dated invoice is chased again; paid / void invoices never. Optional client email reminder through the company SMTP | each mark once; paid quiet |
+| §11 | Change order request | `change_orders` {project, stage, task(s), title, description, reason (client request, design change, site condition, authority, our error), raised by, files}. Status draft → priced → sent to client → approved / rejected / withdrawn | flow order enforced |
+| §11 | Price the change | Lines from the rate library or typed: cost (internal) and price (client), markup, tax; time impact in **working days** (`services/workdays.py`). Cost lines hidden for `HIDE_COST_ROLES` | site sees price, not cost |
+| §11 | Client approval | Recorded by staff for now: who, how (in person / email / WhatsApp / signed document), date, file — same shape as the stage sign-off. Portal approval is Phase G. *Our error* changes are approved internally by an Owner (no client price, cost only) | method required; our-error needs Owner |
+| §11 | Approved change updates the contract and plan | Contract gets `change_orders[]` and `revised_value` (the signed `value` and signature are never edited — D2 rule). A new payment-schedule row is added (*on approval* or *on a stage's completion*, chosen when pricing). Stage budget + cost impact. Time impact moves the stage's tasks and their dependents by working days through `save_stages`, recorded as a **delay** with reason *client change* when a baseline exists. Optional new tasks on the stage. Project value = revised value | contract revised; dates moved; delay logged; signed copy unchanged |
+| §12 | Reports | Per project: contract → revised value, budget, committed, actual, invoiced, received, receivable, margin. Company: receivables ageing (0–30, 31–60, 61–90, 90+), cost by category / vendor, change orders by reason, budget overruns by stage. Reports area (`reports: r`) shows totals; cost and margin only to roles that can see costs | ageing buckets; margin hidden |
+
+## E2. Rules fixed in this phase
+* Only approved costs are *actual*; submitted ones are *committed*. Deleting an approved cost is replaced by **void** with a reason (Owner / Accounts), so the audit trail stays.
+* An invoice is edited only as a draft. Once sent, changes go through a credit note. Void needs a reason and no receipts allocated.
+* A payment-schedule row is invoiced once; its amount is fixed by the contract (or the change order that added it).
+* The signed contract is never edited; change orders add to `revised_value` and the schedule.
+* Cost fields added in this phase (`cost`, `spent`, `budget`, `margin`, `markup_pct`, vendor bill amounts) are added to `COST_FIELDS` and stripped for `HIDE_COST_ROLES`; invoices and receipts are never shown to Site Supervisor.
+* Permissions use the existing areas: `finance` (costs, invoices, receipts — Owner, PM, Accounts rw; Designer, Procurement r) and `change_orders` (Owner, PM, Designer rw; Site, Accounts r). The NAV entries *Finance* and *Change orders* get `ready: true` and their routes.
+
+## E3. What is added
+| Kind | Items |
+|---|---|
+| Collections | `costs`, `invoices`, `receipts`, `change_orders` (+ `rate_library.actuals`, `contracts.change_orders` / `revised_value`, `payment_schedule[].status / invoice_id`). Migration `0xx_finance_indexes` (company + project + status / due date) |
+| Endpoints | `GET/POST /projects/<id>/costs` · `PUT/POST /costs/<id>` (edit draft, `/submit`, `/approve`, `/reject`, `/void`) · `GET /finance/costs` (company list, filters) |
+| | `POST /contracts/<id>/schedule/<row>/invoice` · `GET/POST /invoices` · `PUT /invoices/<id>` · `POST /invoices/<id>/send` · `/void` · `/credit-note` · `GET /invoices/<id>/print` |
+| | `GET/POST /receipts` · `POST /receipts/<id>/void` · `POST /lead_receipts/<id>/apply` (advance → invoice) |
+| | `GET/POST /projects/<id>/change_orders` · `PUT /change_orders/<id>` · `POST /change_orders/<id>/price` · `/send` · `/approve` · `/reject` · `/withdraw` · `POST /change_orders/<id>/invoice` |
+| | `GET /projects/<id>/finance` (summary) · `GET /reports/finance` (ageing, categories, overruns) · `POST /rates/<id>/use-suggested` |
+| Screens | Finance (Costs · Invoices · Receipts · Receivables tabs); project **Money** tab (budget vs actual per stage, costs, invoices, schedule with *Raise invoice*); Change orders list + editor; invoice print page; rate library suggestion column; Settings numbering for INV / CRN / CO |
+| Worker | `check_invoices` (due / overdue / escalation), `check_change_orders` (sent and not answered in 3 days → PM). Both in `run_once` |
+| Notifications | New `NOTIFY_EVENTS` under a *Finance* group: cost needs approval (critical), cost approved / rejected, stage 80 % / 100 % budget, invoice due / overdue, receipt recorded, CO needs approval, CO approved / rejected |
+| Test file | `backend/tests/test_phase_e.py` (keeps `test_auth.py`, `test_phase_d.py`, `test_projects_depth.py` green) |
+
+### What the parked drafts give (`backend/later/`)
+| Draft | Reuse | Change needed |
+|---|---|---|
+| `services/budget.py` | `stage_spent`, `usage_level`, `recalc_stage`, `variance`, `project_financials` almost as they are | contracts are `status: "signed"` (draft looks for `"active"`); notify through `services/notify.send`, not `t.notify(role=…)` |
+| `routes/finance.py` | Cost approval flow, over-budget reason, rate-library learning, `record_payment`, schedule invoicing idea | Uses `register_crud` / `..crud` and `services/pricing.py`, which are not in `app/` — rewrite as plain routes; schedule rows are `name / pct / amount`, not `label / percent`; reminders become worker notifications, not auto follow-ups |
+| `routes/delivery.py` change orders | `apply_change_order` (contract + stage budget + date shift) | Shift dates with working days and `save_stages`, log delays, never overwrite `contract.value` |
+| `services/pricing.py` `invoice_totals` | Totals / paid / status math | Check against the proposal `compute` tax rounding |
+| Retention, progress claims, pay links, timesheets | Not in this phase (below) | — |
+
+## E4. Not in this phase (and where it goes)
+| Item | Where |
+|---|---|
+| Procurement: purchase requests, quotes, purchase orders, deliveries, three-way match (`later/routes/delivery.py`) | **Recommend its own phase after F** (Procurement area, NAV *Procurement*). In E a vendor bill is entered as a cost with the vendor and bill number; E keeps `costs.po_id` empty so POs can link later |
+| Online payment links (Razorpay / Stripe) and paying from the portal | Phase G (portal) with a payment-provider integration |
+| Client approves change orders in the portal | Phase G (E records the client's approval by staff) |
+| Retention and its release, progress-% claims | *(to confirm)* — common in construction contracts; parked draft has both; add after E if the owner wants them |
+| Accounting export (Tally / QuickBooks / Zoho Books) | Integrations *(to confirm §15)*; E gives CSV exports of invoices, receipts and costs |
+| Timesheets / labour cost from hours | *(to confirm)*; labour is entered as a cost in E |
+| Product deposits before ordering | Phase F selections + procurement phase |
+
+Open questions for the owner: (1) Should pre-sales lead expenses (`lead_expenses`) count as project cost after a win, or stay as cost to acquire? (2) Retention and progress claims — needed? (3) Site expense limit per company and whether Site Supervisor may see their own expense amounts. (4) Does an *upcoming* schedule row ever get invoiced early (override) or never? (5) Separate tax types (CGST / SGST / IGST) on invoices, or one company tax rate as on proposals?
+
+---
+
+# Phase F — Documents, selections & site reports
+
+Source: requirements for documents & drawings, selections and site reports *(section numbers to confirm — the parked draft `later/routes/delivery.py` cites "sections 6–11")*, §4.1 / B+2 (stage closing checks such as *Drawings issued to the client* and *Site photos uploaded*, client sign-off), §13 (portal users see their projects), §12 (selections cost ties to Phase E). Builds on the `files` collection, `/uploads` and the storage quota (`admin.py`), lead files handed over on a win (*From the lead*), project issues and the delay log (B+3). Client choices and approvals in the portal are Phase G; here staff record them. Covered by `backend/tests/test_phase_f.py`.
+
+### Build status
+| Block | Scope | Status |
+|---|---|---|
+| 1 | Document library: folders, upload, versions / revisions, lead files shown in the library, permissions, quota | Planned |
+| 2 | Drawing register, revision status, transmittals (issue to client / consultant, by email), stage checks ticked from issued drawings | Planned |
+| 3 | Selections: rooms, options, allowance vs chosen cost, client choice recorded by staff, link to Phase E cost and change orders | Planned |
+| 4 | Daily site reports: weather, manpower, work done, photos, issues → project issues, delays → delay log; portal read-only view; Documents, Selections, Site reports leave SOON | Planned |
+
+## F1. Requirement → implementation → test
+| § | Requirement | Implementation | Test |
+|---|---|---|---|
+| (to confirm) | Document library per project with folders | `documents` {project, folder, name, kind (drawing, specification, contract, approval / permit, report, photo, other), stage, room, tags, current version}. Default folders per service (Architecture: Concept, Drawings, Approvals; Construction: Structural, MEP, Site photos; Interior: Layouts, 3D views, Selections; all: Contract, Client documents, From the lead), editable in Settings. Files through `/uploads` (same type list, 20 MB / 100 MB video limits and the storage quota) | unknown folder 400; quota 402 |
+| (to confirm) | Versions / revisions | Uploading over a document adds a version {rev (R0, R1… or company format), file key, note, by, at}; the latest is current, older ones stay downloadable. Removing a version deletes its stored file (as task files do) | revisions kept; old file served; delete frees quota |
+| C+3 | Lead files and task files appear in one place | The library lists `lead_files` with `project_id` (folder *From the lead*, read-only there) and task files from B+2 (folder *Task files*) without copying them, so nothing is stored twice | lead file listed once; quota unchanged |
+| (to confirm) | Drawing register | Documents of kind *drawing* carry a number (e.g. `A-101`), title, discipline, scale, and a status per revision: work in progress → for comment → for approval → approved / for construction → superseded. The register lists every drawing with its current revision and status and the date last issued | status flow; superseded on a new rev |
+| (to confirm) | Transmittals | `transmittals` {number via `t.next_number("TRN", "TRN")`, project, to (contacts on the project team), purpose (for information, for comment, for approval, for construction), documents + revisions, note, sent by email (result per address, like meeting minutes), acknowledged (date, by — recorded by staff)}. The document shows where each revision was sent | number; email result kept; rev locked once sent |
+| B+2 | Stage checks *Drawings issued to the client* / *Site photos uploaded* | When a transmittal to the client contains drawings of a stage, that stage's *Drawings issued to the client* check is offered as ticked (with a link to the transmittal); a site report or photo document on a construction stage offers *Site photos uploaded*. Still a tick by an editor, never automatic, so the Owner override rules of B+2 stay the same | offered after transmittal; not ticked without an editor |
+| (to confirm) | Selections: options per item | `selections` {project, room, item (e.g. *Kitchen countertop*), stage, allowance, options[] {name, brand, code, supplier contact, photo / file, qty, unit, cost (internal), price (client), lead time}, chosen option, status open → options sent → chosen → confirmed → ordered → installed, due date (from the stage start minus lead time)}. Options may be picked from the rate library (`kind: product`) | status order; option from rate item |
+| §12 | Allowance vs chosen cost | Each item shows allowance, chosen price and the difference; the project total of differences is shown on the Selections tab. When the confirmed choice is over the allowance, *Create change order* fills a Phase E change order with the difference (and under allowance a credit line). Confirming a choice can create a submitted cost in Phase E when the item is bought *(to confirm: on confirm or on order)* | difference math; CO prefilled; cost hidden for site / portal |
+| (to confirm) | Client choice workflow | Staff send the options to the client (email with a summary, logged), then record the client's choice: who, how (in person / email / WhatsApp / phone / signed document), date, note — the same shape as the stage sign-off. A choice not made by its due date notifies the PM and shows as *Waiting on client* in the B+4 waiting list (and in the portal's *Waiting on you*). Changing a confirmed choice needs a reason and reopens the item | method required; overdue → waiting; reopen needs reason |
+| B+2 | Interior check *Items installed as per the selection* | Offered as ticked when every selection of that stage is *installed* | offered; not forced |
+| (to confirm) | Daily site report | `site_reports` {project, date (one per project per day; edit until the next day, then locked except for the Owner), weather (clear / cloudy / rain / heavy rain / extreme heat + note), manpower rows (trade, own / subcontractor contact, count), equipment, work done per stage / task with progress note, materials received, visitors, photos (via `/uploads`), issues, delays, safety incidents, author}. Written by roles with `site: rw` on projects they are on | second report same day 409; locked after a day; outsider 404 |
+| B+1 / B+4 | Issues raised in the report → project issues | Each issue line can become a project issue (severity, stage, owner, waiting on whom) through the existing `/projects/<id>/issues` logic, so the B+1 notifications and the stage gate's high-severity rule apply | issue created + notified; stage gate blocked |
+| B+3 | Delays in the report → delay log | A delay line {reason from `DELAY_REASONS`, stage / task, working days, note} is written to `project_delays` with the report as source; it does not move dates by itself (moving stays in the plan, B+3) — the PM is told to review the plan | delay row with source; dates unchanged |
+| B+1 | Missing reports | Worker: no report by the company's cut-off time on a working day (`services/workdays.py`) for an active project with a site supervisor → that supervisor; next day → the project's managers | working days only; on-hold quiet |
+| §13 | Portal (read only in F) | `GET /portal/projects/<id>` adds documents shared with the client (only revisions sent by transmittal or marked *shared*), selections with options and prices (never cost), and site report photos the PM marks as shareable. Approving and commenting stays for Phase G | client sees shared only; no cost fields |
+
+## F2. Rules fixed in this phase
+* Every file still goes through `/uploads` and the `files` collection; the storage quota counts each stored file once, wherever it is listed.
+* A revision that was sent in a transmittal cannot be deleted; a new revision supersedes it.
+* Selection cost and supplier price are cost fields (added to `COST_FIELDS`); clients and site staff see only the client price and the difference against the allowance.
+* A site report records issues and delays; it never changes the plan dates or closes a stage by itself.
+* Permissions use the existing areas: `documents` (Owner, PM, Designer rw; Sales, Site r), `selections` (Owner, PM, Designer rw; Procurement r) and `site` (Owner, PM, Site rw). Project membership rules of Phase B still apply (only projects you are on). The NAV entries *Documents & drawings*, *Selections* and *Site reports* get `ready: true` and their routes; each also appears as a project tab.
+
+## F3. What is added
+| Kind | Items |
+|---|---|
+| Collections | `documents` (with `versions[]`), `document_folders` (company defaults), `transmittals`, `selections`, `site_reports`. Migration `0xx_documents_site` (indexes; default folders per company) |
+| Endpoints | `GET/POST /projects/<id>/documents` · `PUT/DELETE /documents/<id>` · `POST /documents/<id>/versions` · `DELETE /documents/<id>/versions/<rev>` · `PUT /documents/<id>/status` |
+| | `GET /projects/<id>/drawing-register` · `GET/POST /projects/<id>/transmittals` · `POST /transmittals/<id>/acknowledge` |
+| | `GET/POST /projects/<id>/selections` · `PUT/DELETE /selections/<id>` · `POST /selections/<id>/send` · `/choice` · `/reopen` · `/status` · `/change-order` |
+| | `GET/POST /projects/<id>/site-reports` · `GET/PUT /site-reports/<id>` · `POST /site-reports/<id>/issues` · `/delays` · `GET /site-reports` (company, by date) |
+| | `GET /portal/projects/<id>/documents` · `/selections` · `/photos` (read only) |
+| Screens | Documents & drawings (folder tree, versions, drawing register, transmittals); project tabs Documents · Selections · Site reports; selection item editor with options side by side; daily report form usable on a phone (photos from the camera); Settings → document folders, report cut-off time; portal project page sections |
+| Worker | `check_site_reports` (missing report), `check_selections` (choice due in 3 days, overdue → waiting on client), `check_transmittals` (for approval / for comment not acknowledged in 7 days → sender) |
+| Notifications | *Documents & site* group: transmittal sent, drawing approved, selection choice due / overdue, client choice recorded, site report missing, issue / delay from a site report |
+| Test file | `backend/tests/test_phase_f.py` |
+
+### What the parked drafts give (`backend/later/`)
+| Draft | Reuse | Change needed |
+|---|---|---|
+| `routes/delivery.py` documents | Revision list R0, R1…; a new revision clears the approval; transmit idea; comment thread | Rewrite without `register_crud`; transmittal becomes its own record; approvals move to Phase G |
+| `routes/delivery.py` selections | Allowance / over-allowance math, status flow, product swap resets the choice, margin report | Options per item instead of one product; use the rate library instead of a separate `products` collection *(to confirm)*; ordering moves to the procurement phase |
+| `routes/delivery.py` site reports / snags | Field list (date, labour count, photos, author) | Manpower per trade, weather, issues / delays links, one per day |
+| `routes/portal.py` selection / document decisions | Shape of the portal endpoints | Phase G |
+
+## F4. Not in this phase (and where it goes)
+| Item | Where |
+|---|---|
+| Client approves drawings, comments on documents, picks a selection in the portal | Phase G (F records it by staff and shows read-only in the portal) |
+| Sending transmittals / reports by WhatsApp | Phase G (F emails through the company SMTP) |
+| Ordering selections, purchase orders, deliveries | Procurement phase (recommended after F) |
+| Drawing markup / viewer for DWG and PDF annotations | Later *(to confirm)*; F stores and serves files as today |
+| Snag / punch list as its own module | *(to confirm)* — recommend project issues with `kind: snag` so the stage check *Snags for this stage closed* can be offered from it |
+| 360° renders and design options (parked draft) | *(to confirm)* — Interior design phase, after G |
+| Product library separate from the rate library | *(to confirm)*; F uses the rate library `product` kind |
+
+Open questions for the owner: (1) Revision naming — R0 / R1, A / B / C, or company setting? (2) Does a confirmed selection create the Phase E cost at confirmation or at ordering? (3) Site report cut-off time and whether reports are needed on every working day or only when work happened. (4) Should clients see site photos only when marked shareable, or all photos? (5) One shared product library for selections, or the rate library's product kind?
