@@ -32,6 +32,7 @@ export const routes: Routes = [
       { path: 'contacts/:id', canActivate: [staffGuard], data: { area: 'contacts' }, loadComponent: () => import('./pages/contacts/contact-detail.component').then((m) => m.ContactDetailComponent) },
       { path: 'projects', canActivate: [staffGuard], data: { area: 'projects' }, loadComponent: () => import('./pages/projects/projects.component').then((m) => m.ProjectsComponent) },
       { path: 'projects/:id', canActivate: [staffGuard], data: { area: 'projects' }, loadComponent: () => import('./pages/projects/project-detail.component').then((m) => m.ProjectDetailComponent) },
+      { path: 'finance', canActivate: [staffGuard], data: { area: 'finance' }, loadComponent: () => import('./pages/finance.component').then((m) => m.FinanceComponent) },
       { path: 'settings', canActivate: [staffGuard], data: { area: 'settings' }, loadComponent: () => import('./pages/settings.component').then((m) => m.SettingsComponent) },
       { path: 'm/:area', canActivate: [staffGuard], loadComponent: () => import('./pages/area.component').then((m) => m.AreaComponent) },
       { path: 'forbidden', loadComponent: () => import('./pages/area.component').then((m) => m.ForbiddenComponent) },

@@ -134,7 +134,7 @@ def health(p, today=None):
     parts.append({"key": "fresh", "label": "Kept up to date", "points": pts, "max": 15,
                   "why": "No updates recorded yet" if age is None else f"Last update {age} day(s) ago"})
 
-    # 6. budget (15): spent against the stage budgets (costs are recorded from Phase E)
+    # 6. budget (15): approved costs against the stage budgets
     budget = sum(s.get("budget", 0) or 0 for s in p.get("stages", []))
     spent = sum(c.get("amount", 0) for c in db.costs.find({"company_id": g.cid, "project_id": pid, "status": "approved"}))
     prog = 0
@@ -142,7 +142,7 @@ def health(p, today=None):
         from ..routes.projects import project_progress
         prog = project_progress(p)
     if not spent:
-        pts, why = 15, "No costs recorded yet (recorded from the Finance phase)"
+        pts, why = 15, "No costs recorded yet"
     elif budget and spent > budget:
         pts, why = 0, "Spent more than the budget"
     elif budget and spent / budget >= 0.8 and prog < 80:

@@ -22,7 +22,7 @@ export const NAV: NavItem[] = [
   { area: 'site', label: 'Site reports', icon: 'pi pi-camera', section: 'Delivery' },
   { area: 'change_orders', label: 'Change orders', icon: 'pi pi-sync', section: 'Delivery' },
   { area: 'procurement', label: 'Procurement', icon: 'pi pi-truck', section: 'Money' },
-  { area: 'finance', label: 'Finance', icon: 'pi pi-wallet', section: 'Money' },
+  { area: 'finance', label: 'Finance', icon: 'pi pi-wallet', section: 'Money', ready: true, path: '/app/finance' },
   { area: 'reports', label: 'Reports', icon: 'pi pi-chart-bar', section: 'Money', ready: true, path: '/app/reports' },
   { area: 'followups', label: 'Follow-ups', icon: 'pi pi-bell', section: 'Team', ready: true, path: '/app/followups' },
   { area: 'messages', label: 'Inbox', icon: 'pi pi-comments', section: 'Team' },

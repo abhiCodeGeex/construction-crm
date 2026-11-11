@@ -12,7 +12,7 @@ from ..services.defaults import (SERVICES, PROJECT_ROLES, PROJECT_STATUSES, PROJ
                                  DESIGN_SERVICES, DEFAULT_STAGE_DAYS, TASK_PRIORITIES, gate_defaults, LINK_TYPES,
                                  DELAY_REASONS, WAITING_PARTIES)
 from ..services import workdays
-from ..services import project_events
+from ..services import project_events, budget
 from ..services.subscription import check_project_limit
 
 bp = Blueprint("projects", __name__)
@@ -487,8 +487,11 @@ def delete_project(_id):
     if g.role != "owner":
         abort(403, "Only the owner can delete a project")
     p = t.get("projects", _id)
+    if db.costs.count_documents({"company_id": g.cid, "project_id": _id, "status": "approved"}):
+        abort(409, "This project has approved costs; void them first so the money trail is kept")
     t.delete("projects", _id)
     db.project_issues.delete_many({"company_id": g.cid, "project_id": _id})
+    db.costs.delete_many({"company_id": g.cid, "project_id": _id})  # drafts, submitted, rejected and void only
     db.notifications.delete_many({"company_id": g.cid, "project_id": _id})  # no bell entry may point at it
     for coll in ("project_comments", "project_activity", "project_meetings", "project_delays"):
         db[coll].delete_many({"company_id": g.cid, "project_id": _id})
@@ -1005,14 +1008,17 @@ def dashboard(_id):
                   "late": sum(1 for x in tasks if x["status"] != "done" and x.get("end") and x["end"] < today),
                   "conflicts": sum(1 for x in tasks if x.get("conflict"))},
         "stages": [{"id": s["id"], "name": s["name"], "service": s["service"], "status": s["status"],
-                    "progress": s.get("progress", 0), "budget": s.get("budget", 0)} for s in p.get("stages", [])],
+                    "progress": s.get("progress", 0), **{k: r[k] for k in ("budget", "spent", "committed", "pct", "level")}}
+                   for s, r in zip(p.get("stages", []), budget.budget_rows(p))],
         "budget": {"budget": round(sum(s.get("budget", 0) or 0 for s in p.get("stages", [])), 2),
                    "actual": round(actual, 2), "value": p.get("value", 0)},
     }
+    data["budget"]["committed"] = round(sum(s["committed"] for s in data["stages"]), 2)
     if g.hide_costs:
         data.pop("budget")
         for s in data["stages"]:
-            s.pop("budget")
+            for k in ("budget", "spent", "committed", "pct", "level"):
+                s.pop(k)
     return jsonify(data)
 
 

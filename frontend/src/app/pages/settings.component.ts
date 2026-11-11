@@ -113,6 +113,15 @@ import { AuthService } from '../core/auth.service';
             </div>
             @if (canEdit()) { <div class="row right mt"><p-button label="Save setup" icon="pi pi-check" (onClick)="saveSetup()" /></div> }
           }
+          <p-card header="Costs" styleClass="mt">
+            <div class="grid2">
+              <label class="field"><span>Site expense limit</span><p-inputnumber [(ngModel)]="fin.site_expense_limit" [min]="0" [disabled]="!canEdit()" fluid />
+                <small class="muted">The most a Site Supervisor can log in one expense; each waits for the PM's approval.</small></label>
+              <label class="field"><span>Overspend markup %</span><p-inputnumber [(ngModel)]="fin.overspend_markup_pct" [min]="0" [max]="100" [disabled]="!canEdit()" fluid />
+                <small class="muted">Added when a client change takes a stage over budget and the client is charged for it.</small></label>
+            </div>
+            @if (canEdit()) { <div class="row right"><p-button label="Save" icon="pi pi-check" size="small" (onClick)="saveFinance()" /></div> }
+          </p-card>
         </p-tabpanel>
 
         <!-- templates -->
@@ -235,11 +244,12 @@ export class SettingsComponent implements OnInit {
   currencies = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'AUD'];
   setup: any = { branches: [] };
   cal: any = { weekdays: [], working_days: [], holidays: [] };
+  fin: any = {};
   tplDlg = false;
   tf: any = { stages: [] };
 
   async ngOnInit() {
-    await Promise.all([this.loadCompany(), this.loadTemplates(), this.loadRoles(), this.loadAudit(), this.loadCalendar()]);
+    await Promise.all([this.loadCompany(), this.loadTemplates(), this.loadRoles(), this.loadAudit(), this.loadCalendar(), this.loadFinance()]);
   }
 
   async loadCalendar() {
@@ -249,6 +259,14 @@ export class SettingsComponent implements OnInit {
 
   toggleDay(i: number, on: boolean) {
     this.cal.working_days = on ? [...new Set([...this.cal.working_days, i])].sort() : this.cal.working_days.filter((d: number) => d !== i);
+  }
+
+  async loadFinance() {
+    this.fin = await this.api.get('/finance/settings');
+  }
+
+  async saveFinance() {
+    this.fin = await this.api.put('/finance/settings', { site_expense_limit: this.fin.site_expense_limit, overspend_markup_pct: this.fin.overspend_markup_pct }, 'Saved');
   }
 
   async saveCalendar() {

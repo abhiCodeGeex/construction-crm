@@ -364,7 +364,7 @@ Source: requirements §12 (finance: costs per stage with budget control, invoice
 ### Build status
 | Block | Scope | Status |
 |---|---|---|
-| 1 | Cost entries (stage, category, vendor, bill files, approval), stage spent and 80 % / 100 % alerts, dashboard budget vs actual, health budget part, rate library actuals | Planned |
+| 1 | Cost entries (stage, category, vendor, bill files, approval), stage spent and 80 % / 100 % alerts, dashboard budget vs actual, health budget part, rate library actuals | **Done** |
 | 2 | Invoices from payment-schedule rows (milestone achieved → due), manual invoices, tax, numbering, print, send by email | Planned |
 | 3 | Receipts against invoices, lead advances applied, overdue reminders and escalation, receivables | Planned |
 | 4 | Change orders (request → price → client approval → contract, schedule, stage budget and dates), finance reports, Finance + Change orders screens leave SOON | Planned |
@@ -433,7 +433,14 @@ Source: requirements §12 (finance: costs per stage with budget control, invoice
 | Timesheets / labour cost from hours | *(to confirm)*; labour is entered as a cost in E |
 | Product deposits before ordering | Phase F selections + procurement phase |
 
-Open questions for the owner: (1) Should pre-sales lead expenses (`lead_expenses`) count as project cost after a win, or stay as cost to acquire? (2) Retention and progress claims — needed? (3) Site expense limit per company and whether Site Supervisor may see their own expense amounts. (4) Does an *upcoming* schedule row ever get invoiced early (override) or never? (5) Separate tax types (CGST / SGST / IGST) on invoices, or one company tax rate as on proposals?
+Decisions taken to start building (the owner can change any of them; each is one setting or one rule):
+1. **Pre-sales lead expenses** stay the cost of winning the lead; they are not project cost.
+2. **Retention and progress-% claims** are not in Phase E.
+3. **Site expenses**: limit 5,000 per entry (Settings → Branches, tax & numbering → Costs); every one waits for the PM; the Site Supervisor sees only their own entries and never the stage budgets.
+4. **Upcoming schedule rows** can be invoiced early only by the Owner, with a reason.
+5. **Tax**: one company tax rate and label, as on proposals.
+
+Block 1 notes: a cost is recorded on the project's **Money** tab (Owner, PM, Accounts; Site Supervisor for site expenses); the company list is **Finance**. A project with approved costs cannot be deleted until they are voided. Cost entries appear in the project timeline under *Money* only for roles that can see finance.
 
 ---
 

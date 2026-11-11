@@ -162,10 +162,14 @@ const EST_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'sec
 
     <p-dialog header="Rate library" [modal]="true" [(visible)]="ratesDlg" [style]="{ width: '56rem' }" [breakpoints]="{ '900px': '98vw' }">
       <p-table [value]="rates()" size="small" [scrollable]="true" scrollHeight="50vh">
-        <ng-template #header><tr><th>Kind</th><th>Name</th><th>Category</th><th>Unit</th><th class="right">Rate</th><th></th></tr></ng-template>
+        <ng-template #header><tr><th>Kind</th><th>Name</th><th>Category</th><th>Unit</th><th class="right">Rate</th><th class="right">From real costs</th><th></th></tr></ng-template>
         <ng-template #body let-r><tr><td>{{ label(r.kind) }}</td><td>{{ r.name }}{{ r.brand ? ' · ' + r.brand : '' }}</td><td>{{ r.category || '—' }}</td><td>{{ r.unit }}</td>
-          <td class="right">{{ fmt(r.rate) }}</td><td class="right">@if (canEst()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="delRate(r)" ariaLabel="Delete" pTooltip="Delete"/> }</td></tr></ng-template>
-        <ng-template #emptymessage><tr><td colspan="6" class="muted center">No rates yet</td></tr></ng-template>
+          <td class="right">{{ fmt(r.rate) }}</td>
+          <td class="right">@if (r.suggested_rate) { <span pTooltip="Average of the last {{ r.actuals.length }} approved costs">{{ fmt(r.suggested_rate) }}</span>
+            @if (canEst() && r.suggested_rate !== r.rate) { <p-button label="Use" size="small" [text]="true" (onClick)="useSuggested(r)" /> } }
+            @else if (r.last_actual) { <span class="muted small">last {{ fmt(r.last_actual) }}</span> } @else { — }</td>
+          <td class="right">@if (canEst()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="delRate(r)" ariaLabel="Delete" pTooltip="Delete"/> }</td></tr></ng-template>
+        <ng-template #emptymessage><tr><td colspan="7" class="muted center">No rates yet</td></tr></ng-template>
       </p-table>
       @if (canEst()) {
         <div class="row gap wrap mt">
@@ -327,6 +331,11 @@ export class LeadMoneyComponent implements OnInit {
 
   async addRate() {
     await this.api.post('/rates', this.nr, 'Rate added');
+    await this.openRates();
+  }
+
+  async useSuggested(r: any) {
+    await this.api.post(`/rates/${r.id}/use-suggested`, {}, 'Rate updated from real costs');
     await this.openRates();
   }
 

@@ -2,7 +2,7 @@ import { Component, OnInit, computed, inject, input, signal, viewChild } from '@
 import { CHANNEL_ICON, FollowupDialogComponent } from '../../shared/followup-dialog.component';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ConfirmationService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
@@ -28,6 +28,7 @@ import { GanttComponent } from '../../shared/gantt.component';
 import { MapPickerComponent } from '../../shared/map-picker.component';
 import { PRIORITY_SEVERITY, TaskPanelComponent } from './task-panel.component';
 import { ProjectMeetingsComponent } from './project-meetings.component';
+import { ProjectMoneyComponent } from './project-money.component';
 import { ProjectActivityComponent, ProjectHealthComponent } from './project-insights.component';
 
 const DESIGN = ['architecture', 'interior'];
@@ -37,7 +38,7 @@ const DESIGN = ['architecture', 'interior'];
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, KnobModule,
     MessageModule, MultiSelectModule, ProgressBarModule, SelectButtonModule, SelectModule, SliderModule, TableModule, TabsModule,
     TagModule, TextareaModule, TooltipModule, GanttComponent, MapPickerComponent, FollowupDialogComponent, CheckboxModule,
-    TaskPanelComponent, ProjectMeetingsComponent, ProjectActivityComponent, ProjectHealthComponent],
+    TaskPanelComponent, ProjectMeetingsComponent, ProjectActivityComponent, ProjectHealthComponent, ProjectMoneyComponent],
   template: `
     @if (p(); as p) {
       <div class="page-head">
@@ -66,6 +67,7 @@ const DESIGN = ['architecture', 'interior'];
           <p-tab value="team"><i class="pi pi-users mr"></i>Team ({{ p.team.length }})</p-tab>
           <p-tab value="issues"><i class="pi pi-exclamation-circle mr"></i>Issues ({{ dash()?.open_issues ?? 0 }})</p-tab>
           <p-tab value="details"><i class="pi pi-map-marker mr"></i>Details & site</p-tab>
+          @if (auth.can('finance') || auth.user()?.role === 'site') { <p-tab value="money"><i class="pi pi-wallet mr"></i>Money</p-tab> }
           <p-tab value="meetings"><i class="pi pi-calendar-plus mr"></i>Meetings</p-tab>
           <p-tab value="followups"><i class="pi pi-bell mr"></i>Follow-ups</p-tab>
           <p-tab value="activity"><i class="pi pi-list mr"></i>Activity</p-tab>
@@ -348,6 +350,7 @@ const DESIGN = ['architecture', 'interior'];
             }
           </p-tabpanel>
 
+          <p-tabpanel value="money">@if (tab === 'money') { <app-project-money [project]="p" [contacts]="contacts()" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="meetings">@if (tab === 'meetings') { <app-project-meetings [project]="p" [contacts]="contacts()" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="activity">@if (tab === 'activity') { <app-project-activity [projectId]="p.id" /> }</p-tabpanel>
           <p-tabpanel value="followups">
@@ -614,6 +617,7 @@ export class ProjectDetailComponent implements OnInit {
   form = signal<any>(null);
   busy = signal(false);
   tab = 'overview';
+  private route = inject(ActivatedRoute);
 
   sev = STATUS_SEVERITY;
   svc = SERVICE_LABEL;
@@ -664,6 +668,7 @@ export class ProjectDetailComponent implements OnInit {
   private msStage: any = null;
 
   async ngOnInit() {
+    this.tab = this.route.snapshot.queryParamMap.get('tab') ?? this.tab;  // notification links open a tab (?tab=money)
     this.meta.set(await this.api.get('/projects/meta'));
     this.planMeta.set(await this.api.get('/projects/plan_meta'));
     await this.reload();

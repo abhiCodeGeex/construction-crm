@@ -171,6 +171,12 @@ def m011_plan_meetings():
     db.project_meetings.create_index([("company_id", 1), ("status", 1), ("at", 1)])
 
 
+def m012_finance():
+    """Phase E: indexes for costs (per project and stage, and the company list)."""
+    db.costs.create_index([("company_id", 1), ("project_id", 1), ("stage_id", 1), ("status", 1)])
+    db.costs.create_index([("company_id", 1), ("status", 1), ("date", -1)])
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -183,6 +189,7 @@ MIGRATIONS = [
     ("009_projects_plus", m009_projects_plus),
     ("010_stage_gates", m010_stage_gates),
     ("011_plan_meetings", m011_plan_meetings),
+    ("012_finance", m012_finance),
 ]
 
 

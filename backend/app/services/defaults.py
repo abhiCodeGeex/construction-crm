@@ -292,3 +292,17 @@ NOTIFY_EVENTS.update({
     "project_at_risk": ("Project health turned red", False),
     "signoff_recorded": ("Client sign-off recorded", False),
 })
+
+# ---------------- Phase E: costs, invoices, change orders ----------------
+COST_CATEGORIES = ["Material", "Labour", "Subcontract", "Equipment", "Transport", "Consultant", "Site expense", "Other"]
+VENDOR_TYPES = ["supplier", "subcontractor", "contractor", "consultant"]
+COST_STATUSES = ["draft", "submitted", "approved", "rejected", "void"]
+# why a cost takes a stage over its budget; "client_change" is the one the client pays for (change order)
+OVERSPEND_REASONS = {"client_change": "Client changed something", "our_mistake": "Our mistake", "price_rise": "Price rise"}
+FINANCE_DEFAULTS = {"site_expense_limit": 5000, "overspend_markup_pct": 10}
+
+NOTIFY_EVENTS.update({
+    "cost_approval": ("Cost waiting for your approval", True),
+    "cost_decided": ("Your cost approved or rejected", False),
+    "budget_alert": ("Stage budget 80% / 100% spent", False),
+})

@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify, abort, g
 
 from .. import tenancy as t
 from ..db import db, serialize
-from ..security import api
+from ..security import api, can
 from ..services import project_events as ev, workdays
 from ..services.defaults import DELAY_REASONS, WAITING_PARTIES, WEEKDAYS, LINK_TYPES
 from .projects import load, require_edit, all_tasks, d
@@ -100,9 +100,12 @@ def activity(_id):
     if group:
         kinds = ev.ACTIVITY_GROUPS.get(group) or abort(400, "Unknown filter")
         q["kind"] = {"$in": kinds}
+    money = can("finance") and not g.hide_costs  # cost entries carry amounts
+    if not money:
+        q["kind"] = {"$in": [k for k in q["kind"]["$in"] if k != "cost"]} if group else {"$ne": "cost"}
     limit = min(int(request.args.get("limit", 200)), 500)
     rows = list(db.project_activity.find(q).sort("at", -1).limit(limit))
-    return jsonify({"rows": serialize(rows), "groups": list(ev.ACTIVITY_GROUPS)})
+    return jsonify({"rows": serialize(rows), "groups": [x for x in ev.ACTIVITY_GROUPS if money or x != "Money"]})
 
 
 @bp.get("/projects/plan_meta")

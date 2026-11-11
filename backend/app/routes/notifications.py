@@ -41,13 +41,17 @@ PROJECT_EVENTS = {"project_pm", "project_added", "task_assigned", "task_due", "t
                   "stage_done", "milestone_achieved", "milestone_late", "issue_raised"}
 
 
-GROUPS = ["Leads & sales", "Projects", "Contacts"]
+FINANCE_EVENTS = {"cost_approval", "cost_decided", "budget_alert"}
+
+GROUPS = ["Leads & sales", "Projects", "Finance", "Contacts"]
 
 
 def notify_group(event):
     """Heading the event is listed under in the notification settings."""
     if event in PROJECT_EVENTS:
         return "Projects"
+    if event in FINANCE_EVENTS:
+        return "Finance"
     if event.startswith("compliance"):
         return "Contacts"
     return "Leads & sales"

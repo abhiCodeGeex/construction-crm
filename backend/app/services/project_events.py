@@ -96,6 +96,7 @@ ACTIVITY_GROUPS = {
     "Issues": ["issue"],
     "Comments & files": ["comment", "file"],
     "Meetings": ["meeting"],
+    "Money": ["cost"],
     "Edits": ["edit"],
 }
 
