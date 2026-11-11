@@ -247,13 +247,20 @@ def drawing_status(did):
     st = (request.get_json(force=True) or {}).get("status")
     if st not in DRAWING_STATUSES or st == "superseded":
         abort(400, f"Status must be one of: {', '.join(v for k, v in DRAWING_STATUSES.items() if k != 'superseded')}")
-    vs = doc["versions"][:-1] + [{**doc["versions"][-1], "status": st, "status_at": t.now(), "status_by": g.user.get("name")}]
+    return jsonify(present(set_drawing_status(doc, p, st)))
+
+
+def set_drawing_status(doc, p, st, extra=None):
+    """Status of a drawing's current revision — set by staff, or approved / returned by the client in the portal (Phase G)."""
+    did = str(doc["_id"])
+    vs = doc["versions"][:-1] + [{**doc["versions"][-1], "status": st, "status_at": t.now(), "status_by": g.user.get("name"), **(extra or {})}]
     upd = t.update("documents", did, {"versions": vs, "status": st})
-    ev.log(doc["project_id"], "file", f"Drawing {doc['number']} {doc['current_rev']}: {DRAWING_STATUSES[st]}")
+    ev.log(doc["project_id"], "file", f"Drawing {doc['number']} {doc['current_rev']}: {DRAWING_STATUSES[st]}"
+           + (f" ({(extra or {}).get('method')})" if (extra or {}).get("method") else ""))
     if st in ("approved", "for_construction"):
         notify.send("drawing_approved", ev.managers(p), f"{doc['number']} {doc['name']} {doc['current_rev']} is {DRAWING_STATUSES[st].lower()} "
                     f"({p['name']})", f"/app/projects/{p['_id']}?tab=documents", project_id=doc["project_id"])
-    return jsonify(present(upd))
+    return upd
 
 
 @bp.get("/projects/<pid>/drawing-register")
@@ -367,6 +374,9 @@ def acknowledge(tid):
     day = a_date(d.get("date") or sales.today(), "Date")
     if day > sales.today():
         abort(400, "The date cannot be in the future")
-    upd = t.update("transmittals", tid, {"acknowledged": {"by": by[:120], "date": day, "note": (d.get("note") or "").strip()[:300] or None,
-                                                          "recorded_by": g.user.get("name")}})
-    return jsonify(serialize(upd))
+    return jsonify(serialize(ack_transmittal(tr, {"by": by[:120], "date": day, "note": (d.get("note") or "").strip()[:300] or None})))
+
+
+def ack_transmittal(tr, ack):
+    """Acknowledged — recorded by staff, or by the recipient in the portal (Phase G). Stops the 7-day reminder."""
+    return t.update("transmittals", str(tr["_id"]), {"acknowledged": {**ack, "recorded_by": g.user.get("name")}})

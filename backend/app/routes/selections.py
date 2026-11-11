@@ -208,15 +208,21 @@ def record_choice(sid):
     day = a_date(d.get("date") or sales.today(), "Date")
     if day > sales.today():
         abort(400, "The date cannot be in the future")
-    choice = {"name": name[:120], "method": d["method"], "date": day, "note": (d.get("note") or "").strip()[:300] or None,
-              "recorded_by": g.user.get("name"), "recorded_at": t.now()}
+    choice = {"name": name[:120], "method": d["method"], "date": day, "note": (d.get("note") or "").strip()[:300] or None}
+    return jsonify(present(choose_option(s, p, opt, choice)))
+
+
+def choose_option(s, p, opt, choice):
+    """Record the client's choice — by staff, or by the client in the portal (Phase G, method Portal)."""
+    sid = str(s["_id"])
+    choice = {**choice, "recorded_by": g.user.get("name"), "recorded_at": t.now()}
     upd = t.update("selections", sid, {"status": "chosen", "chosen_option_id": opt["id"], "choice": choice})
     diff = r2(opt["price"] - (s.get("allowance") or 0))
     text = f"{s['item']}: client chose {opt['name']} ({money_text(opt['price'])})" + (
         f", {money_text(diff)} over the allowance" if s.get("allowance") and diff > 0 else "")
     ev.log(s["project_id"], "file", f"Selection — {text}")
     notify.send("selection_chosen", ev.managers(p), f"{p['name']}: {text}", f"/app/projects/{p['_id']}?tab=selections", project_id=s["project_id"])
-    return jsonify(present(upd))
+    return upd
 
 
 @bp.post("/selections/<sid>/status")

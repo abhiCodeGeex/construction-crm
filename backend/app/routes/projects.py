@@ -504,6 +504,7 @@ def delete_project(_id):
     db.transmittals.delete_many({"company_id": g.cid, "project_id": _id})
     db.selections.delete_many({"company_id": g.cid, "project_id": _id})
     db.site_reports.delete_many({"company_id": g.cid, "project_id": _id})
+    db.document_comments.delete_many({"company_id": g.cid, "project_id": _id})
     db.notifications.delete_many({"company_id": g.cid, "project_id": _id})  # no bell entry may point at it
     for coll in ("project_comments", "project_activity", "project_meetings", "project_delays"):
         db[coll].delete_many({"company_id": g.cid, "project_id": _id})
@@ -1200,11 +1201,13 @@ def portal_project(_id):
                "status": s["status"], "progress": s.get("progress", 0),
                "milestones": [{"name": m["name"], "due": m["due"], "status": m["status"]} for m in s.get("milestones", [])]}
               for s in p.get("stages", [])]
-    waiting_on_you = []
-    if any(m.get("contact_id") == g.contact_id and m.get("project_role") == "Client" for m in p.get("team", [])):
-        from ..services.project_health import waiting
-        waiting_on_you = [{"title": r["title"], "since": r["since"], "days": r["days"], "note": r["note"]}
-                          for r in waiting(p)["rows"] if r["party"] == "client"]
+    # Phase G: each row is something this person can act on — sent to them by name, or (for the client) to the client
+    from ..services.project_health import waiting
+    client = any(m.get("contact_id") == g.contact_id and m.get("project_role") == "Client" for m in p.get("team", []))
+    waiting_on_you = [{"title": r["title"], "since": r["since"], "days": r["days"], "note": r["note"], "kind": r["kind"], "ref": r["ref"]}
+                      for r in waiting(p)["rows"]
+                      if ((g.contact_id in r["contact_ids"]) if "contact_ids" in r else (client and r["party"] == "client"))]
     return jsonify({"id": _id, "code": p.get("code"), "name": p["name"], "status": p.get("status"),
                     "services": p.get("services"), "site": p.get("site"), "progress": project_progress(p),
-                    "planned_end": p.get("planned_end"), "team": team, "stages": stages, "waiting_on_you": waiting_on_you})
+                    "planned_end": p.get("planned_end"), "team": team, "stages": stages, "waiting_on_you": waiting_on_you,
+                    "my_role": next((m.get("project_role") for m in p.get("team", []) if m.get("contact_id") == g.contact_id), None)})

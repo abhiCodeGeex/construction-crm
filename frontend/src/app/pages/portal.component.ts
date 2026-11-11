@@ -9,11 +9,13 @@ import { Api, SERVICE_COLOR, SERVICE_LABEL, STATUS_SEVERITY, label, money } from
 import { AuthService } from '../core/auth.service';
 import { ThemeService } from '../core/theme.service';
 import { ChangePasswordComponent } from '../shared/change-password.component';
+import { PortalActionsComponent } from './portal-actions.component';
+import { PortalInvoicesComponent } from './portal-invoices.component';
 
 /** Portal for clients, vendors, subcontractors and consultants: only projects where they are on the team (§13). */
 @Component({
   selector: 'app-portal',
-  imports: [DatePipe, AvatarModule, ButtonModule, CardModule, ProgressBarModule, TagModule, ChangePasswordComponent],
+  imports: [DatePipe, AvatarModule, ButtonModule, CardModule, ProgressBarModule, TagModule, ChangePasswordComponent, PortalActionsComponent, PortalInvoicesComponent],
   template: `
     <header class="portal-top">
       <div class="logo"><span class="mark"><i class="pi pi-building"></i></span> {{ me()?.company?.name ?? 'Portal' }}</div>
@@ -44,8 +46,11 @@ import { ChangePasswordComponent } from '../shared/change-password.component';
               @for (w of p.waiting_on_you; track $index) {
                 <div class="ms-row"><span class="grow">{{ w.title }}{{ w.note ? ' — ' + w.note : '' }}</span><small class="muted">{{ w.days }} day(s)</small></div>
               }
+              <p class="small muted m0">Act on them below.</p>
             </div>
           }
+          <h4>For you to act on</h4>
+          <app-portal-actions [projectId]="p.id" [currency]="me()?.company?.currency ?? 'INR'" (changed)="view(p.id)" />
           @for (s of p.stages; track s.name + s.service) {
             <div class="stage-row"><span class="svc-dot" [style.background]="color[s.service]"></span>
               <span class="grow">{{ s.name }} <small class="muted">{{ s.start | date: 'MMM d' }} – {{ s.end | date: 'MMM d' }}</small></span>
@@ -55,6 +60,7 @@ import { ChangePasswordComponent } from '../shared/change-password.component';
                 <span class="grow small">{{ m.name }}</span><small>{{ m.due | date: 'mediumDate' }}</small></div>
             }
           }
+          @if (p.my_role === 'Client') { <app-portal-invoices [projectId]="p.id" [currency]="me()?.company?.currency ?? 'INR'" /> }
           @if (docs().length) {
             <h4>Documents and drawings</h4>
             @for (d of docs(); track d.url) { <div class="ms-row"><i class="pi pi-file"></i><a class="grow small" [href]="d.url" target="_blank" rel="noopener">@if (d.number) { {{ d.number }} } {{ d.name }}</a><small class="muted">{{ d.rev }} · {{ d.date | date: 'mediumDate' }}</small></div> }

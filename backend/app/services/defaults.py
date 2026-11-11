@@ -336,4 +336,5 @@ NOTIFY_EVENTS.update({
     "selection_due": ("Client choice due or overdue", False),
     "site_report_missing": ("Daily site report missing", False),
     "site_delay": ("Delay reported on site", False),
+    "document_comment": ("Comment on a document from the client or a consultant", False),
 })

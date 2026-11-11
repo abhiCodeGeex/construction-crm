@@ -37,6 +37,27 @@ import { Api, label } from '../../core/api.service';
           <ng-template #emptymessage><tr><td colspan="7" class="muted">No drawings yet. Add a document of kind “drawing” with its number.</td></tr></ng-template>
         </p-table>
       }
+    } @else if (view === 'comments') {
+      @for (c of comments(); track c.id) {
+        <div class="cmt">
+          <div class="row-between"><span><strong>{{ c.number || c.document_name }} {{ c.rev }}</strong> <span class="small muted">· {{ c.author }} ({{ c.side }}) · {{ c.created_at | date: 'd MMM y' }}</span></span>
+            <p-tag [value]="c.status" [severity]="c.status === 'open' ? 'warn' : c.status === 'answered' ? 'info' : 'secondary'" /></div>
+          <div>{{ c.text }}</div>
+          @if (c.reply) { <div class="small c-good">Reply: {{ c.reply.text }} — {{ c.reply.by }}</div> }
+          @if (data()?.can_write) {
+            @if (replyTo === c) {
+              <div class="row gap"><input pInputText class="grow" [(ngModel)]="replyText" placeholder="Reply to {{ c.author }}" />
+                <p-button label="Send" size="small" [disabled]="!replyText.trim()" (onClick)="reply(c)" /></div>
+            } @else {
+              <div class="row gap right">
+                <p-button label="Reply" size="small" [text]="true" (onClick)="replyTo = c; replyText = ''" />
+                @if (!c.task_id) { <p-button label="Make a task" size="small" [text]="true" (onClick)="commentTask(c)" /> }
+                @if (c.status !== 'closed') { <p-button label="Close" size="small" [text]="true" severity="secondary" (onClick)="commentStatus(c, 'closed')" /> }
+              </div>
+            }
+          }
+        </div>
+      } @empty { <p class="muted">No comments from the client or consultants.</p> }
     } @else if (view === 'transmittals') {
       @if (trs(); as tl) {
         <p-table [value]="tl.transmittals" styleClass="p-datatable-sm">
@@ -177,6 +198,7 @@ import { Api, label } from '../../core/api.service';
     .upload-rev input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
     .rev { padding: .25rem 0; border-bottom: 1px dashed var(--border); }
     :host ::ng-deep .status-pick { margin-top: .25rem; min-width: 9rem; }
+    .cmt { border: 1px solid var(--border); border-radius: 10px; padding: .6rem .8rem; margin-bottom: .5rem; display: grid; gap: .3rem; }
   `,
 })
 export class ProjectDocumentsComponent implements OnInit {
@@ -189,7 +211,11 @@ export class ProjectDocumentsComponent implements OnInit {
   dlg = false;
   f: any = {};
   label = label;
-  views = [{ label: 'Library', value: 'library' }, { label: 'Drawing register', value: 'register' }, { label: 'Transmittals', value: 'transmittals' }];
+  views = [{ label: 'Library', value: 'library' }, { label: 'Drawing register', value: 'register' }, { label: 'Transmittals', value: 'transmittals' },
+    { label: 'Comments', value: 'comments' }];
+  comments = signal<any[]>([]);
+  replyTo: any = null;
+  replyText = '';
   view = 'library';
   reg = signal<any>(null);
   trs = signal<any>(null);
@@ -219,6 +245,24 @@ export class ProjectDocumentsComponent implements OnInit {
   async loadView() {
     if (this.view === 'register') this.reg.set(await this.api.get(`/projects/${this.projectId()}/drawing-register`));
     if (this.view === 'transmittals') this.trs.set(await this.api.get(`/projects/${this.projectId()}/transmittals`));
+    if (this.view === 'comments') this.comments.set(await this.api.get(`/projects/${this.projectId()}/document-comments`));
+  }
+
+  async reply(c: any) {
+    await this.api.post(`/document_comments/${c.id}/reply`, { text: this.replyText }, 'Reply sent');
+    this.replyTo = null;
+    this.replyText = '';
+    await this.loadView();
+  }
+
+  async commentStatus(c: any, status: string) {
+    await this.api.put(`/document_comments/${c.id}`, { status }, 'Updated');
+    await this.loadView();
+  }
+
+  async commentTask(c: any) {
+    await this.api.post(`/document_comments/${c.id}/task`, {}, 'Task added to the stage');
+    await this.loadView();
   }
 
   statusLabel(s: string) {

@@ -76,6 +76,7 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
                 <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="remove(i)" ariaLabel="Delete" pTooltip="Delete" />
               }
               @if (d.can_write && i.kind !== 'credit_note' && ['sent', 'part_paid'].includes(i.status) && i.balance > 0) {
+                <p-button label="Payment link" size="small" [text]="true" (onClick)="payLink(i)" />
                 <p-button label="Credit note" size="small" [text]="true" (onClick)="askCredit(i)" />
               }
               @if (d.can_void && i.status === 'sent' && i.kind !== 'credit_note' && !i.credited && !i.paid) {
@@ -321,6 +322,16 @@ export class ProjectInvoicesComponent implements OnInit {
     await this.api.post(`/invoices/${this.pending.id}/send`, { email: this.sendEmail && !!this.pending.client_email }, 'Invoice sent');
     this.sendDlg = false;
     await this.refresh();
+  }
+
+  async payLink(i: any) {
+    const link = await this.api.post(`/invoices/${i.id}/pay-link`, {});
+    try {
+      await navigator.clipboard.writeText(link.url);
+      this.confirm.confirm({ header: 'Payment link copied', icon: 'pi pi-link', message: link.url, acceptLabel: 'OK', rejectVisible: false });
+    } catch {
+      this.confirm.confirm({ header: 'Payment link', icon: 'pi pi-link', message: link.url, acceptLabel: 'OK', rejectVisible: false });
+    }
   }
 
   askVoid(i: any) {

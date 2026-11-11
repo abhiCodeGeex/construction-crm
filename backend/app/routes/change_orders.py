@@ -236,12 +236,23 @@ def approve_co(cid_):
             abort(400, "Upload the signed copy first")
         approval = {"name": name[:120], "method": d["method"], "date": day, "note": (d.get("note") or "").strip()[:300] or None,
                     "file_key": d.get("file_key") or None}
+    return jsonify(out(decide_change_order(co, p, approval, True)))
+
+
+def decide_change_order(co, p, approval, approve, reason=None):
+    """Approve (apply it to the contract, budget and plan) or reject — by staff, or by the client in the portal (Phase G)."""
+    cid_ = str(co["_id"])
+    if not approve:
+        upd = t.update("change_orders", cid_, {"status": "rejected", "decision_reason": reason[:300], "decided_at": t.now(),
+                                               "approval": approval})
+        decided(upd, p, f"Change order {co['number']} rejected by the client: {reason}")
+        return upd
     approval.update(recorded_by=g.user.get("name"), recorded_at=t.now())
     upd = t.update("change_orders", cid_, {"status": "approved", "approval": approval, "approved_at": t.now()})
     effects = apply_change(upd, t.get("projects", co["project_id"]))
     upd = t.update("change_orders", cid_, {"effects": effects})
     decided(upd, p, f"Change order {co['number']} approved: {co['title']}" + (f", {money_text(co['totals']['total'])}" if co["totals"]["total"] else ""))
-    return jsonify(out(upd))
+    return upd
 
 
 def apply_change(co, p):
@@ -309,9 +320,7 @@ def reject_co(cid_):
     if co["status"] != "sent":
         abort(409, "Only a change order sent to the client can be rejected")
     reason = ((request.get_json(force=True) or {}).get("reason") or "").strip() or abort(400, "Say why the client rejected it")
-    upd = t.update("change_orders", cid_, {"status": "rejected", "decision_reason": reason[:300], "decided_at": t.now()})
-    decided(upd, p, f"Change order {co['number']} rejected by the client: {reason}")
-    return jsonify(out(upd))
+    return jsonify(out(decide_change_order(co, p, {"recorded_by": g.user.get("name"), "method": None}, False, reason)))
 
 
 @bp.post("/change_orders/<cid_>/withdraw")

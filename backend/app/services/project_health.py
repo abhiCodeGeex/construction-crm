@@ -84,6 +84,19 @@ def waiting(p, today=None):
                                                     "text": {"$regex": "→ done$"}}, sort=[("at", -1)])
             since = done_at["at"].date().isoformat() if done_at else max(tk.get("end") or today for tk in s["tasks"])
             add("signoff", f"Client sign-off for {s['name']}", "client", min(since, today), "Stage work is done", s["id"])
+    # Phase G: what the client or a named person on the team has been sent and not answered
+    for co in db.change_orders.find({"company_id": g.cid, "project_id": pid, "status": "sent"}):
+        add("change_order", f"Approve change order {co['number']}: {co['title']}", "client", co["sent_at"].date().isoformat(),
+            "Sent for your approval", str(co["_id"]))
+    for tr in db.transmittals.find({"company_id": g.cid, "project_id": pid, "acknowledged": None}):
+        kind = "drawing" if tr["purpose"] in ("for_approval", "for_comment") else "transmittal"
+        verb = {"for_approval": "Approve or comment on", "for_comment": "Comment on"}.get(tr["purpose"], "Acknowledge")
+        add(kind, f"{verb} {tr['number']} ({len(tr['items'])} document(s))", "consultant" if kind == "drawing" else "client",
+            tr["created_at"].date().isoformat(), None, str(tr["_id"]))
+        rows[-1]["contact_ids"] = [r["contact_id"] for r in tr["to"]]
+    for inv in db.invoices.find({"company_id": g.cid, "project_id": pid, "status": {"$in": ["sent", "part_paid"]},
+                                 "kind": {"$ne": "credit_note"}, "due_date": {"$ne": None, "$lte": today}}):
+        add("invoice", f"Invoice {inv['number']} due {inv['due_date']}", "client", inv["due_date"], "Payment due", str(inv["_id"]))
     for sel in db.selections.find({"company_id": g.cid, "project_id": pid, "status": {"$in": ["open", "options_sent"]},
                                    "due_date": {"$ne": None, "$lt": today}}):  # Phase F: the client's choice is late
         add("selection", f"Choose: {sel['item']}" + (f" ({sel['room']})" if sel.get("room") else ""), "client", sel["due_date"],

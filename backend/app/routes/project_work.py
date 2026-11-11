@@ -97,17 +97,24 @@ def record_signoff(_id, sid):
         abort(400, "Who signed off? Type the client's name")
     if dat.get("method") not in SIGNOFF_METHODS:
         abort(400, f"How was it given? One of: {', '.join(SIGNOFF_METHODS)}")
-    stage["signoff"] = {"name": name, "method": dat["method"], "date": d(dat.get("date"), "Sign-off date") or t.now().date().isoformat(),
-                        "note": (dat.get("note") or "").strip() or None, "file_key": dat.get("file_key"),
-                        "recorded_by": g.user.get("name"), "recorded_at": t.now().isoformat()}
     if dat.get("file_key") and not db.files.find_one({"company_id": g.cid, "key": dat["file_key"]}):
         abort(400, "Upload the file first")
-    ev.log(_id, "signoff", f"{stage['name']}: client sign-off by {name} ({dat['method']}, {stage['signoff']['date']})",
-           stage_id=sid)
-    saved = save_stages(_id, p)
-    notify.send("signoff_recorded", ev.managers(saved), f"{name} signed off {stage['name']} on {p['name']}", ev.link(p),
-                project_id=_id)
+    saved = signoff_stage(p, stage, {"name": name, "method": dat["method"],
+                                     "date": d(dat.get("date"), "Sign-off date") or t.now().date().isoformat(),
+                                     "note": (dat.get("note") or "").strip() or None, "file_key": dat.get("file_key")})
     return jsonify(present(saved)), 201
+
+
+def signoff_stage(p, stage, signoff):
+    """Record the client's sign-off of a stage — by staff, or by the client in the portal (Phase G, method Portal)."""
+    _id = str(p["_id"])
+    stage["signoff"] = {**signoff, "recorded_by": g.user.get("name"), "recorded_at": t.now().isoformat()}
+    ev.log(_id, "signoff", f"{stage['name']}: client sign-off by {signoff['name']} ({signoff['method']}, {signoff['date']})",
+           stage_id=stage["id"])
+    saved = save_stages(_id, p)
+    notify.send("signoff_recorded", ev.managers(saved), f"{signoff['name']} signed off {stage['name']} on {p['name']}", ev.link(p),
+                project_id=_id)
+    return saved
 
 
 @bp.delete("/projects/<_id>/stages/<sid>/signoff")

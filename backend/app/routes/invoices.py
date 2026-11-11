@@ -227,7 +227,12 @@ def send_invoice(iid):
     upd = t.update("invoices", iid, ch)
     result = None
     if d.get("email"):
-        result = notify.deliver(g.company, inv.get("client_email"), f"Invoice {upd['number']} from {g.company['name']}", email_text(upd))
+        from ..services import payments as pay
+        text = email_text(upd)
+        if pay.enabled(g.company) and upd.get("project_id"):
+            from .payments import make_link
+            text += f"\n\nPay online: {make_link(upd)['url']}"
+        result = notify.deliver(g.company, inv.get("client_email"), f"Invoice {upd['number']} from {g.company['name']}", text)
         upd = t.update("invoices", iid, {"emailed": result})
     if inv.get("project_id"):
         ev.log(inv["project_id"], "cost", f"Invoice {upd['number']} sent: {money_text(upd['total'])}, due {upd['due_date']}"
@@ -400,19 +405,25 @@ def add_receipt(pid):
         abort(400, "Say which invoice(s) this payment settles")
     if abs(sum(x for _, x in allocs) - amount) > 0.01:
         abort(400, f"Allocate the whole {money_text(amount)} to invoices")
+    rc = record_receipt(p, amount, day, d["mode"], (d.get("reference") or "").strip() or None, (d.get("note") or "").strip()[:300] or None, allocs)
+    return jsonify(serialize(rc)), 201
+
+
+def record_receipt(p, amount, day, mode, reference, note, allocs, extra=None):
+    """Money received against invoices — recorded by staff, or by a signed online-payment webhook (Phase G)."""
+    pid = str(p["_id"])
     rc = t.insert("receipts", {"number": t.next_number("RCT", "RCT"), "project_id": pid, "project_name": p["name"],
                                "project_code": p.get("code"), "client_id": p.get("client_id"), "amount": amount, "date": day,
-                               "mode": d["mode"], "reference": (d.get("reference") or "").strip() or None,
-                               "note": (d.get("note") or "").strip()[:300] or None, "status": "received",
+                               "mode": mode, "reference": reference, "note": note, "status": "received",
                                "allocations": [{"invoice_id": str(i["_id"]), "invoice_number": i["number"], "amount": x} for i, x in allocs],
-                               "created_by_name": g.user.get("name")})
+                               "created_by_name": g.user.get("name"), **(extra or {})})
     for inv, part in allocs:
         apply_payment(inv, part, {"id": str(rc["_id"]), "kind": "receipt", "number": rc["number"], "amount": part, "date": day})
-    text = f"{money_text(amount)} received on {p['name']} ({d['mode']}), receipt {rc['number']} for " + \
+    text = f"{money_text(amount)} received on {p['name']} ({mode}), receipt {rc['number']} for " + \
         ", ".join(i["number"] for i, _ in allocs)
     ev.log(pid, "cost", text)
     tell(p, text)
-    return jsonify(serialize(rc)), 201
+    return rc
 
 
 @bp.post("/receipts/<rid>/void")

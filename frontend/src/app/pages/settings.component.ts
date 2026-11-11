@@ -126,6 +126,27 @@ import { AuthService } from '../core/auth.service';
             </div>
             @if (canEdit()) { <div class="row right"><p-button label="Save folders" icon="pi pi-check" size="small" (onClick)="saveFolders()" /></div> }
           </p-card>
+          <p-card header="Online payments" styleClass="mt">
+            <div class="stack">
+              <small class="muted">Clients pay invoices from the portal or the invoice email. A payment becomes a receipt only when the provider confirms it.</small>
+              <div class="grid2">
+                <label class="field"><span>Provider</span><p-select [options]="payProviders()" optionLabel="label" optionValue="value" [(ngModel)]="pay.provider" [showClear]="true" placeholder="Off" [disabled]="!canEdit()" fluid appendTo="body" /></label>
+                <label class="field"><span>Mode</span><p-select [options]="['test', 'live']" [(ngModel)]="pay.mode" [disabled]="!canEdit()" fluid appendTo="body" /></label>
+              </div>
+              @if (pay.provider === 'razorpay') {
+                <div class="grid2">
+                  <label class="field"><span>Key id</span><input pInputText [(ngModel)]="pay.key_id" [disabled]="!canEdit()" fluid /></label>
+                  <label class="field"><span>Key secret</span><input pInputText type="password" [(ngModel)]="pay.key_secret" [placeholder]="pay.key_secret_set ? 'saved — type to replace' : ''" [disabled]="!canEdit()" fluid /></label>
+                </div>
+              }
+              @if (pay.provider) {
+                <label class="field"><span>Webhook secret</span><input pInputText type="password" [(ngModel)]="pay.webhook_secret" [placeholder]="pay.webhook_secret_set ? 'saved — type to replace' : ''" [disabled]="!canEdit()" fluid />
+                  <small class="muted">Webhook address for the provider: <code>{{ origin }}{{ pay.webhook_url }}</code>@if (pay.provider === 'sandbox') { — sandbox moves no real money }</small></label>
+              }
+              <small [class.c-good]="pay.enabled" [class.muted]="!pay.enabled">{{ pay.enabled ? 'Online payments are on.' : 'Online payments are off.' }}</small>
+            </div>
+            @if (canEdit()) { <div class="row right"><p-button label="Save" icon="pi pi-check" size="small" (onClick)="savePay()" /></div> }
+          </p-card>
           <p-card header="Daily site reports" styleClass="mt">
             <label class="field"><span>Cut-off time</span><input pInputText type="time" [(ngModel)]="site.cutoff" [disabled]="!canEdit()" />
               <small class="muted">No report by this time on a working day: the site supervisor is reminded; still none the next day: the PM.</small></label>
@@ -265,13 +286,15 @@ export class SettingsComponent implements OnInit {
   fin: any = {};
   folders: Record<string, string> = {};
   site: any = { cutoff: '19:00' };
+  pay: any = {};
+  origin = window.location.origin;
   folderKeys = [{ key: 'all', label: 'Every project' }, { key: 'architecture', label: 'Architecture' }, { key: 'construction', label: 'Construction' },
     { key: 'interior', label: 'Interior design' }];
   tplDlg = false;
   tf: any = { stages: [] };
 
   async ngOnInit() {
-    await Promise.all([this.loadCompany(), this.loadTemplates(), this.loadRoles(), this.loadAudit(), this.loadCalendar(), this.loadFinance(), this.loadFolders(), this.loadSite()]);
+    await Promise.all([this.loadCompany(), this.loadTemplates(), this.loadRoles(), this.loadAudit(), this.loadCalendar(), this.loadFinance(), this.loadFolders(), this.loadSite(), this.loadPay()]);
   }
 
   async loadCalendar() {
@@ -281,6 +304,23 @@ export class SettingsComponent implements OnInit {
 
   toggleDay(i: number, on: boolean) {
     this.cal.working_days = on ? [...new Set([...this.cal.working_days, i])].sort() : this.cal.working_days.filter((d: number) => d !== i);
+  }
+
+  payProviders() {
+    return Object.entries(this.pay.providers ?? {}).map(([value, label]) => ({ value, label }));
+  }
+
+  async loadPay() {
+    try {
+      this.pay = await this.api.get('/settings/payments');
+    } catch {
+      this.pay = {};
+    }
+  }
+
+  async savePay() {
+    const { provider, mode, key_id, key_secret, webhook_secret } = this.pay;
+    this.pay = await this.api.put('/settings/payments', { provider: provider || null, mode, key_id, key_secret, webhook_secret }, 'Saved');
   }
 
   async loadSite() {

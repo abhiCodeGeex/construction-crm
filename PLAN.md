@@ -547,8 +547,8 @@ Source: requirements §13 (client portal: portal users see their projects and ap
 ### Build status
 | Block | Scope | Status |
 |---|---|---|
-| 1 | Portal approvals: stage sign-off, change orders, selection choice, drawing approval, transmittal acknowledgement, consultant and client comments on documents; "Waiting on you" becomes actionable; PM notified | Planned |
-| 2 | Invoices and receipts in the portal; payment-provider interface; Razorpay (test mode first) pay links; webhook → receipt; provider keys in Settings | Planned |
+| 1 | Portal approvals: stage sign-off, change orders, selection choice, drawing approval, transmittal acknowledgement, consultant and client comments on documents; "Waiting on you" becomes actionable; PM notified | **Done** |
+| 2 | Invoices and receipts in the portal; payment-provider interface; Razorpay (test mode first) pay links; webhook → receipt; provider keys in Settings | **Done** |
 | 3 | Project message threads between each portal user and the team; staff **Inbox** (area `messages`) leaves SOON | Planned |
 | 4 | WhatsApp / SMS gateway: provider settings, opt-in, sending templates, transmittals, invoices and reminders; delivery status webhook; *log only* when not set up | Planned |
 
@@ -617,6 +617,8 @@ Source: requirements §13 (client portal: portal users see their projects and ap
 | Stripe, second WhatsApp provider, email-to-thread replies | Behind the same interfaces when asked |
 | Design options / 360° renders chosen in the portal | Interior design phase (F4) |
 | Retention, progress-% claims paid online | With retention *(E4, to confirm)* |
+
+Block 1–2 notes: portal approvals reuse the staff code (`signoff_stage`, `decide_change_order`, `choose_option`, `set_drawing_status`, `ack_transmittal`, `record_receipt`) and record method *Portal* with the IP. The portal's *For you to act on* lists what the person may do; a stage's sign-off is asked for only when it is the last thing missing. Consultants comment on or return drawings (returned → work in progress); the team replies on the Documents tab's Comments view, closes a comment or turns it into a task. Payments: Razorpay Payment Links, plus a **sandbox** provider (no network, no real money) for demos and tests whose checkout page calls the same signed webhook. A sent invoice email carries the pay link when payments are on; staff can copy a link from the Money tab.
 
 Decisions taken to start building (the owner can change any of them):
 1. **Payments:** Razorpay first (test mode until live keys are entered), Stripe later behind the same interface. A client may pay part of an invoice online (any amount up to the balance). The company absorbs the gateway fee; nothing is added to the invoice.

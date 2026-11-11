@@ -217,6 +217,19 @@ def m019_site_reports():
     db.site_reports.create_index([("company_id", 1), ("project_id", 1), ("date", -1)], unique=True)
 
 
+def m020_portal_actions():
+    """Phase G block 1: comments on documents from the client and consultants."""
+    db.document_comments.create_index([("company_id", 1), ("project_id", 1), ("status", 1)])
+    db.document_comments.create_index([("company_id", 1), ("document_id", 1), ("created_at", 1)])
+
+
+def m021_payments():
+    """Phase G block 2: payment links per invoice; one provider payment makes one receipt."""
+    db.payment_links.create_index([("company_id", 1), ("invoice_id", 1), ("status", 1)])
+    db.payment_links.create_index([("provider", 1), ("ref", 1)], unique=True)
+    db.payment_links.create_index([("company_id", 1), ("events.payment_id", 1)])
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -237,6 +250,8 @@ MIGRATIONS = [
     ("017_transmittals", m017_transmittals),
     ("018_selections", m018_selections),
     ("019_site_reports", m019_site_reports),
+    ("020_portal_actions", m020_portal_actions),
+    ("021_payments", m021_payments),
 ]
 
 

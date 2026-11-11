@@ -43,7 +43,7 @@ PROJECT_EVENTS = {"project_pm", "project_added", "task_assigned", "task_due", "t
 
 FINANCE_EVENTS = {"cost_approval", "cost_decided", "budget_alert", "receipt_recorded", "invoice_due", "invoice_overdue", "co_decided", "co_waiting"}
 
-SITE_EVENTS = {"transmittal_sent", "transmittal_waiting", "drawing_approved", "selection_chosen", "selection_due", "site_report_missing", "site_delay"}
+SITE_EVENTS = {"transmittal_sent", "transmittal_waiting", "drawing_approved", "selection_chosen", "selection_due", "site_report_missing", "site_delay", "document_comment"}
 
 GROUPS = ["Leads & sales", "Projects", "Finance", "Documents & site", "Contacts"]
 
