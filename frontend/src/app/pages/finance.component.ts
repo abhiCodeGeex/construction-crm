@@ -8,12 +8,13 @@ import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 import { Api, money } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
+import { INVOICE_KIND, INVOICE_SEV } from './projects/project-invoices.component';
 
 const COST_SEV: Record<string, 'secondary' | 'success' | 'danger' | 'warn'> = {
   draft: 'secondary', submitted: 'warn', approved: 'success', rejected: 'danger', void: 'secondary',
 };
 
-/** Finance (Phase E). Block 1: every project's costs in one list, waiting approvals first. Costs are recorded,
+/** Finance (Phase E). Every project's costs (waiting approvals first) and invoices in one place. Costs are recorded,
  *  approved and voided on each project's Money tab, where the stage budget is in view. */
 @Component({
   selector: 'app-finance',
@@ -22,9 +23,31 @@ const COST_SEV: Record<string, 'secondary' | 'success' | 'danger' | 'warn'> = {
     <div class="page-head">
       <div>
         <h1>Finance</h1>
-        <p class="muted">Costs across your projects. Record, approve and void them on the project's Money tab, next to its stage budgets.</p>
+        <p class="muted">Costs and invoices across your projects. Record costs and raise invoices on the project's Money tab, next to its budgets and payment schedule.</p>
       </div>
     </div>
+    <p-selectbutton class="mb block" [options]="views" [(ngModel)]="view" optionLabel="label" optionValue="value" [allowEmpty]="false" (onChange)="load()" />
+    @if (view === 'invoices') {
+      <div class="row gap wrap mb">
+        <p-selectbutton [options]="invStatuses" [(ngModel)]="invStatus" optionLabel="label" optionValue="value" [allowEmpty]="false" (onChange)="load()" />
+        <span class="muted small grow right">{{ invoices().length }} · balance {{ fmt(balance()) }}</span>
+      </div>
+      <p-table [value]="invoices()" styleClass="p-datatable-sm" [paginator]="invoices().length > 25" [rows]="25">
+        <ng-template #header><tr><th>Number</th><th>Project</th><th>Client</th><th>Due</th><th class="num">Total</th><th class="num">Balance</th><th>Status</th></tr></ng-template>
+        <ng-template #body let-i>
+          <tr>
+            <td><a [routerLink]="['/app/invoices', i.id]">{{ i.number || 'Draft' }}</a><div class="small muted">{{ kind[i.kind] }}</div></td>
+            <td>{{ i.project_code }} {{ i.project_name }}</td>
+            <td>{{ i.client_name }}</td>
+            <td [class.c-bad]="i.overdue">{{ i.due_date ? (i.due_date | date: 'd MMM y') : '—' }}</td>
+            <td class="num">{{ fmt(i.total) }}</td>
+            <td class="num">{{ i.kind === 'credit_note' || i.status === 'void' ? '—' : fmt(i.balance) }}</td>
+            <td><p-tag [value]="i.overdue ? 'overdue' : i.status" [severity]="i.overdue ? 'danger' : isev[i.status]" /></td>
+          </tr>
+        </ng-template>
+        <ng-template #emptymessage><tr><td colspan="7" class="muted">Nothing here.</td></tr></ng-template>
+      </p-table>
+    } @else {
     <div class="row gap wrap mb">
       <p-selectbutton [options]="statuses" [(ngModel)]="status" optionLabel="label" optionValue="value" [allowEmpty]="false" (onChange)="load()" />
       <p-select [options]="categories()" [(ngModel)]="category" [showClear]="true" placeholder="Any category" (onChange)="load()" />
@@ -45,6 +68,7 @@ const COST_SEV: Record<string, 'secondary' | 'success' | 'danger' | 'warn'> = {
       </ng-template>
       <ng-template #emptymessage><tr><td colspan="6" class="muted">Nothing here.</td></tr></ng-template>
     </p-table>
+    }
   `,
   styles: `.num { text-align: right; font-variant-numeric: tabular-nums; }`,
 })
@@ -57,6 +81,14 @@ export class FinanceComponent implements OnInit {
   statuses = [{ label: 'Waiting approval', value: 'submitted' }, { label: 'Approved', value: 'approved' },
     { label: 'Drafts', value: 'draft' }, { label: 'Rejected', value: 'rejected' }, { label: 'Void', value: 'void' }, { label: 'All', value: '' }];
   status = 'submitted';
+  views = [{ label: 'Costs', value: 'costs' }, { label: 'Invoices', value: 'invoices' }];
+  view = 'costs';
+  invoices = signal<any[]>([]);
+  invStatuses = [{ label: 'Unpaid', value: 'sent' }, { label: 'Drafts', value: 'draft' }, { label: 'Paid', value: 'paid' },
+    { label: 'Void', value: 'void' }, { label: 'All', value: '' }];
+  invStatus = 'sent';
+  kind = INVOICE_KIND;
+  isev = INVOICE_SEV;
   category: string | null = null;
 
   async ngOnInit() {
@@ -64,12 +96,20 @@ export class FinanceComponent implements OnInit {
   }
 
   async load() {
+    if (this.view === 'invoices') {
+      this.invoices.set(await this.api.get(`/invoices${this.invStatus ? '?status=' + this.invStatus : ''}`));
+      return;
+    }
     const q = new URLSearchParams();
     if (this.status) q.set('status', this.status);
     if (this.category) q.set('category', this.category);
     const r = await this.api.get(`/finance/costs?${q}`);
     this.rows.set(r.costs);
     this.categories.set(r.categories);
+  }
+
+  balance() {
+    return this.invoices().filter((i) => i.kind !== 'credit_note' && i.status !== 'void').reduce((a, i) => a + (i.balance || 0), 0);
   }
 
   total() {

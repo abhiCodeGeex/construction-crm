@@ -142,6 +142,7 @@ def set_role(role):
 
 
 # ---------------- company setup ----------------
+NUMBERED = ("PRJ", "INV", "CRN")
 SETTINGS_FIELDS = ("name", "city", "gstin", "currency", "tax_rate", "branches", "numbering", "allow_support_login",
                    "modules", "branding")
 CURRENCIES = ("INR", "USD", "EUR", "GBP", "AED", "SGD", "AUD")
@@ -181,16 +182,19 @@ def company_setup():
             abort(409, f"Branch in use by projects: {', '.join(sorted(removed))}")
         changes["branches"] = clean
     if "numbering" in dat:
-        fmt = (dat["numbering"] or {}).get("PRJ") or "PRJ-{n:04d}"
-        if "{n" not in fmt:
-            abort(400, "Number format must contain {n}, e.g. PRJ-{year}-{n:03d}")
-        try:
-            sample = fmt.format(n=1, year=2026)
-        except (KeyError, ValueError, IndexError):
-            abort(400, "Number format can only use {n} and {year}, e.g. PRJ-{year}-{n:03d}")
-        if len(sample) > 30:
-            abort(400, "Number format is too long")
-        changes["numbering.PRJ"] = fmt
+        for key in NUMBERED:  # projects, invoices, credit notes (Phase E)
+            if key not in (dat["numbering"] or {}) and key != "PRJ":
+                continue
+            fmt = (dat["numbering"] or {}).get(key) or f"{key}-{{n:04d}}"
+            if "{n" not in fmt:
+                abort(400, f"Number format must contain {{n}}, e.g. {key}-{{year}}-{{n:03d}}")
+            try:
+                sample = fmt.format(n=1, year=2026)
+            except (KeyError, ValueError, IndexError):
+                abort(400, f"Number format can only use {{n}} and {{year}}, e.g. {key}-{{year}}-{{n:03d}}")
+            if len(sample) > 30:
+                abort(400, "Number format is too long")
+            changes[f"numbering.{key}"] = fmt
     if not changes:
         abort(400, "Nothing to update")
     before = dict(g.company)
@@ -205,8 +209,9 @@ def company_setup():
 @bp.get("/company/numbering/preview")
 @api("settings", write=False)
 def numbering_preview():
-    fmt = request.args.get("format") or "PRJ-{n:04d}"
-    nxt = (g.company.get("counters") or {}).get("PRJ", 0) + 1
+    key = request.args.get("key") if request.args.get("key") in NUMBERED else "PRJ"
+    fmt = request.args.get("format") or f"{key}-{{n:04d}}"
+    nxt = (g.company.get("counters") or {}).get(key, 0) + 1
     try:
         return jsonify({"next": fmt.format(n=nxt, year=t.now().year)})
     except (KeyError, ValueError, IndexError):

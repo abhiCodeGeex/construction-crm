@@ -13,6 +13,7 @@ import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { Api, money } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { ProjectInvoicesComponent } from './project-invoices.component';
 
 const COST_SEV: Record<string, 'secondary' | 'info' | 'success' | 'danger' | 'warn'> = {
   draft: 'secondary', submitted: 'warn', approved: 'success', rejected: 'danger', void: 'secondary',
@@ -24,7 +25,7 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
 @Component({
   selector: 'app-project-money',
   imports: [FormsModule, DatePipe, ButtonModule, DialogModule, InputNumberModule, InputTextModule, ProgressBarModule,
-    SelectModule, TableModule, TagModule, TooltipModule],
+    SelectModule, TableModule, TagModule, TooltipModule, ProjectInvoicesComponent],
   template: `
     @if (data(); as d) {
       @if (d.budget; as b) {
@@ -102,6 +103,7 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
         </ng-template>
         <ng-template #emptymessage><tr><td colspan="7" class="muted">No costs recorded yet.</td></tr></ng-template>
       </p-table>
+      @if (canSeeInvoices()) { <app-project-invoices [projectId]="project().id" (changed)="changed.emit()" /> }
     }
 
     <p-dialog [header]="f.id ? 'Edit cost' : (data()?.perms?.can_add ? 'Record a cost' : 'Log a site expense')" [modal]="true" [(visible)]="dlg"
@@ -178,6 +180,7 @@ export class ProjectMoneyComponent implements OnInit {
   overReason = '';
   pendingCost: any = null;
   today = new Date().toISOString().slice(0, 10);
+  canSeeInvoices = () => this.auth.can('finance');
 
   vendors = computed(() => this.contacts().filter((c: any) => (c.types ?? []).some((t: string) => VENDOR_TYPES.includes(t))));
   reasonOptions = computed(() => Object.entries(this.data()?.reasons ?? {}).map(([value, label]) => ({ value, label })));

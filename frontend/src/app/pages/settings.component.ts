@@ -89,6 +89,10 @@ import { AuthService } from '../core/auth.service';
                   <label class="field"><span>Project number format</span>
                     <input pInputText [(ngModel)]="setup.prj" (ngModelChange)="preview()" [disabled]="!canEdit()" fluid />
                     <small class="muted">Use <code>{{ '{' }}n{{ '}' }}</code> (or <code>{{ '{' }}n:04d{{ '}' }}</code> for padding) and optional <code>{{ '{' }}year{{ '}' }}</code>. Next number: <strong>{{ nextNo() }}</strong></small></label>
+                  <div class="grid2">
+                    <label class="field"><span>Invoice number format</span><input pInputText [(ngModel)]="setup.inv" [disabled]="!canEdit()" fluid /></label>
+                    <label class="field"><span>Credit note number format</span><input pInputText [(ngModel)]="setup.crn" [disabled]="!canEdit()" fluid /></label>
+                  </div>
                 </div>
               </p-card>
               <p-card><ng-template #title>Working days & holidays</ng-template>
@@ -283,7 +287,8 @@ export class SettingsComponent implements OnInit {
     const c = await this.api.get('/company');
     this.c.set(c);
     this.setup = { branches: (c.branches ?? []).map((b: any) => ({ ...b })), currency: c.currency ?? 'INR', tax_label: c.tax_label ?? 'GST',
-      tax_rate: c.tax_rate ?? 18, prj: c.numbering?.PRJ ?? 'PRJ-{n:04d}' };
+      tax_rate: c.tax_rate ?? 18, prj: c.numbering?.PRJ ?? 'PRJ-{n:04d}',
+      inv: c.numbering?.INV ?? 'INV-{n:04d}', crn: c.numbering?.CRN ?? 'CRN-{n:04d}' };
     this.preview();
   }
 
@@ -324,7 +329,7 @@ export class SettingsComponent implements OnInit {
 
   async saveSetup() {
     await this.api.put('/company/setup', { branches: this.setup.branches, currency: this.setup.currency, tax_label: this.setup.tax_label,
-      tax_rate: this.setup.tax_rate, numbering: { PRJ: this.setup.prj } }, 'Setup saved');
+      tax_rate: this.setup.tax_rate, numbering: { PRJ: this.setup.prj, INV: this.setup.inv, CRN: this.setup.crn } }, 'Setup saved');
     await this.auth.refresh();
     await Promise.all([this.loadCompany(), this.loadAudit()]);
   }

@@ -809,6 +809,9 @@ def link_contract(lead, project):
     rows = [{**r, "milestone_id": by_stage.get(r.get("stage")) if r["trigger"] == "stage" else None} for r in c["payment_schedule"]]
     t.update("contracts", str(c["_id"]), {"project_id": str(project["_id"]), "payment_schedule": rows})
     db.projects.update_one({"_id": project["_id"]}, {"$set": {"contract_id": str(c["_id"]), "contract_number": c["number"]}})
+    # invoices raised before the win (usually the advance on signing) join the project
+    db.invoices.update_many({"company_id": g.cid, "contract_id": str(c["_id"])},
+                            {"$set": {"project_id": str(project["_id"]), "project_name": project["name"], "project_code": project.get("code")}})
     return c
 
 

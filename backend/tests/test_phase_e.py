@@ -72,7 +72,7 @@ users = call("GET", "/users", token=T["owner"])[1]
 U = {u["email"].split("@")[0]: u["id"] for u in users if u["kind"] == "staff"}
 CID = mongo.users.find_one({"email": "owner@skyline.test"})["company_id"]
 finance_before = mongo.companies.find_one({"_id": ObjectId(CID)}, {"finance": 1}).get("finance")
-projects, contacts, rates = [], [], []
+projects, contacts, rates, leads, won_projects = [], [], [], [], []
 
 
 def bell(user, **q):
@@ -202,11 +202,113 @@ try:
     check("site's timeline has no cost entries", not [a for a in acts["rows"] if a["kind"] == "cost"] and "Money" not in acts["groups"])
     check("owner's timeline has them", any(a["kind"] == "cost" for a in call("GET", f"/projects/{pid}/activity?group=Money", token=T["owner"])[1]["rows"]))
     expect("a project with approved costs cannot be deleted", call("DELETE", f"/projects/{pid}", token=T["owner"]), 409)
+
+    # ================= block 2 · invoices =================
+    tax_rate = float(mongo.companies.find_one({"_id": ObjectId(CID)}).get("tax_rate") or 0)
+    s_, L = call("POST", "/leads", {"title": f"PE {RUN}", "service": "construction", "source": "Walk-in", "contact_name": f"PE Client {RUN}",
+                                    "contact_phone": f"6{RUN[-7:]}55", "contact_email": f"pe{RUN}@example.test", "budget": 3000000}, T["sales"])
+    assert s_ == 201, L
+    leads.append(L["id"])
+    contacts.append(L["contact_id"])
+    pr = expect("simple proposal", call("POST", f"/leads/{L['id']}/proposals", {"value": 590000, "valid_until": day(10)}, T["sales"]), 201)
+    call("POST", f"/proposals/{pr['id']}/send", {"channel": "in_person"}, T["sales"])
+    expect("accepted on paper", call("POST", f"/proposals/{pr['id']}/respond", {"result": "accepted", "signed_by": "Mr PE"}, T["sales"]), 200)
+    con = mongo.contracts.find_one({"company_id": CID, "proposal_id": pr["id"]})
+    CON = str(con["_id"])
+    sched = con["payment_schedule"]
+    check("schedule rows add up to the contract", abs(sum(r["amount"] for r in sched) - con["value"]) < 0.05, sched)
+    sign_row = next(r for r in sched if r["trigger"] == "signing")
+    stage_row = next(r for r in sched if r["trigger"] == "stage")
+
+    # §5 invoice the advance on signing before the project exists
+    expect("PM cannot invoice before the project exists", call("POST", f"/contracts/{CON}/schedule/{sign_row['id']}/invoice", {}, T["pm"]), 403)
+    adv = expect("accounts invoices the advance on signing", call("POST", f"/contracts/{CON}/schedule/{sign_row['id']}/invoice", {}, T["accounts"]), 201)
+    check("draft: no number yet, amount = the row, tax split in the contract's ratio", adv["number"] is None and adv["status"] == "draft"
+          and abs(adv["total"] - sign_row["amount"]) < 0.02 and abs(adv["subtotal"] + adv["tax"] - adv["total"]) < 0.02
+          and abs(adv["subtotal"] / adv["total"] - con["totals"]["taxable"] / con["totals"]["total"]) < 0.001, adv)
+    check("client details on the invoice", adv["client_name"] == f"PE Client {RUN}" and adv["client_email"] == f"pe{RUN}@example.test", adv)
+    expect("a row is invoiced once", call("POST", f"/contracts/{CON}/schedule/{sign_row['id']}/invoice", {}, T["owner"]), 409)
+
+    w = expect("lead won", call("POST", f"/leads/{L['id']}/win", {"pm_id": U["pm"]}, T["sales"]), 200)
+    WP = w["project_id"]
+    won_projects.append(WP)
+    pi = call("GET", f"/projects/{WP}/invoices", token=T["pm"])[1]
+    check("the pre-win invoice joined the project", [i["id"] for i in pi["invoices"]] == [adv["id"]] and pi["invoices"][0]["project_id"] == WP, pi["invoices"])
+    rows = {r["id"]: r for r in pi["contract"]["payment_schedule"]}
+    check("schedule shows the invoiced row and the upcoming stage row", rows[sign_row["id"]].get("status") == "invoiced"
+          and rows[stage_row["id"]].get("state") == "upcoming", rows[stage_row["id"]])
+    expect("site cannot see invoices", call("GET", f"/projects/{WP}/invoices", token=T["site"]), 403)
+
+    # §5 upcoming rows: only the Owner, with a reason
+    expect("PM cannot invoice an upcoming row", call("POST", f"/contracts/{CON}/schedule/{stage_row['id']}/invoice", {}, T["pm"]), 409)
+    expect("Owner needs a reason to invoice early", call("POST", f"/contracts/{CON}/schedule/{stage_row['id']}/invoice", {}, T["owner"]), 409)
+    early = expect("Owner invoices early with a reason", call("POST", f"/contracts/{CON}/schedule/{stage_row['id']}/invoice",
+                                                             {"early_reason": f"Client asked {RUN}"}, T["owner"]), 201)
+    check("early reason kept", early["early_reason"] == f"Client asked {RUN}")
+    expect("delete the early draft", call("DELETE", f"/invoices/{early['id']}", token=T["owner"]), 200)
+    rows = {r["id"]: r for r in call("GET", f"/projects/{WP}/invoices", token=T["pm"])[1]["contract"]["payment_schedule"]}
+    check("deleting the draft frees the row", rows[stage_row["id"]].get("status") is None and rows[stage_row["id"]]["state"] == "upcoming")
+
+    # sending issues the number
+    sent = expect("send the advance invoice", call("POST", f"/invoices/{adv['id']}/send", {}, T["accounts"]), 200)
+    check("number issued on send", sent["status"] == "sent" and sent["number"] and sent["number"].startswith("INV"), sent.get("number"))
+    expect("a sent invoice is not edited", call("PUT", f"/invoices/{adv['id']}", {"notes": "x"}, T["accounts"]), 409)
+    expect("a sent invoice is not deleted", call("DELETE", f"/invoices/{adv['id']}", token=T["accounts"]), 409)
+    expect("sent twice", call("POST", f"/invoices/{adv['id']}/send", {}, T["accounts"]), 409)
+
+    # the stage milestone is achieved -> the row is due
+    pj = call("GET", f"/projects/{WP}", token=T["owner"])[1]
+    st = next(s for s in pj["stages"] if s["name"] == stage_row["stage"])
+    expect("owner closes the stage", call("PUT", f"/projects/{WP}/milestones/{st['gate']['milestone_id']}",
+                                          {"status": "achieved", "override_reason": f"Test {RUN}"}, T["owner"]), 200)
+    due = expect("PM invoices the now-due stage row", call("POST", f"/contracts/{CON}/schedule/{stage_row['id']}/invoice", {}, T["pm"]), 201)
+    due = expect("PM sends it", call("POST", f"/invoices/{due['id']}/send", {}, T["pm"]), 200)
+
+    # manual invoice
+    expect("manual: lines required", call("POST", f"/projects/{WP}/invoices", {"lines": []}, T["pm"]), 400)
+    expect("manual: due before date", call("POST", f"/projects/{WP}/invoices", {"lines": [{"description": "x", "qty": 1, "rate": 1}],
+                                                                                 "date": day(0), "due_date": day(-1)}, T["pm"]), 400)
+    man = expect("manual invoice", call("POST", f"/projects/{WP}/invoices", {"lines": [{"description": f"Extra window {RUN}", "qty": 2, "rate": 1000},
+                                                                                        {"description": "Exempt", "qty": 1, "rate": 500, "tax_pct": 0}]}, T["pm"]), 201)
+    check("company tax on lines unless set", man["subtotal"] == 2500 and abs(man["tax"] - 2000 * tax_rate / 100) < 0.02, man)
+    man = expect("edit the draft lines", call("PUT", f"/invoices/{man['id']}", {"lines": [{"description": f"Extra window {RUN}", "qty": 3, "rate": 1000}]}, T["pm"]), 200)
+    check("totals recomputed", man["subtotal"] == 3000)
+    expect("schedule invoice lines are fixed", call("PUT", f"/invoices/{due['id']}", {"lines": [{"description": "x", "qty": 1, "rate": 1}]}, T["pm"]), 409)
+    man = expect("send manual", call("POST", f"/invoices/{man['id']}/send", {}, T["pm"]), 200)
+
+    # credit note
+    expect("credit note above the invoice", call("POST", f"/invoices/{man['id']}/credit-note", {"amount": man["total"] + 1, "reason": "x"}, T["accounts"]), 400)
+    expect("credit note needs a reason", call("POST", f"/invoices/{man['id']}/credit-note", {"amount": 100}, T["accounts"]), 400)
+    cn = expect("credit note", call("POST", f"/invoices/{man['id']}/credit-note", {"amount": 1000, "reason": f"One window less {RUN}"}, T["accounts"]), 201)
+    check("credit note numbered CRN, tax split", cn["number"].startswith("CRN") and cn["kind"] == "credit_note"
+          and abs(cn["subtotal"] + cn["tax"] - 1000) < 0.02, cn)
+    mi = call("GET", f"/invoices/{man['id']}", token=T["accounts"])[1]
+    check("invoice balance after the credit", mi["credited"] == 1000 and abs(mi["balance"] - (man["total"] - 1000)) < 0.02
+          and mi["credit_notes"][0]["id"] == cn["id"], mi)
+
+    # void
+    expect("PM cannot void", call("POST", f"/invoices/{due['id']}/void", {"reason": "x"}, T["pm"]), 403)
+    expect("credited invoice cannot be voided", call("POST", f"/invoices/{man['id']}/void", {"reason": "x"}, T["accounts"]), 409)
+    expect("void needs a reason", call("POST", f"/invoices/{due['id']}/void", {}, T["accounts"]), 400)
+    expect("accounts voids", call("POST", f"/invoices/{due['id']}/void", {"reason": f"Wrong stage {RUN}"}, T["accounts"]), 200)
+    rows = {r["id"]: r for r in call("GET", f"/projects/{WP}/invoices", token=T["pm"])[1]["contract"]["payment_schedule"]}
+    check("void frees the row, which is due again", rows[stage_row["id"]].get("status") is None and rows[stage_row["id"]]["state"] == "due")
+    allinv = call("GET", f"/invoices?project_id={WP}", token=T["accounts"])[1]
+    check("company invoice list", {i["kind"] for i in allinv} == {"schedule", "manual", "credit_note"}, [i["kind"] for i in allinv])
+    expect("a project with sent invoices cannot be deleted", call("DELETE", f"/projects/{WP}", token=T["owner"]), 409)
 finally:
     for c in mongo.costs.find({"company_id": CID, "project_id": {"$in": projects}}):
         mongo.costs.update_one({"_id": c["_id"]}, {"$set": {"status": "void"}})
-    for p_ in projects:
+    mongo.invoices.delete_many({"company_id": CID, "$or": [{"project_id": {"$in": projects + won_projects}}, {"lead_id": {"$in": leads}}]})
+    for p_ in projects + won_projects:
         call("DELETE", f"/projects/{p_}", token=T["owner"])
+        mongo.followups.delete_many({"company_id": CID, "related.id": p_})
+    mongo.contracts.delete_many({"company_id": CID, "lead_id": {"$in": leads}})
+    mongo.lead_receipts.update_many({"company_id": CID, "lead_id": {"$in": leads}}, {"$set": {"status": "void"}})
+    for l_ in leads:
+        call("DELETE", f"/leads/{l_}", token=T["owner"])
+        mongo.followups.delete_many({"company_id": CID, "related.id": l_})
+        mongo.notifications.delete_many({"company_id": CID, "lead_id": l_})
     for c_ in contacts:
         call("DELETE", f"/contacts/{c_}", token=T["owner"])
     for r_ in rates:
@@ -214,7 +316,8 @@ finally:
     mongo.notifications.delete_many({"company_id": CID, "text": {"$regex": RUN}})
     mongo.companies.update_one({"_id": ObjectId(CID)}, {"$set": {"finance": finance_before}} if finance_before else {"$unset": {"finance": ""}})
     left = mongo.projects.count_documents({"company_id": CID, "name": {"$regex": RUN}}) + \
-        mongo.costs.count_documents({"company_id": CID, "description": {"$regex": RUN}})
+        mongo.costs.count_documents({"company_id": CID, "description": {"$regex": RUN}}) + \
+        mongo.leads.count_documents({"company_id": CID, "title": f"PE {RUN}"}) + mongo.invoices.count_documents({"company_id": CID, "lead_id": {"$in": leads}})
     check("cleanup: nothing left", left == 0, left)
 
 print(f"passed: {passed}  failed: {len(failures)}")

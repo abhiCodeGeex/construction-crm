@@ -489,9 +489,12 @@ def delete_project(_id):
     p = t.get("projects", _id)
     if db.costs.count_documents({"company_id": g.cid, "project_id": _id, "status": "approved"}):
         abort(409, "This project has approved costs; void them first so the money trail is kept")
+    if db.invoices.count_documents({"company_id": g.cid, "project_id": _id, "status": {"$nin": ["draft", "void"]}}):
+        abort(409, "This project has invoices; void them first so the money trail is kept")
     t.delete("projects", _id)
     db.project_issues.delete_many({"company_id": g.cid, "project_id": _id})
     db.costs.delete_many({"company_id": g.cid, "project_id": _id})  # drafts, submitted, rejected and void only
+    db.invoices.delete_many({"company_id": g.cid, "project_id": _id})  # drafts and void only
     db.notifications.delete_many({"company_id": g.cid, "project_id": _id})  # no bell entry may point at it
     for coll in ("project_comments", "project_activity", "project_meetings", "project_delays"):
         db[coll].delete_many({"company_id": g.cid, "project_id": _id})

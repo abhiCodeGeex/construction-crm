@@ -299,7 +299,8 @@ VENDOR_TYPES = ["supplier", "subcontractor", "contractor", "consultant"]
 COST_STATUSES = ["draft", "submitted", "approved", "rejected", "void"]
 # why a cost takes a stage over its budget; "client_change" is the one the client pays for (change order)
 OVERSPEND_REASONS = {"client_change": "Client changed something", "our_mistake": "Our mistake", "price_rise": "Price rise"}
-FINANCE_DEFAULTS = {"site_expense_limit": 5000, "overspend_markup_pct": 10}
+FINANCE_DEFAULTS = {"site_expense_limit": 5000, "overspend_markup_pct": 10, "invoice_due_days": 7}
+INVOICE_STATUSES = ["draft", "sent", "part_paid", "paid", "void"]
 
 NOTIFY_EVENTS.update({
     "cost_approval": ("Cost waiting for your approval", True),

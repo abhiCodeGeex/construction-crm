@@ -177,6 +177,12 @@ def m012_finance():
     db.costs.create_index([("company_id", 1), ("status", 1), ("date", -1)])
 
 
+def m013_invoices():
+    """Phase E block 2: invoices per project, by status and due date (overdue reminders)."""
+    db.invoices.create_index([("company_id", 1), ("project_id", 1), ("created_at", -1)])
+    db.invoices.create_index([("company_id", 1), ("status", 1), ("due_date", 1)])
+
+
 MIGRATIONS = [
     ("001_plans", m001_plans),
     ("002_superadmin_owner", m002_superadmin_owner),
@@ -190,6 +196,7 @@ MIGRATIONS = [
     ("010_stage_gates", m010_stage_gates),
     ("011_plan_meetings", m011_plan_meetings),
     ("012_finance", m012_finance),
+    ("013_invoices", m013_invoices),
 ]
 
 
