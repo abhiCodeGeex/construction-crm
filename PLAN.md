@@ -736,3 +736,28 @@ Decisions taken to start building (the owner can change any of them; the amounts
 7. **Vendor portal:** suppliers see and acknowledge their POs, update delivery dates and upload their invoices; staff enter RFQ quotes in this phase.
 8. **Expired compliance documents warn**; they do not block a new PO.
 9. **Client deposit before ordering a selection** is shown, not enforced.
+---
+
+# Phase I — Closing the gaps in the built modules
+
+Source: a line-by-line check of *Construction & Interior CRM – Requirements (v4)* against Phases A–H (12 Nov 2026). Only gaps in modules that exist are in this phase; what v4 itself places in Phase 2 / 3 (RFIs, submittals, subcontractor management, timesheets, automatic sequences, accounting integrations, offline, safety, AI, full 3D viewer) and the MVP items with no module yet (§17 worker WhatsApp, §19 360° / renders) are not. Covered by `backend/tests/test_phase_i.py` (one section per block); all earlier suites stay green.
+
+### Build status
+| Block | Scope | Status |
+|---|---|---|
+| 1 | Stage budgets from the accepted estimate (§12), GST split CGST / SGST / IGST with HSN / SAC (§1, §15), receipts held on account, client invoice reminder series (§16), petty cash floats (§12) | Planned |
+| 2 | Progress claims by stage % (§12), retention held and released with the defects period (§12, §16), client deposits for selections (§7, §12) | Planned |
+| 3 | Photos with time + GPS tagged to stage / room (§10), attendance (§10), snag / punch list (§10, §14, §16), stock at site: receiving location, consumption, balance (§8, §10), installation checklist (§10) | Planned |
+| 4 | Authority / planning approvals register (§6), mood boards (§6), product catalogue fields + add from a link (§7), selection *Delivered* status, markup rules per category / client and selection margin report (§7), allowance credit, editing requests / RFQs and reversing a GRN (§8) | Planned |
+| 5 | Client raises a change request in the portal, site raises one (§11), new tasks from a change order, portal photo timeline and proposals (§13), reports: projects (delayed, milestones, snags), cash flow, team workload, waiting longest (§14, §16), inbound WhatsApp routed to the project and the right person (§17) | Planned |
+| 6 | Super Admin (§18): company approve / create / delete / trial / plan / modules / notes; plans, add-ons, coupons; subscription billing with GST invoices, retries, grace → read-only; self-service plan change; usage alerts; support tickets and login-as-company with permission; announcements; platform settings; data export; revenue / churn / conversion reports | Planned |
+| 7 | Calendar feed for Google / Outlook (§15), daily backups with status (§15), SMS provider with DLT template ids (§15), Hindi for the portal, site screens and menus (§15) | Planned |
+
+Decisions taken to start building (the owner can change any of them; amounts are settings):
+1. **Stage budget = estimate cost** (direct + overheads, not the client price) per stage. Estimate lines get an optional stage; untagged lines are spread over the tagged stages pro rata. Budgets are filled on the win only where a stage budget is still 0; the Money tab can re-apply them.
+2. **GST** is a company setting (*single rate* stays the default). With GST on: same state as the client → CGST + SGST, otherwise IGST; state from the GSTIN (first two digits) or the state field.
+3. **Retention** default 5 % with a 12-month defects period, set per contract; half released at handover, half at the end of the defects period.
+4. **Progress claims**: a contract is billed either by its milestone schedule or by progress, never both; the basis is fixed once the first invoice exists.
+5. **Selection deposit** default 50 %; ordering without it warns (a setting can make it block).
+6. **Stock** is kept per location (each project site, plus company warehouses); valued at the PO rate.
+7. **Languages**: English and Hindi; other strings fall back to English.
