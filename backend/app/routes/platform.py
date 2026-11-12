@@ -41,7 +41,7 @@ COMPANY_PUBLIC = ("name", "types", "modules", "plan_code", "billing_cycle", "sta
                   "purge_after", "allow_support_login", "notes", "feature_flags", "approved_at", "export_requested")
 STATUSES = ("pending", "trial", "active", "read_only", "suspended", "cancelled")
 FEATURES = ("whatsapp", "online_payments", "procurement", "portal", "selections", "site_reports")
-ADDON_PRICES = {"extra_user": 500, "storage_100gb": 500}  # per month, before GST
+ADDON_PRICES = {"extra_user": 500, "storage_100gb": 500, "whatsapp_1000": 150}  # per month, before GST (WhatsApp: Meta cost + margin)
 WA_COST = 0.115  # Meta utility message, before GST (requirements §17)
 
 
@@ -223,8 +223,7 @@ def company_action(_id):
     elif action == "features":
         changes = {"feature_flags": {k: bool(v) for k, v in (d.get("features") or {}).items() if k in FEATURES}}
     elif action == "addons":
-        changes = {"addons": {"extra_users": int(num(d.get("extra_users"), "Extra users") or 0),
-                              "extra_storage_gb": int(num(d.get("extra_storage_gb"), "Extra storage") or 0) // 100 * 100}}
+        changes = {"addons": clean_addons(d)}
     elif action == "note":
         text = (d.get("text") or "").strip()[:1000] or abort(400, "Write the note")
         db.companies.update_one({"_id": c["_id"]}, {"$push": {"notes": {"text": text, "by": g.sa.get("name"), "at": now()}}})
@@ -397,6 +396,10 @@ def issue_invoice(company, prorate_from=None, note=None):
         packs = addons["extra_storage_gb"] // 100
         lines.append({"description": f"Extra storage {addons['extra_storage_gb']} GB", "sac": Config.PLATFORM_SAC,
                       "amount": ADDON_PRICES["storage_100gb"] * packs * months})
+    if addons.get("extra_whatsapp"):
+        packs = addons["extra_whatsapp"] // 1000
+        lines.append({"description": f"Extra WhatsApp messages {addons['extra_whatsapp']}/month", "sac": Config.PLATFORM_SAC,
+                      "amount": ADDON_PRICES["whatsapp_1000"] * packs * months})
     if prorate_from and prorate_from["code"] != plan["code"] and as_dt(company.get("next_renewal")):
         days_left = max((as_dt(company["next_renewal"]) - now()).days, 0)
         credit = r2(prorate_from.get("price_monthly", 0) * days_left / 30)
@@ -780,6 +783,30 @@ def change_plan():
     db.sa_audit.insert_one({"by": g.user.get("name"), "role": "company owner", "action": "company_plan_change", "target": g.cid,
                             "note": f"{old.get('code')} → {plan['code']} ({cycle})", "at": now()})
     return jsonify(serialize({"plan": plan, "invoice": inv}))
+
+
+def clean_addons(d):
+    return {"extra_users": int(num(d.get("extra_users"), "Extra users") or 0),
+            "extra_storage_gb": int(num(d.get("extra_storage_gb"), "Extra storage") or 0) // 100 * 100,
+            "extra_whatsapp": int(num(d.get("extra_whatsapp"), "Extra WhatsApp messages") or 0) // 1000 * 1000}
+
+
+@bp.post("/billing/addons")
+@api(None)
+def buy_addons():
+    """§18 add-ons bought by the Owner: extra users, storage packs, WhatsApp message packs. They are billed with the
+    next invoice (prorating starts at renewal)."""
+    owner_only()
+    add = clean_addons(request.get_json(force=True) or {})
+    if any(v < 0 for v in add.values()) or add["extra_users"] > 200:
+        abort(400, "Add-ons are 0 to 200 users and whole packs of storage or messages")
+    from ..services.subscription import counted_users
+    plan = plan_of(g.company.get("plan_code"))
+    if plan.get("max_users") and counted_users(g.cid) > plan["max_users"] + add["extra_users"]:
+        abort(409, "You have more users than the plan and these add-ons allow; deactivate some first")
+    db.companies.update_one({"_id": g.company["_id"]}, {"$set": {"addons": add}})
+    db.sa_audit.insert_one({"by": g.user.get("name"), "role": "company owner", "action": "company_addons", "target": g.cid, "note": str(add), "at": now()})
+    return jsonify(add)
 
 
 @bp.post("/billing/cancel")

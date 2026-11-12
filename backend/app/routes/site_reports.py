@@ -340,7 +340,8 @@ def portal_selections(pid):
     rows = []
     for s in db.selections.find({"company_id": g.cid, "project_id": pid}).sort("due_date", 1):
         ch = next((o for o in s.get("options", []) if o["id"] == s.get("chosen_option_id")), None)
-        rows.append({"item": s["item"], "room": s.get("room"), "status": s["status"], "due_date": s.get("due_date"),
+        rows.append({"id": str(s["_id"]), "item": s["item"], "room": s.get("room"), "status": s["status"], "due_date": s.get("due_date"),
+                     "asked_other": (s.get("client_rejected") or {}).get("reason") if s["status"] == "open" else None,
                      "allowance": s.get("allowance"), "chosen": ch and ch["name"],
                      "options": [{"name": o["name"], "brand": o.get("brand"), "price": o["price"], "lead_days": o.get("lead_days"),
                                   "photo": f"/api/files/{o['file_key']}" if o.get("file_key") else None} for o in s.get("options", [])]})

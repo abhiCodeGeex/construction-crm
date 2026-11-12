@@ -777,3 +777,44 @@ Block 6 notes: built on the parked `later/routes/superadmin.py` (now `routes/pla
 Block 7 notes: every staff user has a private calendar link (user menu → *Calendar feed*; `/api/calendar/<token>.ics`) to subscribe to in Google Calendar or Outlook — open tasks assigned to them, milestones of their projects, their follow-ups, site visits and project meetings, 30 days back to a year ahead; *Make a new link* stops the old one; the token never appears in API answers. SMS: Settings → Company → *SMS* (MSG91 or sandbox; sender id, DLT entity id, auth key masked); SMS templates carry their DLT template id (Settings → Sales & templates) and a live provider refuses a template without one; sent or logged messages are stored like WhatsApp ones. Backups: the `backup` service writes a gzipped JSON copy of every collection plus the uploaded files to the `backups` volume daily at 02:00 (BACKUP_HOUR), keeps 14 (BACKUP_KEEP), records the result for the Super Admin dashboard; Super Admin → Platform settings lists them and can back up now; restore with `docker compose exec backup python -m app.backup restore <folder> --yes`. Language: English or हिन्दी per user (staff user menu, portal top bar), saved on the user; the menus, the client portal and the site screens (reports, attendance, snags, stock, change requests) are translated, everything else stays in English.
 
 **Phase I is complete.**
+
+Phase I follow-up (second check against v4): the client can now answer *None of these* to a selection's options in the portal (the item goes back to open with their reason, the PM is told) — §7 "approves or rejects each item"; cost head *Products* added (§12 job costing by labour, material, subcontractor, products); the client portal shows the company's logo and colour (§1); the login page shows the platform's message and links to the terms of service and privacy policy (`/legal/terms`, `/legal/privacy`) (§18); the Owner buys add-ons in Settings → Subscription — extra users, storage packs and WhatsApp message packs, billed with the next invoice (§18); the plan's WhatsApp allowance is counted per calendar month (it counted every message ever); the web app installs to a phone's home screen (manifest + icon) for site staff and clients (§15 mobile — the offline app stays in Phase L).
+
+---
+
+# Roadmap — what v4 asks for that is not built yet
+
+Everything in the modules built so far is covered (Phases A–I). What remains is whole areas, in the order v4's own phases put them. Each phase is planned in detail (requirement → implementation → test, blocks) before it is built, as before.
+
+## Phase J — the rest of the MVP (v4 "Phase 1 — MVP")
+| Block | Scope (v4 §) |
+|---|---|
+| 1 | **WhatsApp for site workers** (§17): worker list with WhatsApp numbers (free users, not counted), the **morning work message** built from the schedule (site, room, task, drawing link, supervisor) at a set time; messages in Hindi or the local language |
+| 2 | **One-tap buttons and voice notes** (§17): *Material needed*, *Work done*, *Need help / clarification* (with photo or voice note) arriving on WhatsApp become CRM records — a purchase request, a task update for the supervisor to approve, a question (RFI-lite) — with the answer sent back; **routing rules** per topic and **escalation** of urgent words to the PM (inbound routing to the project thread exists since Phase I block 5) |
+| 3 | **Trade sequence** (§17): when one trade marks work done, the next trade on the room is told it is ready; **QR code at site** per room opening its latest drawings and specs; **job card** (drawing, measurements, photo) per task |
+| 4 | **PM daily digest** (§17 "one morning screen: done yesterday, late, stuck, budget warnings") by app and WhatsApp; **call / message reports** (who asks most, about what); **email in the shared inbox** (inbound email to the project thread, §17 "WhatsApp, email and web messages in one place") |
+| 5 | **360° room views and renders with comments** (§19 MVP): upload 360° panoramas (Pannellum) and renders; click a spot to comment; a comment becomes a task or a change request |
+| 6 | **Design options** (§19 MVP): option A / B / C side by side in the portal, the client approves one (links to selections and change orders) |
+| 7 | **Subscription charged automatically** (§18 "charged automatically through Razorpay or Stripe"): card / UPI mandate (Razorpay Subscriptions or Stripe Billing), signed webhook → invoice paid, failed charge → the retries already built |
+
+## Phase K — v4 "Phase 2"
+| Block | Scope (v4 §) |
+|---|---|
+| 1 | **Subcontractor management** (§9): work packages from the BOQ, invite subcontractors to bid (portal), compare bids side by side and award, subcontract agreement, measured progress and payment certificates with **retention held**, compliance with expiry alerts (exists for contacts), **performance rating** after each job |
+| 2 | **RFIs** (§6): question from site / consultant to the designer with photo, due date, answer, distribution; open RFIs in reports and the waiting list; **submittals** (shop drawings, samples) with review status |
+| 3 | **Timesheets and resource planning** (§12, §14): hours per project and stage (architects and designers bill hours), approval, hourly-fee invoicing, hours per project and utilisation reports, resource calendar |
+| 4 | **Automatic follow-up sequences and rules** (§16): trigger → wait → action (message, task, notify manager), sequences after enquiry / site visit / proposal (day 1, 3, 7), re-engage lost and cold leads, chasing approvals, after-handover warranty and maintenance check-ins, review and referral requests, anniversary messages; sequences stop when the client replies, approves or pays |
+| 5 | **Accounting integration** (§12, §15): Tally (XML), Zoho Books, QuickBooks, Xero — invoices, receipts, bills, payments, GST |
+| 6 | **AI WhatsApp assistant** for common questions and a **phone system (IVR)** with call logging (§16 / v4 Phase 2) |
+| 7 | **Full 3D model viewer** (§19 Phase 2): GLB / IFC / OBJ in the browser (Three.js, IFC.js), comments pinned on the model, before / after comparison |
+
+## Phase L — v4 "Phase 3"
+| Block | Scope (v4 §) |
+|---|---|
+| 1 | **Offline mobile app** (§10, §15): site report, attendance, snags and photos captured offline and synced; Android / iOS packaging |
+| 2 | **Safety incidents, inspections and checklists** (§10) |
+| 3 | **AI**: follow-up drafts, BOQ from drawings, progress summaries from site photos (§15) |
+| 4 | **Marketplace of supplier catalogues** (§7, v4 Phase 3) |
+| 5 | **AR on the phone** and the **3D model linked to site progress** (§19 Phase 3) |
+| 6 | **Advanced reports and dashboards** (v4 Phase 3) |
+| 7 | **More languages** beyond English and Hindi; per-project currency (§15) |

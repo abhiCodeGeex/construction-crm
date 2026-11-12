@@ -22,7 +22,7 @@ import { PortalMessagesComponent } from './portal-messages.component';
   imports: [TPipe, DatePipe, FormsModule, AvatarModule, ButtonModule, CardModule, ProgressBarModule, TagModule, ChangePasswordComponent, PortalActionsComponent, PortalInvoicesComponent, PortalSupplierComponent, PortalMessagesComponent],
   template: `
     <header class="portal-top">
-      <div class="logo"><span class="mark"><i class="pi pi-building"></i></span> {{ me()?.company?.name ?? 'Portal' }}</div>
+      <div class="logo">@if (me()?.company?.logo_url) { <img class="brand-logo" [src]="me()?.company?.logo_url" alt="" /> } @else { <span class="mark" [style.background]="me()?.company?.primary"><i class="pi pi-building"></i></span> } {{ me()?.company?.name ?? 'Portal' }}</div>
       <span class="spacer"></span>
       <p-button [icon]="theme.dark() ? 'pi pi-sun' : 'pi pi-moon'" [rounded]="true" [text]="true" severity="secondary" (onClick)="theme.toggle()" />
       <p-button label="Change password" icon="pi pi-key" [text]="true" severity="secondary" (onClick)="pwd.open()" />
@@ -76,7 +76,8 @@ import { PortalMessagesComponent } from './portal-messages.component';
               <div class="ms-row"><span class="grow small"><strong>{{ s.item }}</strong>@if (s.room) { · {{ s.room }} }
                 @if (s.chosen) { — you chose {{ s.chosen }} } @else if (s.due_date) { — please choose by {{ s.due_date | date: 'mediumDate' }} }</span>
                 <small class="muted">{{ label(s.status) }}</small></div>
-              @if (!s.chosen) { <div class="opts small muted">@for (o of s.options; track o.name) { <span>{{ o.name }}@if (o.brand) { ({{ o.brand }}) } · {{ money(o.price) }}</span> }</div> }
+              @if (!s.chosen) { <div class="opts small muted">@for (o of s.options; track o.name) { <span>{{ o.name }}@if (o.brand) { ({{ o.brand }}) } · {{ money(o.price) }}</span> }
+                @if (s.id && s.options.length) { <button type="button" class="p-button p-button-text p-button-sm" (click)="rejectOptions(s)">{{ 'None of these' | t }}</button> }</div> }
             }
           }
           @if (boards().length) {
@@ -143,6 +144,7 @@ import { PortalMessagesComponent } from './portal-messages.component';
   `,
   styles: `
     .photos { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .brand-logo { height: 1.8rem; max-width: 7rem; object-fit: contain; vertical-align: middle; margin-right: .4rem; }
     .photos img { width: 7rem; height: 5rem; object-fit: cover; border-radius: 6px; }
     .photos a { position: relative; display: inline-block; }
     .photos .tag { position: absolute; left: .2rem; bottom: .2rem; font-size: .65rem; background: rgba(0,0,0,.6); color: #fff; padding: 0 .3rem; border-radius: 4px; }
@@ -176,6 +178,13 @@ export class PortalComponent implements OnInit {
   isClient() {
     const role = this.me()?.user?.role ?? this.me()?.role;
     return (this.open()?.my_roles ?? []).includes('Client') || role === 'client';
+  }
+
+  async rejectOptions(s: any) {
+    const reason = prompt('What would you like instead?');
+    if (!reason?.trim()) return;
+    await this.api.post(`/portal/selections/${s.id}/reject`, { reason }, 'Sent to the team');
+    this.sels.set(await this.api.get(`/portal/projects/${this.open().id}/selections`));
   }
 
   async askChange(pid: string) {

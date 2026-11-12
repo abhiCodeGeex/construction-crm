@@ -24,6 +24,7 @@ const DEMO = [
     <app-auth-layout>
       <h1 class="title">Welcome back</h1>
       <p class="muted">Staff and portal users (clients, vendors, subcontractors, consultants) sign in here.</p>
+      @if (platform()?.login_message) { <p-message severity="info" [text]="platform()?.login_message" styleClass="mb" /> }
       @if (auth.signedOutReason()) { <p-message severity="info" [text]="auth.signedOutReason()" styleClass="mb" /> }
       <form class="stack" (ngSubmit)="submit()">
         <label class="field">
@@ -57,6 +58,7 @@ const DEMO = [
           </div>
         }
       </div>
+      <p class="small muted center mt">By signing in you accept the <a routerLink="/legal/terms">terms of service</a> and the <a routerLink="/legal/privacy">privacy policy</a>.</p>
     </app-auth-layout>
   `,
 })
@@ -69,7 +71,11 @@ export class LoginComponent {
   busy = signal(false);
   error = signal('');
 
+  platform = signal<any>(null);
+
   constructor() {
+    // Phase I: the platform's name and login message (Super Admin → Platform settings)
+    fetch('/api/public/platform').then((r) => r.json()).then((p) => this.platform.set(p)).catch(() => undefined);
     // Phase I: a platform support session opened by the Super Admin (with the company's permission)
     const support = new URLSearchParams(location.search).get('support');
     if (support) {

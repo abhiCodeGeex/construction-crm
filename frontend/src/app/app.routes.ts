@@ -50,6 +50,7 @@ export const routes: Routes = [
   { path: 'p/:token', loadComponent: () => import('./pages/proposals/proposal-view.component').then((m) => m.ProposalViewComponent) },
   { path: 'q/:token', loadComponent: () => import('./pages/public-questionnaire.component').then((m) => m.PublicQuestionnaireComponent) },
   { path: 'portal', canActivate: [portalGuard], loadComponent: () => import('./pages/portal.component').then((m) => m.PortalComponent) },
+  { path: 'legal/:kind', loadComponent: () => import('./auth/legal.component').then((m) => m.LegalComponent) },
   { path: 'sa/login', loadComponent: () => import('./superadmin/sa-login.component').then((m) => m.SaLoginComponent) },
   {
     path: 'sa',

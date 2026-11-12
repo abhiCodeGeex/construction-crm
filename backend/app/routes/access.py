@@ -76,4 +76,11 @@ def audit_log():
 def portal_me():
     contact = db.contacts.find_one({"company_id": g.cid, "_id": oid(g.contact_id)}) if g.contact_id else None
     return jsonify({"role": g.role, "label": ROLE_LABELS[g.role], "contact": t.out(contact),
-                    "company": {"name": g.company["name"], "branding": g.company.get("branding")}})
+                    "company": {"name": g.company["name"], "branding": g.company.get("branding"), **brand(g.company)}})
+
+
+def brand(company):
+    """Phase I: the client portal shows the company's logo and colour (§1 branding on the client portal)."""
+    from .proposals import branding
+    b = branding(company)
+    return {"logo_url": b["logo_url"], "primary": b["primary"], "currency": b["currency"]}

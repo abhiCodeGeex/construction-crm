@@ -28,7 +28,7 @@ def limits(company=None):
         "users": (plan.get("max_users") or 0) + extra_users if plan.get("max_users") else None,
         "projects": plan.get("max_projects"),
         "modules": plan.get("max_modules"),
-        "whatsapp": plan.get("whatsapp_messages"),
+        "whatsapp": (plan.get("whatsapp_messages") + company.get("addons", {}).get("extra_whatsapp", 0)) if plan.get("whatsapp_messages") else None,
         "storage_gb": (plan.get("storage_gb") or 0) + company.get("addons", {}).get("extra_storage_gb", 0),
     }
 
@@ -51,6 +51,12 @@ def check_modules(modules, company=None):
         abort(402, f"Your plan includes {lim} module(s). Upgrade to Pro for all three.")
 
 
+def _month_start():
+    from datetime import datetime
+    n = datetime.utcnow()
+    return datetime(n.year, n.month, 1)
+
+
 def usage(company):
     cid = str(company["_id"])
     storage = sum(d.get("size", 0) for d in db.files.find({"company_id": cid}, {"size": 1}))
@@ -59,5 +65,7 @@ def usage(company):
         "free_users": db.users.count_documents({"company_id": cid, "$or": [{"kind": "external"}, {"whatsapp_only": True}]}),
         "projects": active_projects(cid),
         "storage_bytes": storage,
-        "whatsapp_messages": db.messages.count_documents({"company_id": cid, "channel": "whatsapp", "direction": "out"}),
+        # the plan's WhatsApp allowance is per month: count this calendar month only
+        "whatsapp_messages": db.messages.count_documents({"company_id": cid, "channel": "whatsapp", "direction": "out",
+                                                          "created_at": {"$gte": _month_start()}}),
     }

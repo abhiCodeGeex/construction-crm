@@ -23,6 +23,7 @@ const HI: Record<string, string> = {
   'Record use': 'उपयोग दर्ज करें', 'Move stock': 'स्टॉक भेजें', 'Material': 'सामग्री', 'Received': 'मिला', 'Used': 'उपयोग', 'On site': 'साइट पर',
   'Send to the PM': 'पीएम को भेजें', 'What needs to change': 'क्या बदलना है',
   // portal
+  'None of these': 'इनमें से कोई नहीं',
   'Your projects': 'आपके प्रोजेक्ट', 'For you to act on': 'आपके लिए काम', 'Documents': 'दस्तावेज़', 'Site photos': 'साइट की फ़ोटो', 'Mood boards': 'मूड बोर्ड',
   'Your change requests': 'आपके बदलाव अनुरोध', 'Send to the team': 'टीम को भेजें', 'Messages': 'संदेश', 'Project team': 'प्रोजेक्ट टीम', 'Invoices': 'बिल',
   'Proposals for you': 'आपके लिए प्रस्ताव', 'Open and answer': 'खोलें और जवाब दें', 'View': 'देखें', 'Pay now': 'अभी भुगतान करें', 'Back': 'वापस',

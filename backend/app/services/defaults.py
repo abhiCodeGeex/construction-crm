@@ -294,7 +294,7 @@ NOTIFY_EVENTS.update({
 })
 
 # ---------------- Phase E: costs, invoices, change orders ----------------
-COST_CATEGORIES = ["Material", "Labour", "Subcontract", "Equipment", "Transport", "Consultant", "Site expense", "Other"]
+COST_CATEGORIES = ["Material", "Labour", "Subcontract", "Products", "Equipment", "Transport", "Consultant", "Site expense", "Other"]
 VENDOR_TYPES = ["supplier", "subcontractor", "contractor", "consultant"]
 COST_STATUSES = ["draft", "submitted", "approved", "rejected", "void"]
 # why a cost takes a stage over its budget; "client_change" is the one the client pays for (change order)

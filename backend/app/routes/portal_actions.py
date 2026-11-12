@@ -168,6 +168,23 @@ def portal_choose(sid):
     return jsonify({"ok": True})
 
 
+@bp.post("/portal/selections/<sid>/reject")
+@portal
+def portal_reject_options(sid):
+    """§7 "client approves or rejects each item in the portal": none of the options suits — the team is asked for others."""
+    s, p = project_of("selections", sid)
+    require_client(p)
+    if s["status"] not in ("open", "options_sent"):
+        abort(409, "A choice is already recorded; ask the team to reopen it")
+    reason = ((request.get_json(force=True) or {}).get("reason") or "").strip()[:500] or abort(400, "Tell the team what you would like instead")
+    rej = {"by": g.user.get("name"), "contact_id": g.contact_id, "reason": reason, "at": t.now(), "options": [o["name"] for o in s.get("options", [])]}
+    db.selections.update_one({"_id": s["_id"]}, {"$set": {"status": "open", "client_rejected": rej}, "$push": {"rejections": rej}})
+    ev.log(str(p["_id"]), "file", f"Client asked for other options for {s['item']}: {reason}")
+    notify.send("selection_chosen", ev.managers(p), f"{p['name']}: {g.user.get('name')} would like other options for {s['item']} — {reason}",
+                f"/app/projects/{p['_id']}?tab=selections", project_id=str(p["_id"]), skip_self=False)
+    return jsonify({"ok": True})
+
+
 def my_document(did):
     doc, p = project_of("documents", did)
     tr, item = sent_to_me(doc)

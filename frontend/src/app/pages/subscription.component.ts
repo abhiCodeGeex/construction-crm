@@ -42,6 +42,14 @@ import { AuthService } from '../core/auth.service';
             </div>
           </p-card>
         </div>
+        <p-card header="Add-ons" styleClass="mt">
+          <div class="row gap wrap">
+            <label class="field"><span>Extra users ({{ inr(s.addon_prices.extra_user) }}/user/month)</span><input pInputText type="number" min="0" [(ngModel)]="add.extra_users" /></label>
+            <label class="field"><span>Extra storage, GB ({{ inr(s.addon_prices.storage_100gb) }}/100 GB/month)</span><input pInputText type="number" min="0" step="100" [(ngModel)]="add.extra_storage_gb" /></label>
+            <label class="field"><span>Extra WhatsApp messages ({{ inr(s.addon_prices.whatsapp_1000) }}/1,000/month)</span><input pInputText type="number" min="0" step="1000" [(ngModel)]="add.extra_whatsapp" /></label>
+          </div>
+          <div class="row-between"><span class="small muted">Billed with your next invoice, plus GST.</span><p-button label="Save add-ons" size="small" (onClick)="saveAddons()" /></div>
+        </p-card>
         <p-card header="Invoices" styleClass="mt">
           @for (i of s.invoices; track i.id) {
             <div class="row-between small"><span>{{ i.number }} · {{ i.created_at | date: 'mediumDate' }} · {{ i.period || i.type }}</span>
@@ -104,6 +112,7 @@ export class SubscriptionComponent implements OnInit {
     this.s.set(s);
     this.planCode = s.plan?.code ?? null;
     this.cycle = s.billing_cycle ?? 'monthly';
+    this.add = { extra_users: s.addons?.extra_users ?? 0, extra_storage_gb: s.addons?.extra_storage_gb ?? 0, extra_whatsapp: s.addons?.extra_whatsapp ?? 0 };
   }
 
   pick() {
@@ -116,6 +125,14 @@ export class SubscriptionComponent implements OnInit {
 
   gb(b: number) {
     return (b / 1073741824).toFixed(2);
+  }
+
+  add: any = {};
+
+  async saveAddons() {
+    await this.api.post('/billing/addons', { extra_users: +this.add.extra_users || 0, extra_storage_gb: +this.add.extra_storage_gb || 0,
+      extra_whatsapp: +this.add.extra_whatsapp || 0 }, 'Add-ons saved');
+    await this.load();
   }
 
   async change() {

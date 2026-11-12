@@ -651,7 +651,7 @@ try:
         expect(f"I6.5 {act}", call("POST", f"/sa/companies/{C6}/action", {"action": act, **body}, SA["owner"]))
     c6 = mongo.companies.find_one({"_id": ObjectId(C6)})
     check("I6.5 actions applied", c6["modules"] == ["construction", "interior"] and c6["feature_flags"] == {"whatsapp": False, "procurement": True}
-          and c6["addons"] == {"extra_users": 2, "extra_storage_gb": 100} and c6["notes"][0]["text"] == "Called the owner", c6.get("addons"))
+          and c6["addons"] == {"extra_users": 2, "extra_storage_gb": 100, "extra_whatsapp": 0} and c6["notes"][0]["text"] == "Called the owner", c6.get("addons"))
     expect("I6.5 unknown action", call("POST", f"/sa/companies/{C6}/action", {"action": "fly"}, SA["owner"]), 400)
     if "sales" in SA:
         expect("I6.5 sales can extend a trial", call("POST", f"/sa/companies/{C6}/action", {"action": "extend_trial", "days": 1}, SA["sales"]))
@@ -810,6 +810,34 @@ try:
     check("I7.4 kept on the user", call("GET", "/auth/me", token=T["site"])[1]["user"].get("language") == "hi")
     expect("I7.4 portal user too", call("PUT", "/me/language", {"language": "hi"}, T["client"]))
     mongo.users.update_many({"email": {"$in": ["site@skyline.test", "client@skyline.test"]}}, {"$unset": {"language": ""}})
+
+    # ======================================= second check against v4 =======================================
+    sx = expect("selection for the client", call("POST", f"/projects/{PP}/selections", {"stage_id": pp["stages"][0]["id"], "item": f"Rug {RUN}",
+                                                                                     "options": [{"name": "Jute", "unit_price": 9000}, {"name": "Wool", "unit_price": 15000}]}, T["owner"]), 201)
+    expect("I8.1 reason needed", call("POST", f"/portal/selections/{sx['id']}/reject", {}, T["client"]), 400)
+    expect("I8.1 client: none of these", call("POST", f"/portal/selections/{sx['id']}/reject", {"reason": "Something in blue"}, T["client"]))
+    row = next(x for x in call("GET", f"/portal/projects/{PP}/selections", token=T["client"])[1] if x["id"] == sx["id"])
+    check("I8.1 back to open with the reason", row["status"] == "open" and row["asked_other"] == "Something in blue", row)
+    check("I8.1 PM told", mongo.notifications.count_documents({"company_id": CID, "user_id": U["pm"], "text": {"$regex": "other options"}}) >= 0)
+    expect("I8.1 a supplier cannot", call("POST", f"/portal/selections/{sx['id']}/reject", {"reason": "x"}, T["vendor"]), 404)
+    expect("I8.2 Products cost head", call("POST", f"/projects/{PID}/costs", {"stage_id": S2, "category": "Products", "description": f"Sofa {RUN}",
+                                                                          "amount": 1000, "date": day(0)}, T["accounts"]), 201)
+    pm_ = expect("I8.3 portal branding", call("GET", "/portal/me", token=T["client"]))
+    check("I8.3 logo and colour sent", "logo_url" in pm_["company"] and pm_["company"].get("primary"), pm_["company"])
+    O8 = login("owner@skyline.test")
+    add_before = mongo.companies.find_one({"_id": ObjectId(CID)}, {"addons": 1}).get("addons")
+    expect("I8.4 only the Owner buys add-ons", call("POST", "/billing/addons", {"extra_whatsapp": 1000}, T["pm"]), 403)
+    lim0 = call("GET", "/billing/subscription", token=O8)[1]["limits"]["whatsapp"]
+    expect("I8.4 WhatsApp pack", call("POST", "/billing/addons", {"extra_whatsapp": 1000, "extra_users": 0, "extra_storage_gb": 0}, O8))
+    lim1 = call("GET", "/billing/subscription", token=O8)[1]["limits"]["whatsapp"]
+    check("I8.4 allowance grows", lim0 is None or lim1 == lim0 + 1000, (lim0, lim1))
+    mongo.companies.update_one({"_id": ObjectId(CID)}, {"$set": {"addons": add_before or {}}})
+    u0 = call("GET", "/billing/subscription", token=O8)[1]["usage"]["whatsapp_messages"]
+    mongo.messages.insert_one({"company_id": CID, "channel": "whatsapp", "direction": "out", "text": f"old {RUN}",
+                               "created_at": datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=40)})
+    check("I8.5 last month's WhatsApp not counted", call("GET", "/billing/subscription", token=O8)[1]["usage"]["whatsapp_messages"] == u0)
+    mongo.messages.delete_many({"company_id": CID, "text": f"old {RUN}"})
+    check("I8.6 platform page data", call("GET", "/public/platform")[0] == 200)
 
 finally:
     # ---------------- clean up (KEEP=1 leaves the data for a look in the browser) ----------------
