@@ -204,6 +204,9 @@ def edit_invoice(iid):
 
 
 def free_row(inv):
+    if inv.get("timesheet_ids"):  # Phase K: an hours invoice that is deleted or voided frees its hours
+        from .timesheets import release_hours
+        release_hours(str(inv["_id"]))
     if inv.get("schedule_row_id") and inv.get("contract_id"):
         c = db.contracts.find_one({"_id": oid(inv["contract_id"])})
         rows = [{k: v for k, v in r.items() if k not in ("status", "invoice_id")} if r.get("invoice_id") == str(inv["_id"]) else r

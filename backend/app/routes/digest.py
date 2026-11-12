@@ -56,6 +56,8 @@ def build(user_id=None, role=None, today=None):
             if f.get("urgent") or f["created_at"] < t.now() - timedelta(hours=12):
                 stuck.append({"what": f"{f['worker_name']}: {(f.get('text') or f['kind'])[:80]}", "why": "urgent" if f.get("urgent") else f"{f['kind']} not settled",
                               "since": f["created_at"].date().isoformat()})
+        for r in db.rfis.find({"company_id": g.cid, "project_id": pid, "status": "open", "due_date": {"$lt": iso}}):  # Phase K
+            stuck.append({"what": f"{r['number']} {r['subject'][:60]}", "why": f"RFI waiting for {r.get('to_name')}", "since": r["due_date"]})
         budget = [] if hide else [{"stage": r["name"], "pct": r["pct"], "level": r["level"]} for r in budget_rows(p) if r["level"] in ("amber", "red")]
         row = {"project_id": pid, "project": p["name"], "done": done[-15:], "site_report": reports > 0, "late": late, "stuck": stuck, "budget": budget}
         for k in ("late", "stuck", "budget"):
@@ -192,9 +194,9 @@ def message_report():
 def calls(since):
     """Calls logged on leads (the lead timeline 'call' entries) per person."""
     out = {}
-    for ld in db.leads.find({"company_id": g.cid, "activities.kind": "call"}, {"activities": 1}):
+    for ld in db.leads.find({"company_id": g.cid, "activities.type": "call"}, {"activities": 1}):
         for a in ld.get("activities", []):
-            if a.get("kind") == "call" and a.get("at") and a["at"] >= since:
+            if a.get("type") == "call" and a.get("at") and a["at"] >= since:
                 out[a.get("by") or "—"] = out.get(a.get("by") or "—", 0) + 1
     return sorted(out.items(), key=lambda x: -x[1])
 

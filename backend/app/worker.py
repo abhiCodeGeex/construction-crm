@@ -472,6 +472,16 @@ def check_field(now):
     check_digest(now)
 
 
+def check_phase_k(now):
+    """Phase K: overdue RFIs / submittals, automatic follow-up sequences, the daily accounting sync."""
+    from .routes.rfis import check_rfis
+    from .routes.sequences import check_sequences
+    from .routes.accounting import check_accounting
+    check_rfis(now)
+    check_sequences(now)
+    check_accounting(now)
+
+
 def platform_daily(now):
     """Phase I: the subscription billing run, once a day (trial ends, renewals, reminders, read-only, purge)."""
     day = now.date().isoformat()
@@ -485,7 +495,7 @@ def platform_daily(now):
 CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
           check_compliance, check_meetings, check_health, check_invoices, check_change_orders,
           check_transmittals, check_selections, check_site_reports,
-          check_client_reminders, check_procurement, check_retention, check_snags, check_permits, check_usage, check_field]
+          check_client_reminders, check_procurement, check_retention, check_snags, check_permits, check_usage, check_field, check_phase_k]
 
 
 def run_once(now=None):

@@ -832,7 +832,7 @@ How it was built (tests: `backend/tests/test_phase_j.py`, 204 checks):
 
 Not verified: live WhatsApp Cloud, Razorpay and Stripe calls (built to their documented APIs; tested only in sandbox mode). The 360° viewer, digest, Field tab and public job card were clicked through in the browser.
 
-## Phase K — v4 "Phase 2"
+## Phase K — v4 "Phase 2" — **Done**
 | Block | Scope (v4 §) |
 |---|---|
 | 1 | **Subcontractor management** (§9): work packages from the BOQ, invite subcontractors to bid (portal), compare bids side by side and award, subcontract agreement, measured progress and payment certificates with **retention held**, compliance with expiry alerts (exists for contacts), **performance rating** after each job |
@@ -842,6 +842,48 @@ Not verified: live WhatsApp Cloud, Razorpay and Stripe calls (built to their doc
 | 5 | **Accounting integration** (§12, §15): Tally (XML), Zoho Books, QuickBooks, Xero — invoices, receipts, bills, payments, GST |
 | 6 | **AI WhatsApp assistant** for common questions and a **phone system (IVR)** with call logging (§16 / v4 Phase 2) |
 | 7 | **Full 3D model viewer** (§19 Phase 2): GLB / IFC / OBJ in the browser (Three.js, IFC.js), comments pinned on the model, before / after comparison |
+
+**Phase K — Done.** Tests: `backend/tests/test_phase_k.py`, 187 checks.
+- **1** `routes/subcontracts.py`, Money → Subcontracts, and the subcontractor's portal.
+  - **Packages and bids:** a work package's lines are typed in or taken from the accepted estimate (the labour rate becomes the internal estimate rate, hidden from roles that do not see costs). Only contacts typed *subcontractor* can be invited, by email and WhatsApp. They price every line in the portal, or the team enters a bid that came another way; a new bid replaces the old one.
+  - **Comparison:** line by line against the estimate, lowest marked, % over or under the estimate, days, and the bidder's rating.
+  - **Award:** awarding a bid that is not the lowest needs a reason; an expired compliance document warns, and awarding anyway is recorded. The agreement is printable (HTML).
+  - **Certificates:** quantity done to date per line, which never goes down and is capped at 110%. Each certificate is gross to date − previous, minus retention. Approving it books the cost (category Subcontract, stage budget recalculated); paying it records part or full payments.
+  - **Completion:** rates quality, time, safety and communication (1–5), kept as a running average on the subcontractor, and makes a retention-release certificate for the retention held.
+- **2** `routes/rfis.py`, project → RFIs & submittals, and the portal.
+  - **RFIs** go to a named staff member or an external consultant on the team, by default the architect or designer. The due date is 3 working days (1 if urgent). An RFI can carry photos and the drawing it is about.
+  - **Answers** go to the asker and are emailed to the distribution list; an answer with a cost or time impact drafts a change request. An answered RFI can be closed, or reopened with a reason (history kept).
+  - **From the portal:** subcontractors and consultants raise RFIs; an external consultant answers in the portal.
+  - **Submittals** (shop drawing, sample, data sheet, method statement, test certificate) go to a reviewer for approved / approved as noted / revise and resubmit / rejected; anything but approved needs comments. Revise-and-resubmit needs a new revision.
+  - **Reminders and reports:** the worker reminds about overdue RFIs and reviews once a day, the digest lists overdue RFIs as stuck, and `/reports/rfis` gives open, overdue and average days to answer, with submittals by status.
+- **3** `routes/timesheets.py`, Team → Timesheets.
+  - **Logging:** hours per day, project, stage and task, in quarter hours. No future days, at most 24 h a day, and only on projects the person is on.
+  - **Approval:** the week is submitted; the project's PM or an Owner approves or returns it with a reason, and nobody approves their own hours.
+  - **Rates:** per person (Settings → Integrations): the hourly cost gives each entry's cost, the bill rate is used for invoicing.
+  - **Invoicing:** approved billable hours become a draft invoice, one line per person (hours × bill rate). Deleting or voiding that invoice frees the hours again.
+  - **Report and plan:** the report shows hours by project and stage and by person (billable % and utilisation against hours per day × Monday–Saturday). The resource plan shows, per person and day, the tasks assigned (overbooked when two overlap) and the hours logged.
+- **4** `routes/sequences.py`, Team → Automation & calls.
+  - **Triggers:** new enquiry, site visit done, proposal sent, lead lost, lead gone cold (N days), client approval pending (selection or change order), invoice overdue, handed over, and handover anniversary.
+  - **Steps:** wait N days → send a message template (WhatsApp when opted in, email or SMS; logged on the lead), make a follow-up task, or notify a role or the record's owner.
+  - **Which records:** only records after the sequence was switched on, one run per record (per year for anniversaries).
+  - **Stopping:** a run stops when the client replies, or when the record moves on (won or lost, accepted, chosen, paid). Runs are listed and can be stopped by hand.
+  - **Who:** Owner, PM or sales manager. Presets cover the enquiry day 1/3/7 chase, the proposal chase, re-engaging after 90 days, and the after-handover review / 1-month / warranty check.
+- **5** `routes/accounting.py`, Settings → Integrations → Accounting.
+  - **Tally:** an XML file to import into Tally Prime / ERP 9. It holds party ledgers (Sundry Debtors / Creditors) and Sales (CGST/SGST/IGST ledgers), Receipt, Purchase (input GST) and Payment vouchers for a date range, with the company's own ledger names.
+  - **Zoho Books, QuickBooks, Xero:** connected with OAuth (client id, secret and refresh token; tokens are refreshed and rotated). "Sync" pushes invoices, receipts and (Xero) bills. Each record keeps the provider's id so it is never sent twice; failures are listed with the provider's reason. An optional nightly sync is available, and a sandbox provider for trying it out.
+- **6** `routes/assistant.py`, Settings → Integrations.
+  - **Assistant:** a client's WhatsApp, after routing to the project thread, is answered from the company's FAQs and the project's facts: progress, current stage, next milestone, amount due, PM, last site report — never internal costs.
+  - **Modes:** *FAQ* uses keyword matching only. *Claude* uses the company's own Anthropic API key, model `claude-opus-5-5`, low effort, a JSON answer-and-handoff reply, and the server-side refusal fallback. If the API is unavailable it falls back to the FAQ answers.
+  - **Handing over:** urgent words, complaints, discount or change requests and unknown questions get the holding reply and go to the team. The answer is kept in the thread.
+  - **Phone (IVR):** Twilio, Exotel (connect applet), or sandbox. The greeting and menu are set by the company (digit → role); the call is put through to that role on the caller's own project (else anyone in the role, else an Owner) and recorded if wanted.
+  - **Call log and missed calls:** every call is logged, and calls by hand too. Calls with a known contact go on their open lead's timeline, so they count in the message report. A missed call alerts the person and makes a "Call back" follow-up.
+- **7** `routes/models3d.py`, project → Documents → 3D models, and the portal.
+  - **Files:** GLB / glTF, OBJ and IFC up to 100 MB. Three.js 0.160 and web-ifc 0.0.57 load from the CDN through an import map, only when a model is opened.
+  - **Viewing:** orbit and zoom. A click on the model pins a numbered comment (point plus camera); a comment becomes a task or a change request, or is resolved.
+  - **Versions:** a new upload can replace an earlier version; before / after shows both side by side with linked cameras.
+  - **Sharing:** shared models appear in the portal, where the client comments.
+
+Not verified: live Zoho, QuickBooks, Xero, Anthropic API, Twilio and Exotel calls. They are built to the providers' documented APIs and tested only in sandbox or fallback mode; the Claude path was exercised with an invalid key, which falls back to the FAQ answers. IFC rendering depends on web-ifc's API (checked against its documented calls, not with a real IFC file).
 
 ## Phase L — v4 "Phase 3"
 | Block | Scope (v4 §) |

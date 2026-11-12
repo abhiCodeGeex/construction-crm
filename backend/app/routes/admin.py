@@ -240,8 +240,8 @@ def numbering_preview():
 
 # ---------------- uploads (compliance documents) ----------------
 ALLOWED = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".heic", ".doc", ".docx", ".xlsx", ".xls", ".csv", ".dwg", ".dxf",
-           ".mp4", ".mov"}
-VIDEO = {".mp4", ".mov"}
+           ".mp4", ".mov", ".glb", ".gltf", ".obj", ".ifc"}
+VIDEO = {".mp4", ".mov", ".glb", ".gltf", ".obj", ".ifc"}  # large files: video and 3D models (Phase K) up to 100 MB
 MAX_BYTES = 20 * 1024 * 1024
 MAX_VIDEO_BYTES = 100 * 1024 * 1024  # site walk-through videos
 
@@ -269,7 +269,7 @@ def save_upload(allowed=None, allowed_text=None):
     name = secure_filename(f.filename) or "file"
     ext = os.path.splitext(name)[1].lower()
     if ext not in (allowed or ALLOWED):
-        abort(400, allowed_text or "Allowed files: PDF, image, Word, Excel / CSV, CAD (DWG, DXF) or video (MP4, MOV)")
+        abort(400, allowed_text or "Allowed files: PDF, image, Word, Excel / CSV, CAD (DWG, DXF), 3D model (GLB, OBJ, IFC) or video (MP4, MOV)")
     key = f"{g.cid}_{uuid.uuid4().hex[:12]}_{name}"
     path = os.path.join(Config.UPLOAD_DIR, key)
     f.save(path)

@@ -1,3 +1,4 @@
+import { PortalProjectExtrasComponent, PortalSubcontractsComponent } from './portal-sub.component';
 import { PortalDesignComponent } from './portal-design.component';
 import { I18n, TPipe } from '../core/i18n';
 import { FormsModule } from '@angular/forms';
@@ -20,7 +21,7 @@ import { PortalMessagesComponent } from './portal-messages.component';
 /** Portal for clients, vendors, subcontractors and consultants: only projects where they are on the team (§13). */
 @Component({
   selector: 'app-portal',
-  imports: [TPipe, DatePipe, FormsModule, AvatarModule, ButtonModule, CardModule, ProgressBarModule, TagModule, ChangePasswordComponent, PortalActionsComponent, PortalInvoicesComponent, PortalSupplierComponent, PortalMessagesComponent, PortalDesignComponent],
+  imports: [TPipe, DatePipe, FormsModule, AvatarModule, ButtonModule, CardModule, ProgressBarModule, TagModule, ChangePasswordComponent, PortalActionsComponent, PortalInvoicesComponent, PortalSupplierComponent, PortalMessagesComponent, PortalDesignComponent, PortalSubcontractsComponent, PortalProjectExtrasComponent],
   template: `
     <header class="portal-top">
       <div class="logo">@if (me()?.company?.logo_url) { <img class="brand-logo" [src]="me()?.company?.logo_url" alt="" /> } @else { <span class="mark" [style.background]="me()?.company?.primary"><i class="pi pi-building"></i></span> } {{ me()?.company?.name ?? 'Portal' }}</div>
@@ -94,7 +95,7 @@ import { PortalMessagesComponent } from './portal-messages.component';
               }</div>
             }
           }
-          @for (pid of [open().id]; track pid) { <app-portal-design [projectId]="pid" [isClient]="isClient()" [currency]="me()?.company?.currency ?? 'INR'" /> }
+          @for (pid of [open().id]; track pid) { <app-portal-design [projectId]="pid" [isClient]="isClient()" [currency]="me()?.company?.currency ?? 'INR'" /> <app-portal-project-extras [projectId]="pid" /> }
           @if (photos().length) {
             <h4>{{ 'Site photos' | t }}</h4>
             @for (grp of photoDays(); track grp.date) {
@@ -140,6 +141,7 @@ import { PortalMessagesComponent } from './portal-messages.component';
           }
         }
         <app-portal-supplier [currency]="me()?.company?.currency ?? 'INR'" />
+        <app-portal-subcontracts [currency]="me()?.company?.currency ?? 'INR'" />
         <p class="muted small mt">{{ "You never see the firm's internal costs." | t }}</p>
       }
     </main>

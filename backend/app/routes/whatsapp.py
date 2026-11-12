@@ -175,6 +175,11 @@ def webhook(cid_):
                 if text and text.upper() not in ("STOP", "UNSUBSCRIBE"):
                     from .insights import route_inbound  # Phase I: into the project's thread, to the right person
                     routed = route_inbound(contact, text)
+                    from .assistant import reply_inbound  # Phase K: the WhatsApp assistant answers common questions
+                    try:
+                        reply_inbound(contact, text, routed)
+                    except Exception:  # noqa: BLE001 — the message is kept and routed even if the assistant fails
+                        pass
                 t.insert("messages", {"channel": "whatsapp", "direction": "in", "contact_id": str(contact["_id"]), "contact_name": contact["name"],
                                       "from": frm, "text": text[:4000], "provider_id": msg.get("id"), "status": "received", "routed": routed})
     return jsonify({"ok": True})
