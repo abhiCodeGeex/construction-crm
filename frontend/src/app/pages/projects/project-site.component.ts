@@ -1,3 +1,4 @@
+import { ProjectFieldComponent } from './project-field.component';
 import { I18n, TPipe } from '../../core/i18n';
 import { Component, inject, input, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
@@ -23,7 +24,7 @@ import { ProjectSiteReportsComponent } from './project-site-reports.component';
       <label class="field"><span>Day</span><input pInputText type="date" [(ngModel)]="day" [max]="today" (change)="load()" /></label>
       <label class="field"><span>Month summary</span><input pInputText type="month" [(ngModel)]="month" (change)="loadSummary()" /></label>
       <span class="grow"></span>
-      @if (d()?.can_write) { <p-button label="Add a site worker" icon="pi pi-user-plus" size="small" [text]="true" (onClick)="wDlg = true; wf = { name: '', trade: '', phone: '' }" /> }
+      @if (d()?.can_write) { <p-button label="Add a site worker" icon="pi pi-user-plus" size="small" [text]="true" (onClick)="wDlg = true; wf = { name: '', trade: '', phone: '', language: 'en', whatsapp: false }" /> }
     </div>
     @if (d(); as d) {
       <p-table [value]="rows" styleClass="p-datatable-sm mb">
@@ -54,6 +55,9 @@ import { ProjectSiteReportsComponent } from './project-site-reports.component';
         <div class="grid2">
           <label class="field"><span>Trade</span><input pInputText [(ngModel)]="wf.trade" placeholder="Mason, carpenter…" fluid /></label>
           <label class="field"><span>Phone</span><input pInputText [(ngModel)]="wf.phone" fluid /></label>
+          <label class="field"><span>Language of work messages</span>
+            <select class="p-inputtext" [(ngModel)]="wf.language"><option value="en">English</option><option value="hi">हिन्दी (Hindi)</option></select></label>
+          <label class="check small"><input type="checkbox" [(ngModel)]="wf.whatsapp" [disabled]="!wf.phone" /> Agreed to get work messages on WhatsApp</label>
         </div>
         @if (seesCost) { <label class="field"><span>Daily rate</span><p-inputnumber [(ngModel)]="wf.daily_rate" [min]="0" fluid /></label> }
         <div class="row right"><p-button label="Add" [disabled]="!wf.name?.trim()" (onClick)="addWorker()" /></div>
@@ -370,7 +374,7 @@ export class ProjectStockComponent {
 /** The project's Site tab (Phase I block 3): daily reports, attendance, snags and stock at site. */
 @Component({
   selector: 'app-project-site',
-  imports: [TPipe, ProjectSiteReportsComponent, FormsModule, SelectButtonModule, ButtonModule, DialogModule, InputTextModule, ProjectAttendanceComponent, ProjectSnagsComponent, ProjectStockComponent],
+  imports: [TPipe, ProjectSiteReportsComponent, FormsModule, SelectButtonModule, ButtonModule, DialogModule, InputTextModule, ProjectAttendanceComponent, ProjectSnagsComponent, ProjectStockComponent, ProjectFieldComponent],
   template: `
     <div class="row-between wrap gap mb">
       <p-selectbutton [options]="views" [(ngModel)]="view" optionLabel="label" optionValue="value" [allowEmpty]="false" />
@@ -388,6 +392,7 @@ export class ProjectStockComponent {
       @case ('attendance') { <app-project-attendance [projectId]="projectId()" /> }
       @case ('snags') { <app-project-snags [projectId]="projectId()" /> }
       @case ('stock') { <app-project-stock [projectId]="projectId()" /> }
+      @case ('field') { <app-project-field [projectId]="projectId()" /> }
       @default { <app-project-site-reports [projectId]="projectId()" /> }
     }
   `,
@@ -396,7 +401,7 @@ export class ProjectSiteComponent {
   projectId = input.required<string>();
   private i18n = inject(I18n);
   get views() {
-    return [['Daily reports', 'reports'], ['Attendance', 'attendance'], ['Snags', 'snags'], ['Stock', 'stock']].map(([l, v]) => ({ label: this.i18n.t(l), value: v }));
+    return [['Daily reports', 'reports'], ['Attendance', 'attendance'], ['Snags', 'snags'], ['Stock', 'stock'], ['Workers on WhatsApp', 'field']].map(([l, v]) => ({ label: this.i18n.t(l), value: v }));
   }
   view = 'reports';
   private api = inject(Api);

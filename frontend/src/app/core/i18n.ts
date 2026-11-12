@@ -22,6 +22,12 @@ const HI: Record<string, string> = {
   'New snag': 'नई कमी', 'Mark fixed': 'ठीक हुआ', 'Close': 'बंद करें', 'Reopen': 'फिर खोलें', 'Not closed': 'खुली', 'All': 'सभी', 'No snags here.': 'कोई कमी नहीं।',
   'Record use': 'उपयोग दर्ज करें', 'Move stock': 'स्टॉक भेजें', 'Material': 'सामग्री', 'Received': 'मिला', 'Used': 'उपयोग', 'On site': 'साइट पर',
   'Send to the PM': 'पीएम को भेजें', 'What needs to change': 'क्या बदलना है',
+  // Phase J
+  'Workers on WhatsApp': 'व्हाट्सऐप पर मज़दूर', 'Morning digest': 'सुबह का सारांश', 'Design options': 'डिज़ाइन विकल्प',
+  '360° views and renders': '360° व्यू और रेंडर', 'You approved': 'आपने चुना', 'You asked for changes': 'आपने बदलाव माँगे',
+  'Please decide by': 'कृपया तय करें', 'No extra cost': 'कोई अतिरिक्त लागत नहीं', 'Choose': 'चुनें', 'Ask for changes': 'बदलाव माँगें',
+  'Approve option': 'विकल्प स्वीकार करें', 'This adds': 'इससे जुड़ता है', '— the team will send a change order.': '— टीम बदलाव आदेश भेजेगी।',
+  'Comment (optional)': 'टिप्पणी (वैकल्पिक)', 'Your comment': 'आपकी टिप्पणी',
   // portal
   'None of these': 'इनमें से कोई नहीं',
   'Your projects': 'आपके प्रोजेक्ट', 'For you to act on': 'आपके लिए काम', 'Documents': 'दस्तावेज़', 'Site photos': 'साइट की फ़ोटो', 'Mood boards': 'मूड बोर्ड',

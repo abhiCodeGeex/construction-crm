@@ -463,6 +463,15 @@ def check_permits(now):
     run(now)
 
 
+def check_field(now):
+    """Phase J: the morning work message to site workers, the PM digest, and escalation of urgent site messages."""
+    from .routes.field import check_morning, check_escalations
+    from .routes.digest import check_digest
+    check_morning(now)
+    check_escalations(now)
+    check_digest(now)
+
+
 def platform_daily(now):
     """Phase I: the subscription billing run, once a day (trial ends, renewals, reminders, read-only, purge)."""
     day = now.date().isoformat()
@@ -476,7 +485,7 @@ def platform_daily(now):
 CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
           check_compliance, check_meetings, check_health, check_invoices, check_change_orders,
           check_transmittals, check_selections, check_site_reports,
-          check_client_reminders, check_procurement, check_retention, check_snags, check_permits, check_usage]
+          check_client_reminders, check_procurement, check_retention, check_snags, check_permits, check_usage, check_field]
 
 
 def run_once(now=None):

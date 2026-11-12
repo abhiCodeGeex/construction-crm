@@ -300,6 +300,16 @@ def clean_worker(d, w=None):
         ch["daily_rate"] = r2(num(d.get("daily_rate"), "Daily rate") or 0) or None
     if "active" in d:
         ch["active"] = bool(d["active"])
+    if "language" in d:  # Phase J: the morning message goes in the worker's language
+        ch["language"] = d["language"] if d["language"] in ("en", "hi") else abort(400, "Language: en or hi")
+    if "whatsapp" in d:  # Phase J: workers agree to get WhatsApp work messages (asked on site)
+        if d["whatsapp"]:
+            from ..services.messaging import phone_e164
+            if not phone_e164(ch.get("phone", (w or {}).get("phone"))):
+                abort(400, "The worker needs a mobile number for WhatsApp")
+            ch.update(whatsapp_opt_in={"at": t.now(), "how": "Verbal", "by": g.user.get("name")}, whatsapp_opt_out=None)
+        else:
+            ch.update(whatsapp_opt_in=None, whatsapp_opt_out={"at": t.now(), "how": "staff", "by": g.user.get("name")})
     return ch
 
 

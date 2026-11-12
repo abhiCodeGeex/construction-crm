@@ -81,6 +81,8 @@ def create_token(payload: dict) -> str:
 def _read_token():
     header = request.headers.get("Authorization", "")
     token = header[7:] if header.startswith("Bearer ") else request.args.get("t")
+    if not token and request.method == "GET" and request.path.startswith("/api/files/"):
+        token = request.cookies.get("bs_f")  # images and links to the company's files (set by the app, SameSite=Strict)
     if not token:
         abort(401, "Please sign in first")
     try:

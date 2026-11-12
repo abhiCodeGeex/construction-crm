@@ -786,16 +786,51 @@ Phase I follow-up (second check against v4): the client can now answer *None of 
 
 Everything in the modules built so far is covered (Phases A–I). What remains is whole areas, in the order v4's own phases put them. Each phase is planned in detail (requirement → implementation → test, blocks) before it is built, as before.
 
-## Phase J — the rest of the MVP (v4 "Phase 1 — MVP")
-| Block | Scope (v4 §) |
-|---|---|
-| 1 | **WhatsApp for site workers** (§17): worker list with WhatsApp numbers (free users, not counted), the **morning work message** built from the schedule (site, room, task, drawing link, supervisor) at a set time; messages in Hindi or the local language |
-| 2 | **One-tap buttons and voice notes** (§17): *Material needed*, *Work done*, *Need help / clarification* (with photo or voice note) arriving on WhatsApp become CRM records — a purchase request, a task update for the supervisor to approve, a question (RFI-lite) — with the answer sent back; **routing rules** per topic and **escalation** of urgent words to the PM (inbound routing to the project thread exists since Phase I block 5) |
-| 3 | **Trade sequence** (§17): when one trade marks work done, the next trade on the room is told it is ready; **QR code at site** per room opening its latest drawings and specs; **job card** (drawing, measurements, photo) per task |
-| 4 | **PM daily digest** (§17 "one morning screen: done yesterday, late, stuck, budget warnings") by app and WhatsApp; **call / message reports** (who asks most, about what); **email in the shared inbox** (inbound email to the project thread, §17 "WhatsApp, email and web messages in one place") |
-| 5 | **360° room views and renders with comments** (§19 MVP): upload 360° panoramas (Pannellum) and renders; click a spot to comment; a comment becomes a task or a change request |
-| 6 | **Design options** (§19 MVP): option A / B / C side by side in the portal, the client approves one (links to selections and change orders) |
-| 7 | **Subscription charged automatically** (§18 "charged automatically through Razorpay or Stripe"): card / UPI mandate (Razorpay Subscriptions or Stripe Billing), signed webhook → invoice paid, failed charge → the retries already built |
+## Phase J — the rest of the MVP (v4 "Phase 1 — MVP") — **Done**
+| Block | Scope (v4 §) | Status |
+|---|---|---|
+| 1 | **WhatsApp for site workers** (§17): worker list with WhatsApp numbers (free users, not counted), the **morning work message** built from the schedule (site, room, task, drawing link, supervisor) at a set time; messages in Hindi or the local language | Done |
+| 2 | **One-tap buttons and voice notes** (§17): *Material needed*, *Work done*, *Need help / clarification* (with photo or voice note) arriving on WhatsApp become CRM records — a purchase request, a task update for the supervisor to approve, a question (RFI-lite) — with the answer sent back; **routing rules** per topic and **escalation** of urgent words to the PM | Done |
+| 3 | **Trade sequence** (§17): when one trade marks work done, the next trade on the room is told it is ready; **QR code at site** per room opening its latest drawings and specs; **job card** (drawing, measurements, photo) per task | Done |
+| 4 | **PM daily digest** (§17) by app and WhatsApp; **call / message reports**; **email in the shared inbox** | Done |
+| 5 | **360° room views and renders with comments** (§19 MVP) | Done |
+| 6 | **Design options** (§19 MVP) | Done |
+| 7 | **Subscription charged automatically** (§18) | Done |
+
+How it was built (tests: `backend/tests/test_phase_j.py`, 204 checks):
+- **1** `routes/field.py`. Site workers get a WhatsApp opt-in (asked on site, needs a mobile) and a language (en / hi). A **job card** per task holds the room, trade, workers, drawings (current revision), measurements, reference photos and instructions. It has a public link `/j/<token>` that works without sign-in; it serves only the files listed on the card. The **morning message** is sent at Settings → Field & WhatsApp → time, once a day per company, in the company's time zone (minutes from UTC, India 330). Each opted-in worker gets the sites, rooms and tasks they have today, the job-card links, and the supervisor's name and phone, with three reply buttons (WhatsApp interactive message). A preview and "Send now" are on the project → Site → Workers on WhatsApp.
+- **2** Webhook: a number that is not a contact but a site worker becomes a **field update**. A button press with no text asks for the detail (text, voice note or photo within 30 min).
+  - *Material* becomes a purchase request (source `whatsapp`).
+  - *Work done* waits for the supervisor; approving it marks the task done (checklist and predecessors are enforced), and sending it back gives the worker the reason.
+  - *Help* becomes a question routed by the company's **routing rules** (topic → role, editable); the answer goes back on WhatsApp.
+  - **Urgent words** (built-in list plus the company's own) notify the PM at once. They escalate to the Owners after N minutes if nobody presses "I'm on it". STOP opts a worker out.
+  - Voice notes and photos keep the WhatsApp media id; with the Cloud API the file is also fetched into the company's uploads.
+  - Client WhatsApp routing (Phase I) now uses the same company rules.
+- **3** **Trade sequence**: when a task is marked done (in the app, or by approving a worker's update), the next trade hears that the room is ready (app notification and WhatsApp to that card's workers). The next trade is found from the tasks linked to this one, otherwise from the company's trade order within the same room. **Rooms & QR**: rooms are collected from job cards, documents and selections; one QR code per room (SVG from `/api/qr.svg`, made with `segno`) opens `/r/<token>`, which shows the room's current drawings, the chosen finishes (no prices) and the jobs. The QR can be printed.
+- **4** `routes/digest.py`.
+  - `/app/digest` is the morning screen: per project, what was done since yesterday, late tasks (with days late), stuck items (blocked tasks, worker updates not settled, urgent messages), budget stages at 80 % or more (only for roles that see costs), and whether there was no site report yesterday.
+  - At the digest time the worker sends it to Owners and PMs as a notification, and on WhatsApp to those who opted in (`PUT /me/whatsapp`).
+  - **Message report**: messages in by person, topic and channel, the median first reply, unread messages, and calls logged on leads.
+  - **Inbound email**: a secret webhook for the mail provider's inbound parse. An email from a known contact goes into their project thread (`via: email`, quoted reply cut, duplicates by Message-Id ignored); an unknown sender waits in the "unmatched" list. Replies from the inbox already go back by email.
+- **5** `routes/design.py`.
+  - A **view** is a 360° panorama (shown with Pannellum 2.5.6 from the CDN, loaded only when opened) or a render; shared with the client or internal.
+  - A comment is pinned with yaw/pitch (360°) or x/y % (render), by the team or by the client in the portal.
+  - A comment becomes a task on a chosen stage, or a change request (a Phase I draft change order; when the client wrote it, it counts as the client's request), or is resolved.
+  - A view with a comment that became a task or change request cannot be deleted.
+  - File links in `<img>` tags and the viewer now load through a SameSite=Strict, path-scoped cookie that the API reads only for `GET /api/files/…`. This also fixes images on mood boards and product photos.
+- **6** **Design options**: a decision with 2–4 options (A–D: images, description, extra price, which may be negative).
+  - It can be linked to a selection, each option matching one of that selection's options.
+  - "Send" emails or WhatsApps the client, who sees the options side by side in the portal and approves one or asks for changes.
+  - Approving: the linked selection records the choice (method Portal), and an option with an extra price becomes a draft change order. The decision is then locked.
+  - Editing the options of a sent decision puts it back to draft.
+- **7** `routes/autopay.py`. The Owner sets up autopay (card or UPI) under Settings → Subscription, using the gateway chosen in Super Admin settings:
+  - Sandbox: active at once; a test card makes every charge fail.
+  - Razorpay: customer plus a recurring-token order; active on `token.confirmed`.
+  - Stripe: customer plus an off-session SetupIntent; active on `setup_intent.succeeded`.
+
+  Charging: an open invoice is charged when autopay is set up, when it is issued, and by the daily billing run once a day, up to 3 tries. Each failure is emailed to the Owner; after the third the read-only rule applies as before. Live charges are settled by the signed webhook `/api/webhooks/billing/<gateway>`: HMAC-SHA256 of the body with the new `gateway_webhook_secret` (masked in SA settings), or Stripe's `t=…,v1=…` signature with a 10-minute window. A repeated webhook does no harm.
+
+Not verified: live WhatsApp Cloud, Razorpay and Stripe calls (built to their documented APIs; tested only in sandbox mode). The 360° viewer, digest, Field tab and public job card were clicked through in the browser.
 
 ## Phase K — v4 "Phase 2"
 | Block | Scope (v4 §) |

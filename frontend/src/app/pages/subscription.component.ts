@@ -50,6 +50,20 @@ import { AuthService } from '../core/auth.service';
           </div>
           <div class="row-between"><span class="small muted">Billed with your next invoice, plus GST.</span><p-button label="Save add-ons" size="small" (onClick)="saveAddons()" /></div>
         </p-card>
+        <p-card header="Automatic payment" styleClass="mt">
+          @if (ap(); as a) {
+            @if (a.autopay?.status === 'active') {
+              <div class="row-between wrap gap"><span class="small c-good"><i class="pi pi-check-circle"></i> Invoices are charged automatically to your {{ a.autopay.method === 'upi' ? 'UPI' : 'card' }} ({{ a.gateway }}).
+                @if (a.autopay.last_error) { <span class="c-bad"> Last try failed: {{ a.autopay.last_error }}</span> }</span>
+                <p-button label="Turn off" size="small" [text]="true" severity="danger" (onClick)="cancelAutopay()" /></div>
+            } @else {
+              @if (a.autopay?.status === 'pending') { <p class="small m0">Waiting for the gateway to confirm the mandate.</p> }
+              <div class="row gap wrap"><p-selectbutton [options]="apMethods" [(ngModel)]="apMethod" optionLabel="label" optionValue="value" [allowEmpty]="false" />
+                <p-button label="Set up autopay" icon="pi pi-credit-card" size="small" (onClick)="setupAutopay()" /></div>
+              <p class="small muted m0">Each invoice is charged when it is issued; a failed charge is tried again on the next two days, and you are emailed each time.</p>
+            }
+          }
+        </p-card>
         <p-card header="Invoices" styleClass="mt">
           @for (i of s.invoices; track i.id) {
             <div class="row-between small"><span>{{ i.number }} · {{ i.created_at | date: 'mediumDate' }} · {{ i.period || i.type }}</span>
@@ -113,6 +127,26 @@ export class SubscriptionComponent implements OnInit {
     this.planCode = s.plan?.code ?? null;
     this.cycle = s.billing_cycle ?? 'monthly';
     this.add = { extra_users: s.addons?.extra_users ?? 0, extra_storage_gb: s.addons?.extra_storage_gb ?? 0, extra_whatsapp: s.addons?.extra_whatsapp ?? 0 };
+    this.ap.set(await this.api.get('/billing/autopay'));
+  }
+
+  // Phase J block 7: the subscription charged automatically
+  ap = signal<any>(null);
+  apMethod = 'card';
+  apMethods = [{ label: 'Card', value: 'card' }, { label: 'UPI autopay', value: 'upi' }];
+
+  async setupAutopay() {
+    const r = await this.api.post('/billing/autopay', { method: this.apMethod });
+    if (r.autopay.checkout?.order_id || r.autopay.checkout?.client_secret) {
+      alert('Complete the authorisation in the payment window; autopay turns on when the gateway confirms it.');
+    }
+    await this.load();
+  }
+
+  async cancelAutopay() {
+    if (!confirm('Turn off automatic payment? Invoices will then need paying by hand.')) return;
+    await this.api.del('/billing/autopay', 'Autopay turned off');
+    await this.load();
   }
 
   pick() {

@@ -12,6 +12,8 @@ export const routes: Routes = [
   { path: 'forgot', canActivate: [guestGuard], loadComponent: () => import('./auth/password-reset.component').then((m) => m.ForgotPasswordComponent) },
   { path: 'reset/:token', loadComponent: () => import('./auth/password-reset.component').then((m) => m.ResetPasswordComponent) },
   { path: 'signup', canActivate: [guestGuard], loadComponent: () => import('./auth/signup.component').then((m) => m.SignupComponent) },
+  { path: 'j/:token', loadComponent: () => import('./pages/public-field.component').then((m) => m.PublicJobComponent) },
+  { path: 'r/:token', loadComponent: () => import('./pages/public-field.component').then((m) => m.PublicRoomComponent) },
   {
     path: 'app',
     canActivate: [staffGuard],
@@ -28,6 +30,7 @@ export const routes: Routes = [
       { path: 'contracts/:id', canActivate: [staffGuard], loadComponent: () => import('./pages/proposals/contract.component').then((m) => m.ContractComponent) },
       { path: 'followups', canActivate: [staffGuard], data: { area: 'followups' }, loadComponent: () => import('./pages/followups.component').then((m) => m.FollowupsComponent) },
       { path: 'reports', canActivate: [staffGuard], data: { area: 'reports' }, loadComponent: () => import('./pages/reports.component').then((m) => m.ReportsComponent) },
+      { path: 'digest', canActivate: [staffGuard], data: { area: 'projects' }, loadComponent: () => import('./pages/digest.component').then((m) => m.DigestComponent) },
       { path: 'contacts', canActivate: [staffGuard], data: { area: 'contacts' }, loadComponent: () => import('./pages/contacts/contacts.component').then((m) => m.ContactsComponent) },
       { path: 'contacts/:id', canActivate: [staffGuard], data: { area: 'contacts' }, loadComponent: () => import('./pages/contacts/contact-detail.component').then((m) => m.ContactDetailComponent) },
       { path: 'projects', canActivate: [staffGuard], data: { area: 'projects' }, loadComponent: () => import('./pages/projects/projects.component').then((m) => m.ProjectsComponent) },

@@ -12,6 +12,7 @@ import { TagModule } from 'primeng/tag';
 import { Api, money } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { ProjectDocumentsComponent } from './project-documents.component';
+import { ProjectOptionsComponent, ProjectViewsComponent } from './project-views.component';
 
 // ---------------------------------------------------------------- authority / planning approvals
 @Component({
@@ -230,18 +231,20 @@ export class ProjectBoardsComponent {
 /** The project's Documents tab (Phase I block 4): the library and drawings, the approvals register and mood boards. */
 @Component({
   selector: 'app-project-design',
-  imports: [FormsModule, SelectButtonModule, ProjectDocumentsComponent, ProjectPermitsComponent, ProjectBoardsComponent],
+  imports: [FormsModule, SelectButtonModule, ProjectDocumentsComponent, ProjectPermitsComponent, ProjectBoardsComponent, ProjectViewsComponent, ProjectOptionsComponent],
   template: `
     <p-selectbutton class="mb block" [options]="views" [(ngModel)]="view" optionLabel="label" optionValue="value" [allowEmpty]="false" />
     @switch (view) {
       @case ('permits') { <app-project-permits [projectId]="projectId()" /> }
       @case ('boards') { <app-project-boards [projectId]="projectId()" /> }
+      @case ('views') { <app-project-views [projectId]="projectId()" /> }
+      @case ('options') { <app-project-options [projectId]="projectId()" /> }
       @default { <app-project-documents [projectId]="projectId()" /> }
     }
   `,
 })
 export class ProjectDesignComponent {
   projectId = input.required<string>();
-  views = [{ label: 'Documents & drawings', value: 'docs' }, { label: 'Approvals', value: 'permits' }, { label: 'Mood boards', value: 'boards' }];
+  views = [{ label: 'Documents & drawings', value: 'docs' }, { label: 'Approvals', value: 'permits' }, { label: 'Mood boards', value: 'boards' }, { label: '360° & renders', value: 'views' }, { label: 'Design options', value: 'options' }];
   view = 'docs';
 }

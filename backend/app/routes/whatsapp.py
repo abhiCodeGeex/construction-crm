@@ -151,7 +151,20 @@ def webhook(cid_):
                 text = ((msg.get("text") or {}).get("body") or "").strip()
                 contact = next((c for c in db.contacts.find({"company_id": cid_, "phone": {"$ne": None}}, {"phone": 1, "name": 1})
                                 if wa.phone_e164(c.get("phone")) == frm), None)
-                if not contact:
+                if not contact:  # Phase J: a site worker (button, text, voice note or photo) -> a field update
+                    from .field import find_worker, worker_inbound
+                    w = find_worker(cid_, frm)
+                    if not w or (msg.get("id") and db.messages.find_one({"company_id": cid_, "provider_id": msg.get("id"), "direction": "in"})):
+                        continue
+                    if text.upper() in ("STOP", "UNSUBSCRIBE"):
+                        db.site_workers.update_one({"_id": w["_id"]}, {"$set": {"whatsapp_opt_in": None,
+                                                                               "whatsapp_opt_out": {"at": t.now(), "how": "STOP", "by": "WhatsApp"}}})
+                        rec = None
+                    else:
+                        rec = worker_inbound(company, w, msg, text)
+                    t.insert("messages", {"channel": "whatsapp", "direction": "in", "contact_id": f"w:{w['_id']}", "contact_name": w["name"],
+                                          "worker_id": str(w["_id"]), "from": frm, "text": text[:4000] or f"[{msg.get('type')}]",
+                                          "provider_id": msg.get("id"), "status": "received", "field_update_id": rec and str(rec["_id"])})
                     continue
                 if text.upper() in ("STOP", "UNSUBSCRIBE"):
                     db.contacts.update_one({"_id": contact["_id"]}, {"$set": {"whatsapp_opt_in": None,

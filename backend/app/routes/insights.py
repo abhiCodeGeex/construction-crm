@@ -280,7 +280,7 @@ def waiting_longest():
 
 
 # ============================== inbound WhatsApp routing ==============================
-def route_inbound(contact, text):
+def route_inbound(contact, text, via="whatsapp"):
     """Called for each inbound WhatsApp message (not STOP) from a known contact. Returns where it went."""
     projects = list(db.projects.find({"company_id": g.cid, "status": {"$in": LIVE}, "team.contact_id": str(contact["_id"])}).sort("updated_at", -1))
     if not projects:
@@ -288,16 +288,18 @@ def route_inbound(contact, text):
     p = projects[0]  # the contact's most recently active project
     pid, cid_ = str(p["_id"]), str(contact["_id"])
     low = text.lower()
+    from .field import routing_role, urgent_words  # Phase J: the company's own routing rules and urgent words
     topic = next((tp for words, tp in ROUTING_KEYWORDS if any(w in low for w in words)), "general")
-    urgent = any(w in low for w in URGENT_KEYWORDS)
-    role = ROUTING.get(topic, "pm")
+    urgent = any(w in low for w in urgent_words())
+    role = routing_role(topic)
     staff = [m["user_id"] for m in p.get("team", []) if m.get("user_id") and m.get("kind") != "external"]
     roles = {str(u["_id"]): u["role"] for u in db.users.find({"_id": {"$in": [oid(x) for x in staff]}}, {"role": 1})}
     target = [u for u in staff if roles.get(u) == role] or (notify.role_users(role) if role in ("accounts", "procurement") else [])
     who = list(dict.fromkeys(target + ev.managers(p)))
     t.insert("messages", {"project_id": pid, "project_name": p["name"], "contact_id": cid_, "contact_name": contact["name"],
-                          "channel": "portal", "via": "whatsapp", "side": "contact", "author": contact["name"], "user_id": None,
+                          "channel": "portal", "via": via, "side": "contact", "author": contact["name"], "user_id": None,
                           "text": text[:4000], "files": [], "read_by_team": False, "read_by_contact": True, "topic": topic, "urgent": urgent})
-    notify.send("portal_message", who, f"{'URGENT · ' if urgent else ''}{contact['name']} on WhatsApp ({p['name']}): {text[:140]}",
+    via_name = "email" if via == "email" else "WhatsApp"
+    notify.send("portal_message", who, f"{'URGENT · ' if urgent else ''}{contact['name']} on {via_name} ({p['name']}): {text[:140]}",
                 f"/app/inbox?project={pid}&contact={cid_}", project_id=pid, skip_self=False, level="warn" if urgent else "info")
     return {"project_id": pid, "topic": topic, "urgent": urgent, "to": who}

@@ -466,16 +466,21 @@ def billing_run(when=None):
     when = when or now()
     issued = readonly = reminders = purged = 0
     day = when.date().isoformat()
+    from .autopay import charge
     for c in db.companies.find({"deleted_at": None, "status": {"$in": ["trial", "active", "read_only"]}}):
         cid_ = str(c["_id"])
         open_inv = db.platform_invoices.find_one({"company_id": cid_, "status": {"$in": ["due", "overdue"]}, "type": "invoice"})
         trial_over = c.get("status") == "trial" and as_dt(c.get("trial_ends")) and as_dt(c["trial_ends"]) <= when
         renewal_due = c.get("status") == "active" and as_dt(c.get("next_renewal")) and as_dt(c["next_renewal"]) <= when
         if (trial_over or renewal_due) and not open_inv:
-            issue_invoice(c)
+            inv = issue_invoice(c)
+            charge(c, inv, day)  # Phase J: an active mandate pays it at once
             issued += 1
             continue
         if open_inv:
+            res = charge(c, open_inv, day)  # Phase J: autopay tries once a day (up to three tries)
+            if res and res["status"] in ("paid", "pending"):
+                continue
             late = (when - open_inv["due_date"]).days if isinstance(open_inv.get("due_date"), datetime) else 0
             if open_inv.get("reminded_on") != day:
                 db.platform_invoices.update_one({"_id": open_inv["_id"]}, {"$inc": {"attempts": 1}, "$set": {
@@ -682,7 +687,7 @@ def update_announcement(_id):
     return jsonify({"ok": True})
 
 
-SECRETS = ("whatsapp_token", "smtp_password", "gateway_secret", "sms_key")
+SECRETS = ("whatsapp_token", "smtp_password", "gateway_secret", "gateway_webhook_secret", "sms_key")
 
 
 def masked_settings():
@@ -706,7 +711,7 @@ def save_settings():
     d = request.get_json(force=True) or {}
     allowed = ("platform_name", "logo_url", "login_message", "default_tax_rate", "default_currency", "terms", "privacy",
                "whatsapp_phone_id", "whatsapp_token", "smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_from",
-               "gateway", "gateway_key", "gateway_secret", "sms_provider", "sms_key", "signup_needs_approval")
+               "gateway", "gateway_key", "gateway_secret", "gateway_webhook_secret", "sms_provider", "sms_key", "signup_needs_approval")
     ch = {k: v for k, v in d.items() if k in allowed and not (isinstance(v, str) and v.startswith("••••"))}
     if "smtp_host" in ch or "smtp_user" in ch:
         cur = db.platform_settings.find_one({"_id": "settings"}) or {}

@@ -80,6 +80,20 @@ export class AuthService {
   setSession(s: Session | null) {
     this.session.set(s);
     save(KEY, s);
+    AuthService.fileCookie(s?.token);
+  }
+
+  /** <img>, <a> and the 360° viewer cannot send the bearer header: a same-site cookie, read by the API for file
+   *  downloads (GET /api/files/…) only, lets them load the company's files. */
+  static fileCookie(token?: string | null) {
+    try {
+      document.cookie = token ? `bs_f=${token}; path=/api/files; SameSite=Strict${location.protocol === 'https:' ? '; Secure' : ''}`
+        : 'bs_f=; path=/api/files; max-age=0';
+    } catch { /* no document (tests) */ }
+  }
+
+  constructor() {
+    AuthService.fileCookie(this.session()?.token);  // a session restored from storage
   }
 
   homeFor(s = this.session()) {

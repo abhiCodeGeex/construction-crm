@@ -65,9 +65,12 @@ def verify(company, raw, header):
     return bool(s.get("app_secret")) and bool(header) and hmac.compare_digest(header, sign(s["app_secret"], raw))
 
 
-def _cloud_send(s, to, text, template=None, params=None):
+def _cloud_send(s, to, text, template=None, params=None, buttons=None):
     body = {"messaging_product": "whatsapp", "to": to}
-    if template:
+    if buttons:  # Phase J: interactive reply buttons (max 3, titles max 20 characters)
+        body.update(type="interactive", interactive={"type": "button", "body": {"text": text[:1024]}, "action": {"buttons": [
+            {"type": "reply", "reply": {"id": bid, "title": title[:20]}} for bid, title in buttons[:3]]}})
+    elif template:
         body.update(type="template", template={"name": template, "language": {"code": "en"},
                                                "components": [{"type": "body", "parameters": [{"type": "text", "text": str(p)} for p in params or []]}]})
     else:
@@ -84,15 +87,16 @@ def _cloud_send(s, to, text, template=None, params=None):
         return None, f"WhatsApp could not be reached: {e}"
 
 
-def send(contact, text, kind="message", ref=None, template=None, params=None, by=None):
-    """Send (or log) one WhatsApp message to a contact. Returns the stored message."""
+def send(contact, text, kind="message", ref=None, template=None, params=None, by=None, buttons=None, extra=None):
+    """Send (or log) one WhatsApp message to a contact (or a site worker). Returns the stored message.
+    `buttons`: up to three (id, title) one-tap replies (Phase J)."""
     from .. import tenancy as t
     to = phone_e164((contact or {}).get("phone"))
     s = settings()
     doc = {"channel": "whatsapp", "direction": "out", "contact_id": str(contact["_id"]) if contact.get("_id") else contact.get("id"),
            "contact_name": contact.get("name"), "to": to, "text": text[:4000], "template": template, "kind": kind, "ref": ref,
            "provider": s["provider"], "provider_id": None, "status": "logged", "error": None, "by": by or (g.user or {}).get("name"),
-           "by_id": getattr(g, "uid", None)}
+           "by_id": getattr(g, "uid", None), "buttons": [b[0] for b in buttons or []] or None, **(extra or {})}
     if not to:
         doc.update(status="failed", error="No mobile number")
     elif not opted_in(contact):
@@ -102,7 +106,7 @@ def send(contact, text, kind="message", ref=None, template=None, params=None, by
         if s["provider"] == "sandbox":
             doc.update(status="sent", provider_id=f"wamid.sbx_{uuid.uuid4().hex[:16]}")
         else:
-            pid, err = _cloud_send(s, to, text, template, params)
+            pid, err = _cloud_send(s, to, text, template, params, buttons)
             doc.update(status="sent" if pid else "failed", provider_id=pid, error=err)
     if doc["status"] == "logged":  # not set up: log only, it does not count against the plan
         doc["direction"] = "logged"

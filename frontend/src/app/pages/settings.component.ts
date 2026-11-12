@@ -1,3 +1,4 @@
+import { FieldSettingsComponent } from './field-settings.component';
 import { SubscriptionComponent } from './subscription.component';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
@@ -34,7 +35,7 @@ const STATE_NAMES: Record<string, string> = {
 
 @Component({
   selector: 'app-settings',
-  imports: [SubscriptionComponent, TooltipModule, FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, TextareaModule, DialogModule, InputNumberModule, InputTextModule, MessageModule, SelectButtonModule,
+  imports: [FieldSettingsComponent, SubscriptionComponent, TooltipModule, FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, TextareaModule, DialogModule, InputNumberModule, InputTextModule, MessageModule, SelectButtonModule,
     SelectModule, TableModule, TabsModule, TagModule, ToggleSwitchModule, SalesSettingsComponent, ProposalSettingsComponent],
   template: `
     <div class="page-head"><div><h1>Company settings</h1><p class="muted">Company setup, stage templates, role permissions and the audit log.</p></div></div>
@@ -49,6 +50,7 @@ const STATE_NAMES: Record<string, string> = {
         <p-tab value="proposals"><i class="pi pi-file-edit mr"></i>Proposals & branding</p-tab>
         <p-tab value="roles"><i class="pi pi-shield mr"></i>Roles & permissions</p-tab>
         <p-tab value="audit"><i class="pi pi-history mr"></i>Audit log</p-tab>
+        <p-tab value="field"><i class="pi pi-whatsapp mr"></i>Field & WhatsApp</p-tab>
         <p-tab value="subscription"><i class="pi pi-credit-card mr"></i>Subscription & support</p-tab>
       </p-tablist>
       <p-tabpanels>
@@ -324,6 +326,7 @@ const STATE_NAMES: Record<string, string> = {
         </p-tabpanel>
 
         <!-- audit -->
+        <p-tabpanel value="field"><app-field-settings /></p-tabpanel>
         <p-tabpanel value="subscription"><app-subscription /></p-tabpanel>
         <p-tabpanel value="audit">
           <p-table [value]="audit()" size="small" [paginator]="true" [rows]="15">

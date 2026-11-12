@@ -883,7 +883,7 @@ def update_task(_id, tid):
         # assignees may update the status / progress / notes of their own task
         if task.get("assignee_id") != g.uid or set(dat) - {"status", "progress", "notes", "waiting_on"}:
             abort(403, "You can only update the status of tasks assigned to you")
-    old_start, old_end = task.get("start"), task.get("end")
+    old_start, old_end, old_status = task.get("start"), task.get("end"), task.get("status")
     task.update(clean_task(dat, p, task))
     if dat.get("status") == "done":
         task["progress"] = 100
@@ -901,6 +901,9 @@ def update_task(_id, tid):
         moved = shift_dependents(p, task, workdays.shift(*base))
     record_delay(delay)
     saved = save_stages(_id, p)
+    if task["status"] == "done" and old_status != "done":  # Phase J: the next trade in the room hears it is ready
+        from .field import after_task_done
+        after_task_done(p, task)
     if moved:
         project_events.log(_id, "schedule", f"Moved with {task['title']}: {', '.join(moved)}", task_id=tid)
     return jsonify(present(saved))

@@ -32,7 +32,7 @@ import { I18n, TPipe } from '../core/i18n';
             <i class="pi pi-shield"></i><span class="txt">{{ 'My access' | t }}</span></a>
           @for (s of sections(); track s.name) {
             <div class="nav-section txt">{{ s.name | t }}</div>
-            @for (n of s.items; track n.area) {
+            @for (n of s.items; track n.path) {
               <a [routerLink]="n.path ?? '/app/m/' + n.area" routerLinkActive="active" [pTooltip]="n.label" [tooltipDisabled]="!collapsed()">
                 <i [class]="n.icon"></i><span class="txt">{{ n.label | t }}</span>
                 @if (!n.ready) { <span class="soon txt">{{ 'soon' | t }}</span> }
