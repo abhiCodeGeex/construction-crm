@@ -64,9 +64,14 @@ def clean_lines(rows, our_error):
         desc = (r.get("description") or "").strip()[:200] or abort(400, "Each line needs a description")
         qty = num(r.get("qty"), f"Quantity for {desc}", required=True, positive=True)
         cost_rate = num(r.get("cost_rate"), f"Cost rate for {desc}") or 0
-        price_rate = 0 if our_error else (num(r.get("price_rate"), f"Price for {desc}") or 0)
+        pr = r.get("price_rate")
+        if r.get("credit") and isinstance(pr, (int, float)) and not isinstance(pr, bool) and pr < 0:  # Phase I: allowance credit line
+            price_rate = -num(-pr, f"Credit for {desc}")
+        else:
+            price_rate = 0 if our_error else (num(pr, f"Price for {desc}") or 0)
         lines.append({"id": r.get("id") or t.sid(), "description": desc, "qty": qty, "unit": (r.get("unit") or "").strip()[:20] or None,
-                      "cost_rate": cost_rate, "price_rate": price_rate, "cost": r2(qty * cost_rate), "price": r2(qty * price_rate)})
+                      "cost_rate": cost_rate, "price_rate": price_rate, "cost": r2(qty * cost_rate), "price": r2(qty * price_rate),
+                      **({"credit": True} if price_rate < 0 else {})})
     return lines
 
 
@@ -109,6 +114,15 @@ def clean(d, p, co=None):
             f = db.files.find_one({"company_id": g.cid, "key": key}) or abort(400, "Upload the file first")
             files.append({"key": f["key"], "name": f["name"], "size": f["size"]})
         ch["files"] = files[:10]
+    if "new_tasks" in d:  # Phase I: work the change adds to its stage, created when it is approved
+        tasks = []
+        for x in (d.get("new_tasks") or [])[:20]:
+            title = (x.get("title") or "").strip()[:150] or abort(400, "Each new task needs a title")
+            days = x.get("days", 1)
+            if not isinstance(days, int) or isinstance(days, bool) or not 1 <= days <= 365:
+                abort(400, "A new task takes 1 to 365 working days")
+            tasks.append({"title": title, "days": days})
+        ch["new_tasks"] = tasks
     reason = ch.get("reason", (co or {}).get("reason"))
     if "lines" in d or (co and "reason" in ch):
         ch["lines"] = clean_lines(d.get("lines", (co or {}).get("lines")), reason == "our_error")
@@ -186,7 +200,10 @@ def price_co(cid_):
         abort(409, "Only a draft is priced")
     if not co["lines"]:
         abort(400, "Add the lines: what it costs us and what the client pays")
-    if co["reason"] != "our_error" and co["totals"]["total"] <= 0:
+    if co.get("credit"):  # Phase I: an allowance credit lowers the contract
+        if co["totals"]["total"] >= 0:
+            abort(400, "A credit is a negative price")
+    elif co["reason"] != "our_error" and co["totals"]["total"] <= 0:
         abort(400, "A change the client pays for needs a price")
     return jsonify(out(t.update("change_orders", cid_, {"status": "priced", "priced_at": t.now(), "priced_by": g.user.get("name")})))
 
@@ -279,6 +296,15 @@ def apply_change(co, p):
         eff.update(schedule_row_id=row["id"], revised_value=revised)
     if client_pays:
         p["value"] = r2((p.get("value") or 0) + tt["total"])
+    if co.get("credit") and tt["total"] < 0:  # Phase I: allowance credit — the contract goes down; credited on an invoice
+        p["value"] = r2((p.get("value") or 0) + tt["total"])
+        c = db.contracts.find_one({"company_id": g.cid, "project_id": pid})
+        if c:
+            revised = r2((c.get("revised_value") or c["value"]) + tt["total"])
+            db.contracts.update_one({"_id": c["_id"]}, {"$set": {"revised_value": revised}, "$push": {"change_orders": {
+                "id": str(co["_id"]), "number": co["number"], "title": co["title"], "total": tt["total"], "at": t.now()}},
+                "$inc": {"credit_due": -tt["total"]}})
+            eff.update(revised_value=revised, credit_due=-tt["total"])
     days = co.get("time_days") or 0
     if days:
         cal = workdays.calendar()
@@ -303,6 +329,18 @@ def apply_change(co, p):
             record_delay({"project_id": pid, "kind": "stage", "item_id": sid, "title": stage["name"], "from": old_end, "to": stage["end"],
                           "days": days, "reason": "client_change", "reason_label": DELAY_REASONS["client_change"][0],
                           "party": DELAY_REASONS["client_change"][1], "note": f"Change order {co['number']}"})
+    if co.get("new_tasks"):  # Phase I: the change's new work, on its stage, one after the other from today (or the stage start)
+        cal = workdays.calendar()
+        cursor = max(sales.today(), stage.get("start") or sales.today())
+        for x in co["new_tasks"]:
+            end = workdays.add_working(cursor, x["days"] - 1, cal)
+            stage.setdefault("tasks", []).append({"id": t.sid(), "title": x["title"], "start": cursor, "end": end, "status": "todo", "progress": 0,
+                                                  "depends_on": [], "links": [], "assignee_id": None, "assignee_name": None, "priority": "normal",
+                                                  "checklist": [], "files": [], "notes": f"From change order {co['number']}", "co_id": str(co["_id"])})
+            cursor = workdays.add_working(end, 1, cal)
+        if stage.get("end") and cursor > stage["end"]:
+            stage["end"] = cursor
+        eff["new_tasks"] = [x["title"] for x in co["new_tasks"]]
     db.projects.update_one({"_id": p["_id"]}, {"$set": {"value": p.get("value")}})
     save_stages(pid, p)
     ev.log(pid, "cost", f"Change order {co['number']} approved: budget +{money_text(tt['cost'])}"
@@ -341,8 +379,8 @@ def invoice_co(cid_):
     payment-schedule row, invoiced from the schedule)."""
     from .invoices import base_doc, totals as inv_totals, present
     co, p = load_co(cid_)
-    if co["status"] != "approved" or co["reason"] == "our_error" or not co["totals"]["total"]:
-        abort(409, "Only an approved change the client pays for is invoiced")
+    if co["status"] != "approved" or co["reason"] == "our_error" or co["totals"]["total"] <= 0:
+        abort(409, "Only an approved change the client pays for is invoiced (a credit is given by a credit note)")
     if (co.get("effects") or {}).get("schedule_row_id"):
         abort(409, "This change order is on the contract's payment schedule; invoice it from there")
     if co.get("invoice_id"):

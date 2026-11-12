@@ -30,9 +30,9 @@ import { PRIORITY_SEVERITY, TaskPanelComponent } from './task-panel.component';
 import { ProjectMeetingsComponent } from './project-meetings.component';
 import { ProjectMoneyComponent } from './project-money.component';
 import { ProjectChangeOrdersComponent } from './project-change-orders.component';
-import { ProjectDocumentsComponent } from './project-documents.component';
+import { ProjectDesignComponent } from './project-design.component';
 import { ProjectSelectionsComponent } from './project-selections.component';
-import { ProjectSiteReportsComponent } from './project-site-reports.component';
+import { ProjectSiteComponent } from './project-site.component';
 import { ProjectMessagesComponent } from './project-messages.component';
 import { ProjectActivityComponent, ProjectHealthComponent } from './project-insights.component';
 
@@ -43,7 +43,7 @@ const DESIGN = ['architecture', 'interior'];
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, KnobModule,
     MessageModule, MultiSelectModule, ProgressBarModule, SelectButtonModule, SelectModule, SliderModule, TableModule, TabsModule,
     TagModule, TextareaModule, TooltipModule, GanttComponent, MapPickerComponent, FollowupDialogComponent, CheckboxModule,
-    TaskPanelComponent, ProjectMeetingsComponent, ProjectActivityComponent, ProjectHealthComponent, ProjectMoneyComponent, ProjectChangeOrdersComponent, ProjectDocumentsComponent, ProjectSelectionsComponent, ProjectSiteReportsComponent, ProjectMessagesComponent],
+    TaskPanelComponent, ProjectMeetingsComponent, ProjectActivityComponent, ProjectHealthComponent, ProjectMoneyComponent, ProjectChangeOrdersComponent, ProjectDesignComponent, ProjectSelectionsComponent, ProjectSiteComponent, ProjectMessagesComponent],
   template: `
     @if (p(); as p) {
       <div class="page-head">
@@ -73,7 +73,7 @@ const DESIGN = ['architecture', 'interior'];
           <p-tab value="issues"><i class="pi pi-exclamation-circle mr"></i>Issues ({{ dash()?.open_issues ?? 0 }})</p-tab>
           <p-tab value="details"><i class="pi pi-map-marker mr"></i>Details & site</p-tab>
           @if (auth.can('documents')) { <p-tab value="documents"><i class="pi pi-folder-open mr"></i>Documents</p-tab> }
-          @if (auth.can('site')) { <p-tab value="site"><i class="pi pi-camera mr"></i>Site reports</p-tab> }
+          @if (auth.can('site')) { <p-tab value="site"><i class="pi pi-camera mr"></i>Site</p-tab> }
           @if (auth.can('selections')) { <p-tab value="selections"><i class="pi pi-palette mr"></i>Selections</p-tab> }
           @if (auth.can('finance') || auth.user()?.role === 'site') { <p-tab value="money"><i class="pi pi-wallet mr"></i>Money</p-tab> }
           @if (auth.can('change_orders') || auth.can('finance')) { <p-tab value="changes"><i class="pi pi-sync mr"></i>Change orders</p-tab> }
@@ -362,8 +362,8 @@ const DESIGN = ['architecture', 'interior'];
           </p-tabpanel>
 
           <p-tabpanel value="money">@if (tab === 'money') { <app-project-money [project]="p" [contacts]="contacts()" (changed)="reload()" /> }</p-tabpanel>
-          <p-tabpanel value="documents">@if (tab === 'documents') { <app-project-documents [projectId]="p.id" /> }</p-tabpanel>
-          <p-tabpanel value="site">@if (tab === 'site') { <app-project-site-reports [projectId]="p.id" /> }</p-tabpanel>
+          <p-tabpanel value="documents">@if (tab === 'documents') { <app-project-design [projectId]="p.id" /> }</p-tabpanel>
+          <p-tabpanel value="site">@if (tab === 'site') { <app-project-site [projectId]="p.id" /> }</p-tabpanel>
           <p-tabpanel value="selections">@if (tab === 'selections') { <app-project-selections [projectId]="p.id" /> }</p-tabpanel>
           <p-tabpanel value="changes">@if (tab === 'changes') { <app-project-change-orders [projectId]="p.id" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="messages">@if (tab === 'messages') { <app-project-messages [projectId]="p.id" /> }</p-tabpanel>

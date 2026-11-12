@@ -41,7 +41,8 @@ MANAGER_ROLES = {"owner", "pm"}
 # roles that must never see cost price / margin
 HIDE_COST_ROLES = {"site", "client", "subcontractor", "vendor", "consultant"}
 COST_FIELDS = {"trade_price", "material_rate", "labour_rate", "cost", "line_cost", "subtotal_cost",
-               "margin", "margin_pct", "markup_pct", "overheads", "markup_amount", "budget", "spent", "cost_rate", "unit_cost"}
+               "margin", "margin_pct", "markup_pct", "overheads", "markup_amount", "budget", "spent", "cost_rate", "unit_cost",
+               "daily_rate"}  # Phase I: a site worker's daily rate
 
 ROLE_LABELS = {
     "owner": "Owner / Admin", "sales": "Sales / BD", "pm": "Project Manager", "designer": "Architect / Designer",
@@ -103,6 +104,8 @@ def _load_tenant(payload):
     if (payload.get("iat_ms") or 0) < (user.get("password_changed_ms") or 0):
         abort(401, "Your password was changed. Sign in again with the new password.")
     g.user = {**payload, "name": user["name"]}
+    if payload.get("support_session"):  # Phase I: platform support logged in with the company's permission
+        g.user["name"] = f"{payload.get('sa_name') or 'Platform'} (support, as {user['name']})"
     g.uid = str(user["_id"])
     g.cid = user["company_id"]
     g.role = user["role"]
@@ -114,6 +117,8 @@ def _load_tenant(payload):
         abort(401, "Company not found")
     if company.get("status") == "suspended":
         abort(403, "Company account is suspended. Contact support.")
+    if company.get("status") == "pending":
+        abort(403, "Your company is waiting for approval by the platform.")
     g.company = company
     g.perms = effective_perms(g.role, company)
     if company.get("status") in ("read_only", "cancelled") and request.method != "GET" \

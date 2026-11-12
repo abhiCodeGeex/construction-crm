@@ -70,14 +70,20 @@ def list_rates():
 @bp.post("/rates")
 @api("proposals")
 def create_rate():
-    return jsonify(serialize(t.insert("rate_library", clean_rate(request.get_json(force=True) or {})))), 201
+    from .catalogue import product_fields  # Phase I: catalogue fields on products
+    d = request.get_json(force=True) or {}
+    doc = clean_rate(d)
+    return jsonify(serialize(t.insert("rate_library", {**doc, **product_fields(d, doc["kind"])}))), 201
 
 
 @bp.put("/rates/<rid>")
 @api("proposals")
 def update_rate(rid):
     t.get("rate_library", rid)
-    return jsonify(serialize(t.update("rate_library", rid, clean_rate(request.get_json(force=True) or {}))))
+    from .catalogue import product_fields
+    d = request.get_json(force=True) or {}
+    doc = clean_rate(d)
+    return jsonify(serialize(t.update("rate_library", rid, {**doc, **product_fields(d, doc["kind"])})))
 
 
 @bp.delete("/rates/<rid>")

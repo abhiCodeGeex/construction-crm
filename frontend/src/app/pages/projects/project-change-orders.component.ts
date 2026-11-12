@@ -34,7 +34,9 @@ export const CO_SEV: Record<string, 'secondary' | 'info' | 'success' | 'danger' 
         <ng-template #body let-c>
           <tr>
             <td>{{ c.number }}<div class="small muted">{{ c.created_at | date: 'd MMM' }}</div></td>
-            <td>{{ c.title }}<div class="small muted">{{ d.reasons[c.reason] }} · {{ c.raised_by_name }}</div>
+            <td>{{ c.title }}<div class="small muted">{{ d.reasons[c.reason] }} · {{ c.raised_by_name }}
+              @if (c.requested) { · <span class="c-warn">asked by {{ c.requested.kind === 'client' ? 'the client' : 'site' }} ({{ c.requested.name }})</span> }
+              @if (c.credit) { · <span class="c-good">allowance credit</span> }</div>
               @if (c.decision_reason) { <div class="small c-bad">{{ c.decision_reason }}</div> }
               @if (c.approval) { <div class="small muted">Approved by {{ c.approval.name }} ({{ c.approval.method }}) {{ c.approval.date | date: 'd MMM' }}</div> }
               @if (c.effects?.moved_tasks?.length) { <div class="small muted">Moved: {{ c.effects.moved_tasks.join(', ') }}</div> }</td>
@@ -86,6 +88,13 @@ export const CO_SEV: Record<string, 'secondary' | 'info' | 'success' | 'danger' 
           </div>
         }
         <p-button label="Add line" icon="pi pi-plus" size="small" [text]="true" (onClick)="f.lines.push({ description: '', qty: 1, cost_rate: null, price_rate: null })" />
+        <div class="small muted">New tasks this change adds to the stage (created when it is approved)</div>
+        @for (nt of f.new_tasks; track $index; let i = $index) {
+          <div class="row gap"><input pInputText [(ngModel)]="nt.title" placeholder="Task" class="grow" />
+            <p-inputnumber [(ngModel)]="nt.days" [min]="1" [max]="365" suffix=" d" [inputStyle]="{ width: '5rem' }" />
+            <p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="f.new_tasks.splice(i, 1)" ariaLabel="Remove task" /></div>
+        }
+        <p-button label="Add task" icon="pi pi-plus" size="small" [text]="true" (onClick)="f.new_tasks.push({ title: '', days: 1 })" />
         <div class="grid2">
           <label class="field"><span>Time impact (working days)</span><p-inputnumber [(ngModel)]="f.time_days" [min]="-60" [max]="365" fluid /></label>
           <label class="field"><span>Client pays</span><p-select [options]="whenOpts()" optionLabel="label" optionValue="value" [(ngModel)]="f.payment" fluid appendTo="body" /></label>
@@ -154,21 +163,23 @@ export class ProjectChangeOrdersComponent implements OnInit {
   }
 
   openNew() {
-    this.f = { stage_id: null, reason: 'client_request', title: '', description: '', time_days: 0, payment: 'on_approval',
+    this.f = { stage_id: null, reason: 'client_request', title: '', description: '', time_days: 0, payment: 'on_approval', new_tasks: [],
       lines: [{ description: '', qty: 1, cost_rate: null, price_rate: null }] };
     this.dlg = true;
   }
 
   openEdit(c: any) {
     this.f = { id: c.id, stage_id: c.stage_id, reason: c.reason, title: c.title, description: c.description ?? '', time_days: c.time_days,
-      payment: c.payment, lines: c.lines.map((l: any) => ({ id: l.id, description: l.description, qty: l.qty, unit: l.unit,
-        cost_rate: l.cost_rate, price_rate: l.price_rate })) };
+      payment: c.payment, new_tasks: (c.new_tasks ?? []).map((x: any) => ({ ...x })),
+      lines: c.lines.map((l: any) => ({ id: l.id, description: l.description, qty: l.qty, unit: l.unit,
+        cost_rate: l.cost_rate, price_rate: l.price_rate, credit: l.credit })) };
     this.dlg = true;
   }
 
   async save() {
     const { id, ...body } = this.f;
     body.lines = body.lines.filter((l: any) => l.description?.trim());
+    body.new_tasks = (body.new_tasks ?? []).filter((x: any) => x.title?.trim());
     if (id) await this.api.put(`/change_orders/${id}`, body, 'Change order saved');
     else await this.api.post(`/projects/${this.projectId()}/change_orders`, body, 'Change order raised');
     this.dlg = false;

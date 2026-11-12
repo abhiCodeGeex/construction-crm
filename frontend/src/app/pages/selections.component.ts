@@ -8,11 +8,12 @@ import { TagModule } from 'primeng/tag';
 import { Api, money } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { SEL_SEV } from './projects/project-selections.component';
+import { ProductsComponent } from './products.component';
 
 /** Selections (Phase F): items across your projects, those waiting on the client first. */
 @Component({
   selector: 'app-selections',
-  imports: [FormsModule, DatePipe, RouterLink, SelectButtonModule, TableModule, TagModule],
+  imports: [FormsModule, DatePipe, RouterLink, SelectButtonModule, TableModule, TagModule, ProductsComponent],
   template: `
     <div class="page-head">
       <div>
@@ -20,6 +21,8 @@ import { SEL_SEV } from './projects/project-selections.component';
         <p class="muted">Finishes and fittings the clients choose, across your projects. Options and choices are kept on each project's Selections tab.</p>
       </div>
     </div>
+    <p-selectbutton class="mb block" [options]="pages" [(ngModel)]="page" optionLabel="label" optionValue="value" [allowEmpty]="false" />
+    @if (page === 'products') { <app-products /> } @else {
     <p-selectbutton class="mb block" [options]="filters" [(ngModel)]="filter" optionLabel="label" optionValue="value" [allowEmpty]="false" (onChange)="load()" />
     <p-table [value]="rows()" styleClass="p-datatable-sm" [paginator]="rows().length > 25" [rows]="25">
       <ng-template #header><tr><th>Item</th><th>Project</th><th>Choose by</th><th class="num">Allowance</th><th class="num">Chosen</th><th>Status</th></tr></ng-template>
@@ -35,6 +38,7 @@ import { SEL_SEV } from './projects/project-selections.component';
       </ng-template>
       <ng-template #emptymessage><tr><td colspan="6" class="muted">Nothing here.</td></tr></ng-template>
     </p-table>
+    }
   `,
   styles: `.num { text-align: right; font-variant-numeric: tabular-nums; }`,
 })
@@ -45,7 +49,9 @@ export class SelectionsComponent implements OnInit {
   statuses = signal<Record<string, string>>({});
   sev = SEL_SEV;
   filters = [{ label: 'Waiting on the client', value: 'open,options_sent' }, { label: 'To order', value: 'chosen,confirmed' },
-    { label: 'Ordered', value: 'ordered' }, { label: 'Installed', value: 'installed' }, { label: 'All', value: '' }];
+    { label: 'Ordered', value: 'ordered,delivered' }, { label: 'Installed', value: 'installed' }, { label: 'All', value: '' }];
+  pages = [{ label: 'Client selections', value: 'selections' }, { label: 'Product catalogue', value: 'products' }];
+  page = 'selections';
   filter = 'open,options_sent';
 
   async ngOnInit() {

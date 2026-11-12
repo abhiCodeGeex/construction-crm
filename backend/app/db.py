@@ -26,7 +26,7 @@ def serialize(doc):
         for k, v in doc.items():
             if k == "_id":
                 out["id"] = str(v)
-            elif k == "password":
+            elif k in ("password", "calendar_token"):  # secrets never leave the server (calendar feed link: Phase I)
                 continue
             else:
                 out[k] = serialize(v)
@@ -59,7 +59,7 @@ TENANT_COLLECTIONS = [
     "rate_library", "documents", "design_options", "products", "selections", "purchase_requests",
     "purchase_orders", "change_orders", "costs", "invoices", "site_reports", "snags", "followups",
     "message_templates", "messages", "notifications", "timesheets", "support_tickets", "project_issues",
-    "petty_cash",
+    "petty_cash", "stock_moves", "site_workers", "attendance", "permits", "mood_boards",
 ]
 
 

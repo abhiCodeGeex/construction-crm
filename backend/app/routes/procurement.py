@@ -162,6 +162,32 @@ def cancel_request(rid):
     return jsonify(serialize(t.update("purchase_requests", rid, {"status": "cancelled", "cancel_reason": reason[:300]})))
 
 
+@bp.put("/purchase-requests/<rid>")
+@api(None)
+def edit_request(rid):
+    """Phase I: change an open request (lines, stage, location, note) before any of it is priced or ordered."""
+    pr = t.get("purchase_requests", rid)
+    p = project(pr["project_id"])
+    if not (can("procurement", True) or pr["requested_by"] == g.uid):
+        abort(403, "Only Procurement or the person who asked can change it")
+    if pr["status"] != "open" or any(ln["status"] != "open" for ln in pr["lines"]):
+        abort(409, "Only an open request that is not being priced or ordered is changed; cancel it and ask again")
+    d = request.get_json(force=True) or {}
+    ch = {}
+    if "stage_id" in d:
+        st = stage_of(p, d["stage_id"])
+        ch.update(stage_id=st["id"], stage_name=st["name"])
+    if "lines" in d:
+        ch["lines"] = clean_pr_lines(d["lines"], p)
+        for ln in ch["lines"]:
+            ln["stage_id"] = ln["stage_id"] or ch.get("stage_id") or pr["stage_id"]
+    if "location" in d:
+        ch["location"] = d["location"] if d["location"] in ("site", "office") else "site"
+    if "note" in d:
+        ch["note"] = (d.get("note") or "").strip()[:500] or None
+    return jsonify(serialize(t.update("purchase_requests", rid, ch)))
+
+
 # ---------------- RFQs ----------------
 @bp.post("/rfqs")
 @api("procurement")
@@ -214,6 +240,39 @@ def list_rfqs():
 @api("procurement", write=False)
 def get_rfq(rid):
     return jsonify(serialize(load_rfq(rid)))
+
+
+@bp.put("/rfqs/<rid>")
+@api("procurement")
+def edit_rfq(rid):
+    """Phase I: change the due date, note and suppliers of an open RFQ; a supplier who has quoted stays on it."""
+    rfq = load_rfq(rid, True)
+    if rfq["status"] not in ("draft", "sent"):
+        abort(409, "This RFQ is closed")
+    d = request.get_json(force=True) or {}
+    ch = {}
+    if "due_date" in d:
+        ch["due_date"] = a_date(d["due_date"], "Quotes due")
+    if "note" in d:
+        ch["note"] = (d.get("note") or "").strip()[:500] or None
+    if "supplier_ids" in d:
+        quoted = {q["supplier_id"] for q in rfq["quotes"]}
+        want = list(dict.fromkeys(d.get("supplier_ids") or []))
+        gone = quoted - set(want)
+        if gone:
+            abort(409, "A supplier who has quoted cannot be taken off the RFQ")
+        have = {s["contact_id"]: s for s in rfq["suppliers"]}
+        sups = []
+        for sid in want:
+            if sid in have:
+                sups.append(have[sid])
+            else:
+                v = vendor(sid)
+                sups.append({"contact_id": sid, "name": v["name"], "email": v.get("email"), "warning": compliance_warning(v), "sent": None})
+        if not sups:
+            abort(400, "Ask at least one supplier")
+        ch["suppliers"] = sups
+    return jsonify(serialize(t.update("rfqs", rid, ch)))
 
 
 @bp.post("/rfqs/<rid>/send")
@@ -738,7 +797,8 @@ def receive(poid):
                        f"(+{pct:g}% allowed)")
         if got:
             rows.append({"line_id": ln["id"], "description": ln["description"], "unit": ln.get("unit"), "received": got, "accepted": accepted,
-                         "rejected": rejected, "reason": r.get("reason") if rejected else None, "returned": 0})
+                         "rejected": rejected, "reason": r.get("reason") if rejected else None, "returned": 0,
+                         "rate_id": ln.get("rate_id"), "unit_cost": ln.get("unit_cost")})  # Phase I: stock at site
     if not rows:
         abort(400, "Enter what was received")
     photos = []
@@ -748,7 +808,10 @@ def receive(poid):
     day = a_date(d.get("date") or sales.today(), "Date")
     if day > sales.today():
         abort(400, "A delivery cannot be in the future")
+    from .site_plus import receiving_location  # Phase I: received at the site or into a company warehouse
+    loc = receiving_location(d.get("location"))
     grn = t.insert("goods_receipts", {"number": t.next_number("GRN", "GRN"), "po_id": poid, "po_number": po["number"], "project_id": po["project_id"],
+                                      "location": loc,
                                       "project_name": po["project_name"], "vendor_id": po["vendor_id"], "vendor_name": po["vendor_name"], "date": day,
                                       "lines": rows, "photos": photos, "challan": (d.get("challan") or "").strip()[:60] or None,
                                       "site_report_id": d.get("site_report_id"), "received_by": g.user.get("name"), "returns": []})
@@ -757,6 +820,12 @@ def receive(poid):
         ln["received_qty"] = ln.get("received_qty", 0) + r["received"]
         ln["accepted_qty"] = ln.get("accepted_qty", 0) + r["accepted"]
     t.update("purchase_orders", poid, {"lines": po["lines"], "status": po_status_after_receipt(po)})
+    for r in rows:  # Phase I: a selection whose PO line is fully received is delivered
+        ln = by_id[r["line_id"]]
+        if ln.get("selection_id") and ln.get("accepted_qty", 0) >= ln["qty"] - 1e-9:
+            db.selections.update_one({"_id": oid(ln["selection_id"]), "company_id": g.cid, "status": "ordered"},
+                                     {"$set": {"status": "delivered", "delivered_at": t.now(), "delivered_grn": grn["number"]},
+                                      "$push": {"history": {"status": "delivered", "by": g.user.get("name"), "at": t.now(), "grn": grn["number"]}}})
     ev.log(po["project_id"], "cost", f"{grn['number']}: goods received on {po['number']} from {po['vendor_name']}"
            + (" (some rejected)" if any(r["rejected"] for r in rows) else ""))
     if any(r["rejected"] for r in rows):
@@ -764,6 +833,44 @@ def receive(poid):
         notify.send("goods_rejected", list(dict.fromkeys(notify.role_users("procurement") + ev.managers(p))),
                     f"{grn['number']} on {po['number']} ({po['vendor_name']}): {what}", f"/app/purchase-orders/{poid}", project_id=po["project_id"])
     return jsonify(serialize(grn)), 201
+
+
+@bp.post("/goods-receipts/<gid>/reverse")
+@api("procurement")
+def reverse_grn(gid):
+    """Phase I: a delivery recorded by mistake is reversed whole — only when nothing of it is billed, returned or used."""
+    grn = t.get("goods_receipts", gid)
+    po, _ = load_po(grn["po_id"], True)
+    if grn.get("reversed"):
+        abort(409, "Already reversed")
+    reason = ((request.get_json(force=True) or {}).get("reason") or "").strip() or abort(400, "Say why the delivery is reversed")
+    if grn.get("returns"):
+        abort(409, "Goods of this delivery were returned; it cannot be reversed")
+    by_id = {ln["id"]: ln for ln in po["lines"]}
+    for r in grn["lines"]:
+        ln = by_id.get(r["line_id"])
+        if ln and ln.get("accepted_qty", 0) - r["accepted"] < ln.get("billed_qty", 0) - 1e-9:
+            abort(409, f"{r['description']} of this delivery is already billed")
+    from .site_plus import loc_key, item_key, balance_of
+    where = loc_key(grn)
+    for r in grn["lines"]:
+        have = balance_of(where, item_key(r))
+        if r["accepted"] and (not have or have["balance"] < r["accepted"] - 1e-9):
+            abort(409, f"{r['description']} of this delivery has been used or moved; it cannot be reversed")
+    for r in grn["lines"]:
+        ln = by_id.get(r["line_id"])
+        if ln:
+            ln["received_qty"] = max(0, ln.get("received_qty", 0) - r["received"])
+            ln["accepted_qty"] = max(0, ln.get("accepted_qty", 0) - r["accepted"])
+    status = po_status_after_receipt(po)
+    if status == po["status"] and po["status"] in ("part_received", "received") and not any(ln.get("received_qty") for ln in po["lines"]):
+        status = "acknowledged" if po.get("acknowledged") else "sent"
+    t.update("purchase_orders", grn["po_id"], {"lines": po["lines"], "status": status})
+    upd = t.update("goods_receipts", gid, {"reversed": {"reason": reason[:300], "by": g.user.get("name"), "at": t.now()},
+                                            "lines": [{**r, "received": 0, "accepted": 0, "rejected": 0, "was": {k: r[k] for k in ("received", "accepted", "rejected")}}
+                                                      for r in grn["lines"]]})
+    ev.log(grn["project_id"], "cost", f"{grn['number']} reversed: {reason}")
+    return jsonify(serialize(upd))
 
 
 @bp.post("/goods-receipts/<gid>/return")

@@ -69,6 +69,15 @@ export class LoginComponent {
   busy = signal(false);
   error = signal('');
 
+  constructor() {
+    // Phase I: a platform support session opened by the Super Admin (with the company's permission)
+    const support = new URLSearchParams(location.search).get('support');
+    if (support) {
+      this.auth.setSession({ token: support } as any);
+      this.auth.refresh().then(() => this.router.navigateByUrl('/app')).catch(() => { this.auth.setSession(null); this.error.set('The support session has ended.'); });
+    }
+  }
+
   fill(email: string) {
     this.email = email;
     this.password = 'Demo@123';

@@ -448,14 +448,40 @@ def check_retention(now):
     run(now)
 
 
+def check_snags(now):
+    from .routes.site_plus import check_snags as run
+    run(now)
+
+
+def check_usage(now):
+    from .routes.platform import check_usage_alerts
+    check_usage_alerts(now)
+
+
+def check_permits(now):
+    from .routes.permits import check_permits as run
+    run(now)
+
+
+def platform_daily(now):
+    """Phase I: the subscription billing run, once a day (trial ends, renewals, reminders, read-only, purge)."""
+    day = now.date().isoformat()
+    if db.platform_settings.find_one({"_id": "billing_run", "day": day}):
+        return
+    from .routes.platform import billing_run
+    res = billing_run(now)
+    db.platform_settings.update_one({"_id": "billing_run"}, {"$set": {"day": day, "result": res, "at": now}}, upsert=True)
+
+
 CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
           check_compliance, check_meetings, check_health, check_invoices, check_change_orders,
           check_transmittals, check_selections, check_site_reports,
-          check_client_reminders, check_procurement, check_retention]
+          check_client_reminders, check_procurement, check_retention, check_snags, check_permits, check_usage]
 
 
 def run_once(now=None):
     now = now or datetime.utcnow()
+    platform_daily(now)
     for company in db.companies.find({"deleted_at": None, "status": ACTIVE}):
         _company_context(company)
         for check in CHECKS:

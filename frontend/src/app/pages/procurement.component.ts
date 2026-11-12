@@ -46,7 +46,8 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
             <td>{{ r.number }}<div class="small muted">{{ r.created_at | date: 'd MMM' }} · {{ label(r.source) }}</div></td>
             <td>{{ r.project_name }}<div class="small muted">{{ r.stage_name }}</div></td>
             <td class="small">@for (l of r.lines; track l.id) { <div>{{ l.qty }} {{ l.unit || '' }} {{ l.description }}@if (l.needed_by) { <span class="muted"> · by {{ l.needed_by | date: 'd MMM' }}</span> }</div> }</td>
-            <td>{{ r.requested_by_name }}</td><td><p-tag [value]="label(r.status)" [severity]="r.status === 'open' ? 'warn' : 'secondary'" /></td></tr></ng-template>
+            <td>{{ r.requested_by_name }}</td><td><p-tag [value]="label(r.status)" [severity]="r.status === 'open' ? 'warn' : 'secondary'" />
+              @if (r.status === 'open' && canWrite()) { <p-button icon="pi pi-pencil" [text]="true" size="small" (onClick)="openEditPr(r)" ariaLabel="Edit request" /> }</td></tr></ng-template>
           <ng-template #emptymessage><tr><td colspan="6" class="muted">No requests.</td></tr></ng-template>
         </p-table>
       }
@@ -224,6 +225,16 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
     <p-dialog header="Why?" [modal]="true" [(visible)]="reasonDlg" [style]="{ width: '26rem' }">
       <div class="stack"><input pInputText [(ngModel)]="reason" fluid aria-label="Reason" />
         <div class="row right"><p-button label="Confirm" [disabled]="!reason.trim()" (onClick)="sendReason()" /></div></div>
+    </p-dialog>
+    <p-dialog header="Change the request" [modal]="true" [(visible)]="eprDlg" [style]="{ width: '34rem' }" [breakpoints]="{ '640px': '100vw' }">
+      <div class="stack">
+        @for (l of epr.lines; track l.id) {
+          <div class="row gap"><input pInputText [(ngModel)]="l.description" class="grow" /><p-inputnumber [(ngModel)]="l.qty" [min]="0" [inputStyle]="{ width: '6rem' }" />
+            <input pInputText [(ngModel)]="l.unit" placeholder="unit" style="width: 5rem" /></div>
+        }
+        <label class="field"><span>Note</span><input pInputText [(ngModel)]="epr.note" fluid /></label>
+        <div class="row right"><p-button label="Save" (onClick)="saveEditPr()" /></div>
+      </div>
     </p-dialog>
   `,
   styles: `
@@ -432,6 +443,22 @@ export class ProcurementComponent implements OnInit {
   async sendReason() {
     await this.api.post(`/vendor-bills/${this.target.id}/${this.reasonFor}`, { reason: this.reason }, 'Done');
     this.reasonDlg = false;
+    await this.load();
+  }
+
+  // Phase I: change an open request
+  eprDlg = false;
+  epr: any = { lines: [] };
+
+  openEditPr(r: any) {
+    this.epr = { id: r.id, note: r.note ?? '', lines: r.lines.map((l: any) => ({ id: l.id, description: l.description, qty: l.qty, unit: l.unit, rate_id: l.rate_id,
+      stage_id: l.stage_id, needed_by: l.needed_by })) };
+    this.eprDlg = true;
+  }
+
+  async saveEditPr() {
+    await this.api.put(`/purchase-requests/${this.epr.id}`, { note: this.epr.note, lines: this.epr.lines }, 'Request changed');
+    this.eprDlg = false;
     await this.load();
   }
 }

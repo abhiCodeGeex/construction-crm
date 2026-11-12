@@ -6,7 +6,6 @@ from flask import Blueprint, request, jsonify, abort, g
 from ..db import db, oid, serialize
 from ..security import superadmin, check_password, create_token, hash_password, SA_ROLES
 from ..services import totp
-from ..services.subscription import usage
 from ..tenancy import now
 
 bp = Blueprint("superadmin", __name__)
@@ -107,49 +106,7 @@ def matrix():
                     "roles": [{"role": r, "label": SA_LABELS[r], "perms": _sa_perms(r)} for r in SA_ROLES]})
 
 
-@bp.get("/sa/dashboard")
-@superadmin("dashboard")
-def dashboard():
-    by_status = {}
-    for c in db.companies.find({"deleted_at": None}, {"status": 1}):
-        by_status[c.get("status", "trial")] = by_status.get(c.get("status", "trial"), 0) + 1
-    return jsonify({"companies": {"total": sum(by_status.values()), **by_status},
-                    "users": db.users.count_documents({"kind": "staff"}),
-                    "portal_users": db.users.count_documents({"kind": "external"})})
-
-
-# ---------------- companies (platform fields only) ----------------
-PUBLIC = ("name", "types", "modules", "plan_code", "status", "trial_ends", "city", "owner_email", "created_at",
-          "allow_support_login")
-
-
-@bp.get("/sa/companies")
-@superadmin("companies")
-def companies():
-    out = []
-    for c in db.companies.find({"deleted_at": None}).sort("created_at", -1):
-        row = serialize({k: c.get(k) for k in PUBLIC})
-        row["id"] = str(c["_id"])
-        row["usage"] = usage(c)
-        out.append(row)
-    return jsonify(out)
-
-
-@bp.post("/sa/companies/<_id>/action")
-@superadmin("companies")
-def company_action(_id):
-    d = request.get_json(force=True) or {}
-    c = db.companies.find_one({"_id": oid(_id)}) or abort(404)
-    action = d.get("action")
-    if action == "suspend":
-        changes = {"status": "suspended", "suspended_at": now(), "suspend_reason": d.get("reason")}
-    elif action == "reactivate":
-        changes = {"status": "active", "suspended_at": None}
-    else:
-        abort(400, "Unknown action")
-    db.companies.update_one({"_id": c["_id"]}, {"$set": changes})
-    sa_audit(action, _id, d.get("reason"))
-    return jsonify({"ok": True, "status": changes["status"]})
+# Dashboard, companies, plans, billing, support, announcements and settings: routes/platform.py (Phase I block 6)
 
 
 # ---------------- probes for testing Super Admin role permissions ----------------

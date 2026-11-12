@@ -21,8 +21,10 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-this-secret-in-production}
       SEED_DEMO: ${SEED_DEMO:-1}
       UPLOAD_DIR: /data/uploads
+      BACKUP_DIR: /data/backups
     volumes:
       - uploads:/data/uploads
+      - backups:/data/backups
     depends_on:
       mongo:
         condition: service_healthy
@@ -42,6 +44,26 @@ services:
     depends_on:
       - backend
 
+  # daily backups of the database and uploaded files (backend/app/backup.py); status on the Super Admin dashboard
+  backup:
+    build: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.backup"]
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: buildsuite
+      SECRET_KEY: ${SECRET_KEY:-change-this-secret-in-production}
+      UPLOAD_DIR: /data/uploads
+      BACKUP_DIR: /data/backups
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+    volumes:
+      - uploads:/data/uploads
+      - backups:/data/backups
+    depends_on:
+      mongo:
+        condition: service_healthy
+
   frontend:
     build: ./frontend
     restart: unless-stopped
@@ -53,3 +75,4 @@ services:
 volumes:
   mongo_data:
   uploads:
+  backups:

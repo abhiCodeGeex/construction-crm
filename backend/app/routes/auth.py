@@ -52,7 +52,8 @@ def signup():
     company = {
         "name": d["company_name"], "types": types, "modules": modules,
         "plan_code": plan["code"] if plan else None, "billing_cycle": "monthly",
-        "status": "trial", "trial_ends": now() + timedelta(days=Config.TRIAL_DAYS),
+        "status": "pending" if (db.platform_settings.find_one({"_id": "settings"}) or {}).get("signup_needs_approval") else "trial",
+        "trial_ends": now() + timedelta(days=Config.TRIAL_DAYS), "deleted_at": None, "price_locked": plan and plan.get("price_monthly"),
         "currency": "INR", "tax_rate": 18.0, "tax_label": "GST", "gstin": d.get("gstin"),
         "city": d.get("city"), "phone": d.get("phone"),
         "branches": [{"name": "Head office", "city": d.get("city")}],
@@ -69,6 +70,8 @@ def signup():
     }
     user["_id"] = db.users.insert_one(user).inserted_id
     bootstrap_company(str(company["_id"]), modules)
+    if company["status"] == "pending":  # Phase I: the platform approves new companies first
+        return jsonify({"pending": True, "message": "Thank you — your company is waiting for approval. We will email you when it is ready."}), 201
     return jsonify(_session(user, company)), 201
 
 

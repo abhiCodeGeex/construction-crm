@@ -98,9 +98,38 @@ def clean(d, p, r=None):
             if not f:
                 abort(400, "Upload the photo first")
             photos.append({"key": key, "name": f["name"], "caption": (ph.get("caption") or "").strip()[:200] or None,
-                           "shareable": bool(ph.get("shareable")), "at": keep.get(key, {}).get("at") or t.now()})
+                           "shareable": bool(ph.get("shareable")), "at": keep.get(key, {}).get("at") or t.now(),
+                           **photo_tags(ph, stages, keep.get(key, {}))})
         ch["photos"] = photos
     return ch
+
+
+def photo_tags(ph, stages, old):
+    """Phase I (§10 "photos with date, time and GPS, tagged to a stage or room"): when the phone took it, where, and what
+    it shows. The time and place come from the phone; they are kept as first sent."""
+    out = {"taken_at": old.get("taken_at"), "lat": old.get("lat"), "lng": old.get("lng"), "accuracy_m": old.get("accuracy_m")}
+    if ph.get("lat") is not None and ph.get("lng") is not None:
+        try:
+            lat, lng = float(ph["lat"]), float(ph["lng"])
+        except (TypeError, ValueError):
+            abort(400, "Photo location must be numbers")
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            abort(400, "Photo location is out of range")
+        if out["lat"] is None:
+            out.update(lat=round(lat, 6), lng=round(lng, 6), accuracy_m=round(float(ph.get("accuracy_m") or 0)) or None)
+    if ph.get("taken_at") and not out["taken_at"]:
+        v = str(ph["taken_at"])[:25]
+        try:
+            from datetime import datetime
+            datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except ValueError:
+            abort(400, "Photo time must be an ISO date-time")
+        out["taken_at"] = v
+    st = stages.get(ph.get("stage_id")) if ph.get("stage_id") else None
+    if ph.get("stage_id") and not st:
+        abort(400, "Photo stage not found")
+    out.update(stage_id=st and st["id"], stage_name=st and st["name"], room=(ph.get("room") or "").strip()[:80] or None)
+    return out
 
 
 @bp.get("/projects/<pid>/site-reports")
@@ -327,5 +356,6 @@ def portal_photos(pid):
     for r in db.site_reports.find({"company_id": g.cid, "project_id": pid, "photos.shareable": True}).sort("date", -1).limit(60):
         for ph in r["photos"]:
             if ph.get("shareable"):
-                rows.append({"date": r["date"], "caption": ph.get("caption"), "url": f"/api/files/{ph['key']}"})
+                rows.append({"date": r["date"], "caption": ph.get("caption"), "url": f"/api/files/{ph['key']}",
+                             "stage": ph.get("stage_name"), "room": ph.get("room"), "taken_at": ph.get("taken_at")})
     return jsonify({"project": p["name"], "progress": project_progress(p), "photos": rows})

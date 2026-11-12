@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ConfirmationService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
+import { CheckboxModule } from 'primeng/checkbox';
 import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
@@ -13,22 +14,25 @@ import { Api, money } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
 export const SEL_SEV: Record<string, 'secondary' | 'info' | 'success' | 'warn'> = {
-  open: 'secondary', options_sent: 'warn', chosen: 'info', confirmed: 'info', ordered: 'info', installed: 'success',
+  open: 'secondary', options_sent: 'warn', chosen: 'info', confirmed: 'info', ordered: 'info', delivered: 'info', installed: 'success',
 };
-const NEXT: Record<string, string> = { chosen: 'confirmed', confirmed: 'ordered', ordered: 'installed' };
+const NEXT: Record<string, string> = { chosen: 'confirmed', confirmed: 'ordered', ordered: 'installed', delivered: 'installed' };
 
 /** Selections on a project (Phase F block 3): each item with its allowance and options side by side; send the options,
  *  record the client's choice, then confirm -> order -> install. Over the allowance -> a change order. */
 @Component({
   selector: 'app-project-selections',
-  imports: [FormsModule, DatePipe, ButtonModule, DialogModule, InputNumberModule, InputTextModule, SelectModule, TagModule, TooltipModule],
+  imports: [FormsModule, DatePipe, ButtonModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule, SelectModule, TagModule, TooltipModule],
   template: `
     @if (data(); as d) {
       <div class="row-between mb wrap gap">
         <span class="small">Allowances <strong>{{ fmt(d.summary.allowance) }}</strong> · chosen <strong>{{ fmt(d.summary.chosen) }}</strong> ·
           difference <strong [class.c-bad]="d.summary.difference > 0" [class.c-good]="d.summary.difference < 0">{{ fmt(d.summary.difference) }}</strong>
           @if (d.summary.waiting) { · <span class="c-bad">{{ d.summary.waiting }} waiting on the client</span> }</span>
-        @if (d.can_write) { <p-button label="Add item" icon="pi pi-plus" size="small" (onClick)="openNew()" /> }
+        <span class="row gap">
+          @if (d.can_order_cost) { <p-button label="Margin" icon="pi pi-percentage" size="small" [text]="true" (onClick)="openMargin()" /> }
+          @if (d.can_write) { <p-button label="Add item" icon="pi pi-plus" size="small" (onClick)="openNew()" /> }
+        </span>
       </div>
       @for (s of d.selections; track s.id) {
         <div class="sel">
@@ -46,9 +50,10 @@ const NEXT: Record<string, string> = { chosen: 'confirmed', confirmed: 'ordered'
                   <p-button icon="pi pi-pencil" [text]="true" size="small" (onClick)="openEdit(s)" ariaLabel="Edit" pTooltip="Edit" />
                   @if (s.options.length) { <p-button [label]="s.status === 'open' ? 'Send options' : 'Send again'" size="small" [text]="true" (onClick)="send(s)" /> }
                 }
-                @if ((s.status === 'chosen' || s.status === 'confirmed') && s.difference > 0 && !s.co_id) { <p-button label="Change order" size="small" [text]="true" (onClick)="toCo(s)" /> }
+                @if ((s.status === 'chosen' || s.status === 'confirmed') && s.difference && !s.co_id) { <p-button [label]="s.difference > 0 ? 'Change order' : 'Credit the client'" size="small" [text]="true" (onClick)="toCo(s)" /> }
                 @if ((s.status === 'chosen' || s.status === 'confirmed') && d.can_order_cost && !s.deposit && s.chosen?.price) { <p-button label="Ask for deposit" size="small" [text]="true" (onClick)="askDeposit(s)" /> }
-                @if (NEXT[s.status]) { <p-button [label]="'Mark ' + d.statuses[NEXT[s.status]].toLowerCase()" size="small" (onClick)="advance(s)" /> }
+                @if (s.status === 'ordered' || s.status === 'delivered') { <p-button label="Installation checklist" icon="pi pi-check-square" size="small" (onClick)="openInstall(s)" /> }
+                @else if (NEXT[s.status]) { <p-button [label]="'Mark ' + d.statuses[NEXT[s.status]].toLowerCase()" size="small" (onClick)="advance(s)" /> }
                 @if (s.status === 'chosen' || s.status === 'confirmed') { <p-button label="Reopen" size="small" [text]="true" severity="secondary" (onClick)="askReopen(s)" /> }
               }</span>
           </div>
@@ -117,6 +122,26 @@ const NEXT: Record<string, string> = { chosen: 'confirmed', confirmed: 'ordered'
         <label class="field req"><span>Why</span><input pInputText [(ngModel)]="reason" fluid /></label>
         <div class="row right"><p-button label="Reopen" [disabled]="!reason.trim()" (onClick)="reopen()" /></div>
       </div>
+    </p-dialog>
+    <p-dialog header="Installation checklist" [modal]="true" [(visible)]="instDlg" [style]="{ width: '30rem' }" [breakpoints]="{ '640px': '100vw' }">
+      <div class="stack">
+        @for (c of inst.checks; track c.text) { <label class="check"><p-checkbox [(ngModel)]="c.done" [binary]="true" [ariaLabel]="c.text" /> {{ c.text }}</label> }
+        <label class="field"><span>Photos of the installed item</span><input type="file" accept="image/*" capture="environment" multiple (change)="instPhoto($event)" />
+          @if (inst.photos.length) { <small class="muted">{{ inst.photos.length }} photo(s)</small> }</label>
+        <label class="field"><span>Note</span><input pInputText [(ngModel)]="inst.note" fluid /></label>
+        <div class="row right"><p-button [label]="allTicked() ? 'Mark installed' : 'Save progress'" icon="pi pi-check" (onClick)="saveInstall()" /></div>
+      </div>
+    </p-dialog>
+    <p-dialog header="Selection margin" [modal]="true" [(visible)]="marginDlg" [style]="{ width: '44rem' }" [breakpoints]="{ '760px': '100vw' }">
+      @if (margin(); as m) {
+        <div class="stack">
+          @for (r of m.rooms; track r.room) {
+            <div><strong>{{ r.room }}</strong> <span class="small muted">cost {{ fmt(r.cost) }} · price {{ fmt(r.price) }} · margin {{ fmt(r.margin) }}@if (r.margin_pct !== null) { ({{ r.margin_pct }}%) }</span>
+              @for (x of r.items; track x.item) { <div class="small">{{ x.item }}: {{ x.option }} — {{ fmt(x.cost) }} → {{ fmt(x.price) }}, <span [class.c-bad]="x.margin < 0">{{ fmt(x.margin) }}</span></div> }</div>
+          } @empty { <p class="muted">No choices made yet.</p> }
+          <div class="row-between"><strong>Project</strong><strong>{{ fmt(m.total.price) }} · margin {{ fmt(m.total.margin) }}@if (m.total.margin_pct !== null) { ({{ m.total.margin_pct }}%) }</strong></div>
+        </div>
+      }
     </p-dialog>
   `,
   styles: `
@@ -212,6 +237,41 @@ export class ProjectSelectionsComponent implements OnInit {
         message: "It goes on the supplier's draft purchase order (or a purchase request when it has no supplier)."
           + (noDeposit ? " The client's deposit for it is not paid yet." : '') });
     } else go();
+  }
+
+  // Phase I: installation checklist (all ticked -> installed)
+  instDlg = false;
+  allTicked = () => this.inst.checks.length && this.inst.checks.every((c: any) => c.done);
+  inst: any = { checks: [], photos: [] };
+  private instSel: any = null;
+
+  async openInstall(s: any) {
+    this.instSel = s;
+    const texts: string[] = s.installation?.checks?.map((c: any) => c.text) ?? await this.api.get('/install-checks');
+    const done = Object.fromEntries((s.installation?.checks ?? []).map((c: any) => [c.text, c.done]));
+    this.inst = { checks: texts.map((text) => ({ text, done: !!done[text] })), photos: (s.installation?.photos ?? []).map((p: any) => p.key),
+      note: s.installation?.note ?? '' };
+    this.instDlg = true;
+  }
+
+  async instPhoto(ev: Event) {
+    for (const file of Array.from((ev.target as HTMLInputElement).files ?? [])) this.inst.photos.push((await this.api.upload(file)).key);
+  }
+
+  async saveInstall() {
+    const r = await this.api.post(`/selections/${this.instSel.id}/install`, this.inst, 'Saved');
+    this.instDlg = false;
+    if (r.status === 'installed') this.confirm.confirm({ header: `${r.item} installed`, icon: 'pi pi-check', message: 'Every check is ticked.', acceptLabel: 'OK', rejectVisible: false });
+    await this.load();
+  }
+
+  // Phase I: selection margin by room
+  marginDlg = false;
+  margin = signal<any>(null);
+
+  async openMargin() {
+    this.margin.set(await this.api.get(`/projects/${this.projectId()}/selections/margin`));
+    this.marginDlg = true;
   }
 
   async askDeposit(s: any) {

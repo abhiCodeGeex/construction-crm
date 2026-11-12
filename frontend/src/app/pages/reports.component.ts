@@ -8,11 +8,12 @@ import { TableModule } from 'primeng/table';
 import { Api, SERVICE_LABEL, money } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { ProcurementReportComponent } from './procurement-report.component';
+import { InsightReportsComponent } from './insight-reports.component';
 
 /** §2 conversion by source / service / salesperson, win-loss reasons, pipeline value; §16 follow-ups per user. */
 @Component({
   selector: 'app-reports',
-  imports: [FormsModule, ButtonModule, CardModule, InputTextModule, MessageModule, TableModule, ProcurementReportComponent],
+  imports: [FormsModule, ButtonModule, CardModule, InputTextModule, MessageModule, TableModule, ProcurementReportComponent, InsightReportsComponent],
   template: `
     <div class="page-head">
       <div><h1>Reports</h1><p class="muted">Sales conversion, follow-up discipline and project money.</p></div>
@@ -169,6 +170,10 @@ import { ProcurementReportComponent } from './procurement-report.component';
     @if (auth.can('procurement')) {
       <h2 class="mt">Procurement</h2>
       <app-procurement-report />
+    }
+    @if (auth.can('reports') || auth.can('followups')) {
+      <h2 class="mt">Projects, cash flow and team</h2>
+      <app-insight-reports />
     }
   `,
 })

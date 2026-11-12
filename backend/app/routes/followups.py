@@ -235,7 +235,15 @@ def clean_tpl(d, existing=None):
         abort(400, f"Unknown merge field(s): {', '.join(unknown)}. Use: {', '.join(MERGE_FIELDS)}")
     if m["channel"] == "sms" and len(body) > 480:
         abort(400, "SMS templates must be at most 480 characters")
-    return {"name": m["name"].strip(), "channel": m["channel"], "body": body, "subject": m.get("subject")}
+    out = {"name": m["name"].strip(), "channel": m["channel"], "body": body, "subject": m.get("subject")}
+    if m.get("provider_template"):  # an approved WhatsApp template name (Phase G)
+        out["provider_template"] = str(m["provider_template"]).strip()[:120]
+    if m["channel"] == "sms":  # Phase I: India's DLT-registered template id
+        dlt = re.sub(r"\D", "", str(m.get("dlt_template_id") or ""))
+        if dlt and not 12 <= len(dlt) <= 25:
+            abort(400, "The DLT template id is 12 to 25 digits")
+        out["dlt_template_id"] = dlt or None
+    return out
 
 
 @bp.get("/message_templates")

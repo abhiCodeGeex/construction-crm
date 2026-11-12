@@ -356,4 +356,16 @@ NOTIFY_EVENTS.update({
     "bill_on_hold": ("Vendor bill does not match its PO", True),
     "bill_due": ("Vendor bill due or overdue", False),
     "vendor_invoice": ("Supplier uploaded an invoice", False),
+    # Phase I (site)
+    "snag_assigned": ("Snag assigned to you", True),
+    "snag_due": ("Snag past its due date", False),
+    "plan_limit": ("Near a limit of your plan", False),
+    "support_reply": ("Support answered your ticket", True),
 })
+
+# Phase I block 3 — site and field
+SNAG_STATUSES = {"open": "Open", "fixed": "Fixed (to check)", "closed": "Closed"}
+SNAG_PRIORITIES = ["low", "normal", "high"]
+ATTENDANCE_STATUSES = {"present": 1, "half_day": 0.5, "absent": 0, "leave": 0}
+INSTALL_CHECKS = ["Delivered without damage", "Installed as per the drawing", "Finish and colour as chosen",
+                  "Working / operated and checked", "Cleaned and protected", "Shown to the client"]

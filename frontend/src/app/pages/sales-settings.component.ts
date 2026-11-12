@@ -169,6 +169,9 @@ import { CHANNEL_LABEL } from '../shared/followup-dialog.component';
           <label class="field"><span>Channel</span><p-select [options]="channels" [(ngModel)]="tf.channel" optionLabel="label" optionValue="value" fluid appendTo="body" /></label>
         </div>
         @if (tf.channel === 'email') { <label class="field"><span>Subject</span><input pInputText [(ngModel)]="tf.subject" fluid /></label> }
+        @if (tf.channel === 'sms') { <label class="field"><span>DLT template id</span><input pInputText [(ngModel)]="tf.dlt_template_id" placeholder="19 digits from your DLT portal" fluid />
+          <small class="muted">India sends business SMS only on registered templates; the text must match the DLT registration.</small></label> }
+        @if (tf.channel === 'whatsapp') { <label class="field"><span>Approved WhatsApp template name</span><input pInputText [(ngModel)]="tf.provider_template" placeholder="optional" fluid /></label> }
         <label class="field"><span>Text</span><textarea pTextarea rows="7" [(ngModel)]="tf.body" fluid></textarea>
           <small class="muted">{{ tf.body?.length || 0 }} characters{{ tf.channel === 'sms' ? ' (max 480)' : '' }}</small></label>
         <div class="chips">@for (f of mergeFields; track f) { <button type="button" class="chip" (click)="insert(f)">+ {{ f }}</button> }</div>
@@ -290,7 +293,8 @@ export class SalesSettingsComponent implements OnInit {
   }
 
   async saveTpl() {
-    const body = { name: this.tf.name, channel: this.tf.channel, subject: this.tf.subject, body: this.tf.body };
+    const body = { name: this.tf.name, channel: this.tf.channel, subject: this.tf.subject, body: this.tf.body,
+      dlt_template_id: this.tf.dlt_template_id || null, provider_template: this.tf.provider_template || null };
     if (this.tf.id) await this.api.put(`/message_templates/${this.tf.id}`, body, 'Template saved');
     else await this.api.post('/message_templates', body, 'Template created');
     this.tplDlg = false;

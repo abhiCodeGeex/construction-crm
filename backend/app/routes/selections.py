@@ -26,9 +26,11 @@ from .projects import load, member
 
 bp = Blueprint("selections", __name__)
 
-STATUSES = ["open", "options_sent", "chosen", "confirmed", "ordered", "installed"]
+STATUSES = ["open", "options_sent", "chosen", "confirmed", "ordered", "delivered", "installed"]
 LABELS = {"open": "Open", "options_sent": "Options sent", "chosen": "Chosen", "confirmed": "Confirmed", "ordered": "Ordered",
-          "installed": "Installed"}
+          "delivered": "Delivered", "installed": "Installed"}
+# forward moves; "delivered" comes from the goods receipt of its PO line (Phase I), or is skipped
+NEXT_STATUS = {"chosen": ["confirmed"], "confirmed": ["ordered"], "ordered": ["delivered", "installed"], "delivered": ["installed"]}
 
 
 def r2(v):
@@ -66,7 +68,7 @@ def present(s):
     return data
 
 
-def clean_options(rows):
+def clean_options(rows, client_id=None):
     out = []
     for r in (rows or [])[:12]:
         name = (r.get("name") or "").strip()[:120] or abort(400, "Each option needs a name")
@@ -79,6 +81,12 @@ def clean_options(rows):
             opt.update(rate_id=r["rate_id"], unit=opt["unit"] or rate["unit"], brand=opt["brand"] or rate.get("brand"))
         unit_cost = num(r.get("unit_cost"), f"Cost of {name}") or 0
         unit_price = num(r.get("unit_price"), f"Price of {name}") or 0
+        if unit_cost and not unit_price:  # Phase I: price from the markup rules (client, then category, then default)
+            from .catalogue import markup_for
+            cat = (db.rate_library.find_one({"_id": oid(r["rate_id"])}, {"category": 1}) or {}).get("category") if r.get("rate_id") else None
+            pct, src = markup_for(cat, client_id)
+            unit_price = r2(unit_cost * (1 + pct / 100))
+            opt.update(markup_pct=pct, markup_source=src)
         opt.update(unit_cost=unit_cost, unit_price=unit_price, cost=r2(opt["qty"] * unit_cost), price=r2(opt["qty"] * unit_price))
         if r.get("supplier_id"):
             c = db.contacts.find_one({"_id": oid(r["supplier_id"]), "company_id": g.cid}) or abort(400, "Supplier not found")
@@ -107,7 +115,7 @@ def clean(d, p, s=None):
     if "notes" in d:
         ch["notes"] = (d.get("notes") or "").strip()[:1000] or None
     if "options" in d:
-        ch["options"] = clean_options(d["options"])
+        ch["options"] = clean_options(d["options"], p.get("client_id"))
     if "due_date" in d:
         ch["due_date"] = a_date(d["due_date"], "Choice due", required=False)
     merged = {**(s or {}), **ch}
@@ -236,9 +244,9 @@ def move_status(sid):
     a line on the supplier's draft PO, or a purchase request; the cost is recorded when the supplier's bill is approved."""
     s, p = load_sel(sid)
     st = (request.get_json(force=True) or {}).get("status")
-    order = ["chosen", "confirmed", "ordered", "installed"]
-    if st not in order[1:] or s["status"] not in order or order.index(st) != order.index(s["status"]) + 1:
-        abort(409, f"From {LABELS[s['status']]} the next step is {LABELS.get(order[order.index(s['status']) + 1], '—') if s['status'] in order[:-1] else 'none'}")
+    nxt = NEXT_STATUS.get(s["status"], [])
+    if st not in nxt:
+        abort(409, f"From {LABELS[s['status']]} the next step is {' or '.join(LABELS[x] for x in nxt) if nxt else 'none'}")
     ch = {"status": st, f"{st}_at": t.now(), "history": s.get("history", []) + [{"status": st, "by": g.user.get("name"), "at": t.now()}]}
     if st == "ordered":  # Phase H: ordered through procurement — a line on the supplier's draft PO, or a purchase request
         from .claims import deposit_state
@@ -297,10 +305,18 @@ def to_change_order(sid):
         abort(403, "Your role cannot raise change orders")
     opt = chosen(s) or abort(409, "Record the client's choice first")
     diff = r2(opt["price"] - (s.get("allowance") or 0))
-    if diff <= 0:
-        abort(409, "The choice is within the allowance")
     if s.get("co_id"):
         abort(409, "A change order is already raised for this item")
+    if diff == 0:
+        abort(409, "The choice is exactly the allowance")
+    if diff < 0:  # Phase I: under the allowance, the client is credited the difference
+        co = new_co(p, {"stage_id": s["stage_id"], "title": f"Allowance credit: {s['item']}"[:150], "reason": "client_request",
+                        "description": f"The client chose {opt['name']} ({money_text(opt['price'])}) against an allowance of "
+                                       f"{money_text(s.get('allowance') or 0)}: {money_text(-diff)} is credited.",
+                        "lines": [{"description": f"{s['item']}: {opt['name']} under the allowance", "qty": 1,
+                                   "cost_rate": 0, "price_rate": diff, "credit": True}]}, {"selection_id": sid, "credit": True})
+        upd = t.update("selections", sid, {"co_id": str(co["_id"]), "co_number": co["number"]})
+        return jsonify({"selection": present(upd), "change_order": t.out(serialize(co))}), 201
     ratio = opt["cost"] / opt["price"] if opt["price"] else 0
     co = new_co(p, {"stage_id": s["stage_id"], "title": f"Upgrade: {s['item']}"[:150], "reason": "client_request",
                     "description": f"The client chose {opt['name']} ({money_text(opt['price'])}) against an allowance of "

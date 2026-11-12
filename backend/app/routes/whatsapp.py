@@ -156,6 +156,12 @@ def webhook(cid_):
                 if text.upper() in ("STOP", "UNSUBSCRIBE"):
                     db.contacts.update_one({"_id": contact["_id"]}, {"$set": {"whatsapp_opt_in": None,
                                                                               "whatsapp_opt_out": {"at": t.now(), "how": "STOP", "by": "WhatsApp"}}})
+                if db.messages.find_one({"company_id": cid_, "provider_id": msg.get("id"), "direction": "in"}) and msg.get("id"):
+                    continue  # the provider sent it again
+                routed = None
+                if text and text.upper() not in ("STOP", "UNSUBSCRIBE"):
+                    from .insights import route_inbound  # Phase I: into the project's thread, to the right person
+                    routed = route_inbound(contact, text)
                 t.insert("messages", {"channel": "whatsapp", "direction": "in", "contact_id": str(contact["_id"]), "contact_name": contact["name"],
-                                      "from": frm, "text": text[:4000], "provider_id": msg.get("id"), "status": "received"})
+                                      "from": frm, "text": text[:4000], "provider_id": msg.get("id"), "status": "received", "routed": routed})
     return jsonify({"ok": True})

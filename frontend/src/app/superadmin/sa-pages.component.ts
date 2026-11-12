@@ -22,6 +22,11 @@ import { ThemeService } from '../core/theme.service';
 const SA_NAV = [
   { path: '/sa', label: 'Dashboard', icon: 'pi pi-chart-line', area: 'dashboard', exact: true },
   { path: '/sa/companies', label: 'Companies', icon: 'pi pi-building', area: 'companies' },
+  { path: '/sa/plans', label: 'Plans and coupons', icon: 'pi pi-tags', area: 'dashboard' },
+  { path: '/sa/billing', label: 'Billing', icon: 'pi pi-receipt', area: 'billing' },
+  { path: '/sa/support', label: 'Support and news', icon: 'pi pi-comments', area: 'dashboard' },
+  { path: '/sa/reports', label: 'Reports and usage', icon: 'pi pi-chart-bar', area: 'dashboard' },
+  { path: '/sa/settings', label: 'Platform settings', icon: 'pi pi-cog', area: 'dashboard' },
   { path: '/sa/team', label: 'Super Admin team', icon: 'pi pi-users', area: 'settings' },
   { path: '/sa/access', label: 'My access', icon: 'pi pi-shield', area: 'dashboard' },
   { path: '/sa/audit', label: 'Audit log', icon: 'pi pi-history', area: 'dashboard' },

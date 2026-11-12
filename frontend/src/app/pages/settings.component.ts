@@ -1,3 +1,4 @@
+import { SubscriptionComponent } from './subscription.component';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -33,13 +34,13 @@ const STATE_NAMES: Record<string, string> = {
 
 @Component({
   selector: 'app-settings',
-  imports: [TooltipModule, FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, TextareaModule, DialogModule, InputNumberModule, InputTextModule, MessageModule, SelectButtonModule,
+  imports: [SubscriptionComponent, TooltipModule, FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, TextareaModule, DialogModule, InputNumberModule, InputTextModule, MessageModule, SelectButtonModule,
     SelectModule, TableModule, TabsModule, TagModule, ToggleSwitchModule, SalesSettingsComponent, ProposalSettingsComponent],
   template: `
     <div class="page-head"><div><h1>Company settings</h1><p class="muted">Company setup, stage templates, role permissions and the audit log.</p></div></div>
     @if (!canEdit()) { <p-message severity="info" icon="pi pi-eye" text="Read-only: only the owner can change company settings." styleClass="mb" /> }
 
-    <p-tabs value="company" [scrollable]="true">
+    <p-tabs [value]="startTab" [scrollable]="true">
       <p-tablist>
         <p-tab value="company"><i class="pi pi-building mr"></i>Company</p-tab>
         <p-tab value="setup"><i class="pi pi-sitemap mr"></i>Branches, tax & numbering</p-tab>
@@ -48,6 +49,7 @@ const STATE_NAMES: Record<string, string> = {
         <p-tab value="proposals"><i class="pi pi-file-edit mr"></i>Proposals & branding</p-tab>
         <p-tab value="roles"><i class="pi pi-shield mr"></i>Roles & permissions</p-tab>
         <p-tab value="audit"><i class="pi pi-history mr"></i>Audit log</p-tab>
+        <p-tab value="subscription"><i class="pi pi-credit-card mr"></i>Subscription & support</p-tab>
       </p-tablist>
       <p-tabpanels>
         <!-- company -->
@@ -183,11 +185,53 @@ const STATE_NAMES: Record<string, string> = {
             </div>
             @if (canEdit()) { <div class="row right"><p-button label="Save" icon="pi pi-check" size="small" (onClick)="saveWa()" /></div> }
           </p-card>
+          <p-card header="SMS" styleClass="mt">
+            <div class="stack">
+              <small class="muted">SMS templates go out through your provider on DLT-registered templates (TRAI). Not set up: they are only logged.</small>
+              <label class="field"><span>Provider</span><p-select [options]="smsProviders()" optionLabel="label" optionValue="value" [(ngModel)]="sms.provider" [showClear]="true" placeholder="Off (log only)" [disabled]="!canEdit()" fluid appendTo="body" /></label>
+              @if (sms.provider === 'msg91') {
+                <div class="grid2">
+                  <label class="field"><span>Sender id (header)</span><input pInputText [(ngModel)]="sms.sender_id" maxlength="6" [disabled]="!canEdit()" fluid /></label>
+                  <label class="field"><span>DLT entity id</span><input pInputText [(ngModel)]="sms.dlt_entity_id" [disabled]="!canEdit()" fluid /></label>
+                </div>
+                <label class="field"><span>Auth key</span><input pInputText type="password" [(ngModel)]="sms.auth_key" [placeholder]="sms.auth_key_set ? 'saved — type to replace' : ''" [disabled]="!canEdit()" fluid /></label>
+              }
+              <small [class.c-good]="sms.ready" [class.muted]="!sms.ready">{{ sms.ready ? 'SMS sending is on.' : 'SMS is off: messages are logged, not sent.' }}</small>
+              @if (canEdit()) { <div class="row right"><p-button label="Save" icon="pi pi-check" size="small" (onClick)="saveSms()" /></div> }
+            </div>
+          </p-card>
           <p-card header="Daily site reports" styleClass="mt">
             <label class="field"><span>Cut-off time</span><input pInputText type="time" [(ngModel)]="site.cutoff" [disabled]="!canEdit()" />
               <small class="muted">No report by this time on a working day: the site supervisor is reminded; still none the next day: the PM.</small></label>
             @if (canEdit()) { <div class="row right"><p-button label="Save" icon="pi pi-check" size="small" (onClick)="saveSite()" /></div> }
           </p-card>
+          <p-card header="Warehouses" styleClass="mt">
+            <p class="small muted mt0">Goods can be received into a company warehouse instead of the site, then moved to projects (Project → Site → Stock).</p>
+            @for (w of stores; track $index; let i = $index) {
+              <div class="row gap mb-xs"><input pInputText [(ngModel)]="w.name" placeholder="Name" [disabled]="!canEdit()" />
+                <input pInputText [(ngModel)]="w.address" placeholder="Address" [disabled]="!canEdit()" class="grow" />
+                @if (canEdit()) { <p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="stores.splice(i, 1)" ariaLabel="Remove warehouse" /> }</div>
+            }
+            @if (canEdit()) { <div class="row-between"><p-button label="Add warehouse" icon="pi pi-plus" size="small" [text]="true" (onClick)="stores.push({ name: '', address: '' })" />
+              <p-button label="Save" icon="pi pi-check" size="small" (onClick)="saveStores()" /></div> }
+          </p-card>
+          @if (mk) {
+          <p-card header="Product markup" styleClass="mt">
+            <p class="small muted mt0">Added to a product's trade price to give the client's price: the client's own rule wins, then the category's, then the default.</p>
+            <label class="field"><span>Default markup %</span><p-inputnumber [(ngModel)]="mk.default_pct" [min]="0" [max]="500" [disabled]="!canEdit()" /></label>
+            <div class="grid3 mt-xs">
+              @for (c of mkCats; track c) { <label class="field"><span>{{ c }} %</span><p-inputnumber [(ngModel)]="mk.by_category[c]" [min]="0" [max]="500" [disabled]="!canEdit()" placeholder="default" fluid /></label> }
+            </div>
+            <div class="small muted mt">Client rules</div>
+            @for (r of mkClients; track $index; let i = $index) {
+              <div class="row gap mb-xs"><p-select [options]="clientList" optionLabel="name" optionValue="id" [(ngModel)]="r.id" [filter]="true" [disabled]="!canEdit()" placeholder="Client" class="grow" />
+                <p-inputnumber [(ngModel)]="r.pct" [min]="0" [max]="500" suffix="%" [disabled]="!canEdit()" />
+                @if (canEdit()) { <p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="mkClients.splice(i, 1)" ariaLabel="Remove rule" /> }</div>
+            }
+            @if (canEdit()) { <div class="row-between"><p-button label="Add a client rule" icon="pi pi-plus" size="small" [text]="true" (onClick)="addClientRule()" />
+              <p-button label="Save" icon="pi pi-check" size="small" (onClick)="saveMarkup()" /></div> }
+          </p-card>
+          }
           <p-card header="Costs" styleClass="mt">
             <div class="grid2">
               <label class="field"><span>Site expense limit</span><p-inputnumber [(ngModel)]="fin.site_expense_limit" [min]="0" [disabled]="!canEdit()" fluid />
@@ -280,6 +324,7 @@ const STATE_NAMES: Record<string, string> = {
         </p-tabpanel>
 
         <!-- audit -->
+        <p-tabpanel value="subscription"><app-subscription /></p-tabpanel>
         <p-tabpanel value="audit">
           <p-table [value]="audit()" size="small" [paginator]="true" [rows]="15">
             <ng-template #header><tr><th>When</th><th>Who</th><th>Action</th><th>What</th><th>Changes</th></tr></ng-template>
@@ -364,6 +409,7 @@ export class SettingsComponent implements OnInit {
   async loadWa() {
     try {
       this.wa = await this.api.get('/settings/messaging');
+    this.loadSms();
     } catch {
       this.wa = {};
     }
@@ -410,8 +456,49 @@ export class SettingsComponent implements OnInit {
     await this.loadFolders();
   }
 
+  mk: any = null;
+  mkCats: string[] = [];
+  mkClients: any[] = [];
+  clientList: any[] = [];
+
+  async loadMarkup() {
+    try {
+      const m = await this.api.get('/settings/markup');
+      this.mkCats = (await this.api.get('/rates?kind=product')).work_types ?? [];
+      this.mkClients = Object.entries(m.by_client ?? {}).map(([id, pct]) => ({ id, pct }));
+      const c = await this.api.get('/contacts');
+      this.clientList = (Array.isArray(c) ? c : c.contacts ?? []).filter((x: any) => (x.types ?? []).includes('client')).map((x: any) => ({ id: x.id, name: x.name }));
+      this.mk = { ...m, by_category: { ...(m.by_category ?? {}) } };
+    } catch {
+      this.mk = null;  // roles that do not see costs
+    }
+  }
+
+  addClientRule() {
+    this.mkClients.push({ id: null, pct: this.mk.default_pct });
+  }
+
+  async saveMarkup() {
+    const by_category = Object.fromEntries(Object.entries(this.mk.by_category).filter(([, v]) => v !== null && v !== undefined && v !== ''));
+    const by_client = Object.fromEntries(this.mkClients.filter((r) => r.id && r.pct !== null).map((r) => [r.id, r.pct]));
+    await this.api.put('/settings/markup', { default_pct: this.mk.default_pct, by_category, by_client }, 'Markup saved');
+    await this.loadMarkup();
+  }
+
+  stores: any[] = [];
+
+  async loadStores() {
+    this.stores = (await this.api.get('/settings/warehouses')).map((w: any) => ({ ...w }));
+  }
+
+  async saveStores() {
+    this.stores = await this.api.put('/settings/warehouses', { warehouses: this.stores.filter((w) => w.name?.trim()) }, 'Warehouses saved');
+  }
+
   async loadFinance() {
     this.fin = await this.api.get('/finance/settings');
+    this.loadStores();
+    this.loadMarkup();
     this.reminderText = (this.fin.client_reminder_days ?? []).join(', ');
   }
 
@@ -425,8 +512,24 @@ export class SettingsComponent implements OnInit {
   }
 
   reminderText = '';
+  startTab = ['subscription', 'support'].includes(new URLSearchParams(location.search).get('tab') ?? '') ? 'subscription' : 'company';
   taxModes = [{ label: 'One tax rate', value: 'single' }, { label: 'GST (CGST + SGST / IGST)', value: 'gst' }];
   states = Object.values(STATE_NAMES).sort();
+
+  sms: any = {};
+
+  smsProviders() {
+    return Object.entries(this.sms.providers ?? {}).map(([value, label]) => ({ value, label }));
+  }
+
+  async loadSms() {
+    try { this.sms = await this.api.get('/settings/sms'); } catch { this.sms = {}; }
+  }
+
+  async saveSms() {
+    const { provider, sender_id, dlt_entity_id, auth_key } = this.sms;
+    this.sms = await this.api.put('/settings/sms', { provider: provider || null, sender_id, dlt_entity_id, ...(auth_key ? { auth_key } : {}) }, 'Saved');
+  }
 
   async saveCalendar() {
     await this.api.put('/settings/calendar', { working_days: this.cal.working_days, holidays: this.cal.holidays.filter((h: any) => h.date || h.name) },

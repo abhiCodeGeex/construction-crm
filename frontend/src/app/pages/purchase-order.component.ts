@@ -87,7 +87,9 @@ const SIGNOFF = ['In person', 'Email', 'WhatsApp', 'Phone', 'Signed document'];
           @for (u of o.vendor_updates; track $index) { <div class="small">{{ u.at | date: 'd MMM, HH:mm' }} · delivery {{ u.was ?? '—' }} → <strong>{{ u.date }}</strong>@if (u.note) { · {{ u.note }} }</div> } }
         <h3>Deliveries</h3>
         @for (r of o.receipts; track r.id) {
-          <div class="grn"><div class="row-between"><strong>{{ r.number }}</strong><span class="small muted">{{ r.date | date: 'd MMM y' }} · {{ r.received_by }}@if (r.challan) { · challan {{ r.challan }} }</span></div>
+          <div class="grn"><div class="row-between"><strong>{{ r.number }}@if (r.reversed) { <span class="c-bad small"> reversed: {{ r.reversed.reason }}</span> }@if (r.location?.kind === 'warehouse') { <span class="small muted"> · into {{ r.location.name }}</span> }</strong>
+            <span class="small muted">{{ r.date | date: 'd MMM y' }} · {{ r.received_by }}@if (r.challan) { · challan {{ r.challan }} }
+              @if (!r.reversed && !r.returns?.length && canReverse()) { <p-button label="Reverse" size="small" [text]="true" severity="secondary" (onClick)="reverse(r)" /> }</span></div>
             @for (l of r.lines; track l.line_id) { <div class="small">{{ l.accepted }} {{ l.unit || '' }} {{ l.description }} accepted@if (l.rejected) { <span class="c-bad"> · {{ l.rejected }} rejected ({{ l.reason }})</span> }@if (l.returned) { <span> · {{ l.returned }} returned</span> }</div> }
           </div>
         } @empty { <p class="muted small">Nothing received yet.</p> }
@@ -103,6 +105,7 @@ const SIGNOFF = ['In person', 'Email', 'WhatsApp', 'Phone', 'Signed document'];
         <div class="grid2">
           <label class="field"><span>Date</span><input pInputText type="date" [(ngModel)]="gf.date" fluid /></label>
           <label class="field"><span>Challan / delivery note no.</span><input pInputText [(ngModel)]="gf.challan" fluid /></label>
+          @if (stores().length) { <label class="field"><span>Received at</span><p-select [options]="stores()" optionLabel="label" optionValue="value" [(ngModel)]="gf.location" fluid appendTo="body" /></label> }
         </div>
         @for (l of gf.lines; track l.line_id) {
           <div class="grn-ln"><span class="small">{{ l.description }}<div class="muted">{{ l.left }} {{ l.unit || '' }} still to come</div></span>
@@ -248,8 +251,19 @@ export class PurchaseOrderComponent implements OnInit {
     await this.load();
   }
 
+  stores = signal<any[]>([]);
+  canReverse = () => this.auth.can('procurement', 'rw');
+
+  async reverse(r: any) {
+    const reason = prompt(`Reverse ${r.number}? Say why (it is only allowed when nothing of it was billed, returned or used).`);
+    if (!reason?.trim()) return;
+    await this.api.post(`/goods-receipts/${r.id}/reverse`, { reason }, 'Delivery reversed');
+    await this.load();
+  }  // Phase I: receive at the site or into a warehouse
+
   openGrn() {
-    this.gf = { date: new Date().toISOString().slice(0, 10), challan: '', photos: [],
+    this.api.get('/settings/warehouses').then((w: any[]) => this.stores.set(w.length ? [{ label: 'The project site', value: 'site' }, ...w.map((x) => ({ label: x.name, value: x.id }))] : []));
+    this.gf = { date: new Date().toISOString().slice(0, 10), challan: '', photos: [], location: 'site',
       lines: this.po().lines.map((l: any) => ({ line_id: l.id, description: l.description, unit: l.unit,
         left: Math.max(0, l.qty - (l.accepted_qty || 0) - (l.short_closed_qty || 0)), received: null, rejected: null, reason: null })) };
     this.grnDlg = true;
@@ -265,7 +279,7 @@ export class PurchaseOrderComponent implements OnInit {
 
   async saveGrn() {
     const lines = this.gf.lines.filter((l: any) => l.received).map((l: any) => ({ line_id: l.line_id, received: l.received, rejected: l.rejected || 0, reason: l.reason }));
-    await this.api.post(`/purchase-orders/${this.id()}/receipts`, { date: this.gf.date, challan: this.gf.challan, photos: this.gf.photos, lines }, 'Delivery recorded');
+    await this.api.post(`/purchase-orders/${this.id()}/receipts`, { date: this.gf.date, challan: this.gf.challan, photos: this.gf.photos, location: this.gf.location, lines }, 'Delivery recorded');
     this.grnDlg = false;
     await this.load();
   }

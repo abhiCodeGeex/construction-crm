@@ -1,3 +1,4 @@
+import { TPipe } from '../../core/i18n';
 import { Component, OnInit, computed, inject, input, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -15,12 +16,12 @@ import { Api } from '../../core/api.service';
  *  phone's camera). An issue becomes a project issue; a delay goes to the delay log (the plan is not moved). */
 @Component({
   selector: 'app-project-site-reports',
-  imports: [FormsModule, DatePipe, ButtonModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule, SelectModule, TagModule, TextareaModule],
+  imports: [TPipe, FormsModule, DatePipe, ButtonModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule, SelectModule, TagModule, TextareaModule],
   template: `
     @if (data(); as d) {
       <div class="row-between mb">
-        <span class="muted small">One report a day. It can be changed until the end of the next day.</span>
-        @if (d.can_write && !d.has_today) { <p-button label="Write today's report" icon="pi pi-plus" size="small" (onClick)="openNew()" /> }
+        <span class="muted small">{{ 'One report a day. It can be changed until the end of the next day.' | t }}</span>
+        @if (d.can_write && !d.has_today) { <p-button [label]="writeLabel | t" icon="pi pi-plus" size="small" (onClick)="openNew()" /> }
       </div>
       @for (r of d.reports; track r.id) {
         <div class="rep">
@@ -42,11 +43,13 @@ import { Api } from '../../core/api.service';
           @for (x of r.delays; track x.id) { <div class="small c-warn">Delay: {{ x.stage_name }} lost {{ x.days }} day(s) — {{ x.reason_label }}@if (x.note) { : {{ x.note }} }</div> }
           @if (r.photos.length) {
             <div class="photos">@for (ph of r.photos; track ph.key) {
-              <a [href]="ph.url" target="_blank" rel="noopener" [title]="ph.caption || ''"><img [src]="ph.url" [alt]="ph.caption || 'Site photo'" />
-                @if (ph.shareable) { <span class="share">client</span> }</a> }</div>
+              <span class="ph"><a [href]="ph.url" target="_blank" rel="noopener" [title]="photoTitle(ph)"><img [src]="ph.url" [alt]="ph.caption || 'Site photo'" />
+                @if (ph.shareable) { <span class="share">client</span> }</a>
+                <span class="tiny muted">@if (ph.stage_name || ph.room) { {{ ph.stage_name }}@if (ph.room) { · {{ ph.room }} } }
+                  @if (ph.lat) { <a [href]="'https://www.openstreetmap.org/?mlat=' + ph.lat + '&mlon=' + ph.lng + '#map=18/' + ph.lat + '/' + ph.lng" target="_blank" rel="noopener" title="Where it was taken"><i class="pi pi-map-marker"></i></a> }</span></span> }</div>
           }
         </div>
-      } @empty { <p class="muted">No reports yet.</p> }
+      } @empty { <p class="muted">{{ 'No reports yet.' | t }}</p> }
     }
 
     <p-dialog [header]="f.id ? 'Edit site report' : 'Site report · today'" [modal]="true" [(visible)]="dlg" [style]="{ width: '44rem' }" [breakpoints]="{ '760px': '100vw' }">
@@ -84,10 +87,12 @@ import { Api } from '../../core/api.service';
         @for (ph of f.photos; track ph.key; let i = $index) {
           <div class="ph-row"><span class="small">{{ ph.name || 'photo' }}</span>
             <input pInputText [(ngModel)]="ph.caption" placeholder="Caption" />
+            <p-select [options]="data()?.stages ?? []" optionLabel="name" optionValue="id" [(ngModel)]="ph.stage_id" [showClear]="true" placeholder="Stage" appendTo="body" />
+            <input pInputText [(ngModel)]="ph.room" placeholder="Room / area" />
             <label class="check small"><p-checkbox [(ngModel)]="ph.shareable" [binary]="true" ariaLabel="Show to the client" /> client</label>
             <p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="f.photos.splice(i, 1)" ariaLabel="Remove photo" /></div>
         }
-        <div class="row right"><p-button label="Save report" icon="pi pi-check" [disabled]="busy" (onClick)="save()" /></div>
+        <div class="row right"><p-button [label]="'Save report' | t" icon="pi pi-check" [disabled]="busy" (onClick)="save()" /></div>
       </div>
     </p-dialog>
 
@@ -124,11 +129,14 @@ import { Api } from '../../core/api.service';
     .share { position: absolute; left: .2rem; bottom: .2rem; font-size: .65rem; background: rgba(0, 0, 0, .6); color: #fff; padding: 0 .3rem; border-radius: 4px; }
     .mp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: .4rem; align-items: center; }
     .work-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr) auto; gap: .4rem; align-items: center; }
-    .ph-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto auto; gap: .4rem; align-items: center; }
+    .ph-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1fr) auto auto; gap: .4rem; align-items: center; }
+    .ph { display: inline-flex; flex-direction: column; gap: .1rem; max-width: 6rem; }
+    .tiny { font-size: .7rem; line-height: 1.1; }
     @media (max-width: 640px) { .work-row, .ph-row { grid-template-columns: 1fr 1fr; } }
   `,
 })
 export class ProjectSiteReportsComponent implements OnInit {
+  writeLabel = "Write today's report";
   projectId = input.required<string>();
   private api = inject(Api);
   data = signal<any>(null);
@@ -160,7 +168,7 @@ export class ProjectSiteReportsComponent implements OnInit {
     this.f = { id: r.id, weather: { ...(r.weather ?? {}) }, manpower: r.manpower.map((m: any) => ({ ...m })),
       work: r.work.map((w: any) => ({ stage_id: w.stage_id, task_id: w.task_id, note: w.note })), materials: r.materials ?? '',
       equipment: r.equipment ?? '', visitors: r.visitors ?? '', safety: r.safety ?? '',
-      photos: r.photos.map((p: any) => ({ key: p.key, name: p.name, caption: p.caption, shareable: p.shareable })) };
+      photos: r.photos.map((p: any) => ({ key: p.key, name: p.name, caption: p.caption, shareable: p.shareable, stage_id: p.stage_id, room: p.room })) };
     this.dlg = true;
   }
 
@@ -168,14 +176,32 @@ export class ProjectSiteReportsComponent implements OnInit {
     const files = Array.from((ev.target as HTMLInputElement).files ?? []);
     this.busy = true;
     try {
+      const where = await this.position();  // Phase I: where the photos were taken (the phone asks once)
+      const stage = this.f.work.find((w: any) => w.stage_id)?.stage_id ?? null;
       for (const file of files) {
         const up = await this.api.upload(file);
-        this.f.photos.push({ key: up.key, name: up.name, caption: '', shareable: false });
+        this.f.photos.push({ key: up.key, name: up.name, caption: '', shareable: false, stage_id: stage, room: '',
+          taken_at: new Date(file.lastModified || Date.now()).toISOString(), ...(where ?? {}) });
       }
     } finally {
       this.busy = false;
       (ev.target as HTMLInputElement).value = '';
     }
+  }
+
+  /** The phone's position, or null when it is refused or not available in a few seconds. */
+  private position(): Promise<{ lat: number; lng: number; accuracy_m: number } | null> {
+    if (!navigator.geolocation) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const done = setTimeout(() => resolve(null), 6000);
+      navigator.geolocation.getCurrentPosition(
+        (p) => { clearTimeout(done); resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy_m: Math.round(p.coords.accuracy) }); },
+        () => { clearTimeout(done); resolve(null); }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 });
+    });
+  }
+
+  photoTitle(ph: any) {
+    return [ph.caption, ph.taken_at ? 'taken ' + new Date(ph.taken_at).toLocaleString() : ''].filter(Boolean).join(' · ');
   }
 
   async save() {

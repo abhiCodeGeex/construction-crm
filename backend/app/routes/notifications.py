@@ -43,7 +43,8 @@ PROJECT_EVENTS = {"project_pm", "project_added", "task_assigned", "task_due", "t
 
 FINANCE_EVENTS = {"cost_approval", "cost_decided", "budget_alert", "receipt_recorded", "invoice_due", "invoice_overdue", "co_decided", "co_waiting"}
 
-SITE_EVENTS = {"transmittal_sent", "transmittal_waiting", "drawing_approved", "selection_chosen", "selection_due", "site_report_missing", "site_delay", "document_comment", "portal_message", "whatsapp_failed"}
+SITE_EVENTS = {"transmittal_sent", "transmittal_waiting", "drawing_approved", "selection_chosen", "selection_due", "site_report_missing", "site_delay", "document_comment", "portal_message", "whatsapp_failed",
+               "snag_assigned", "snag_due"}
 
 PROCUREMENT_EVENTS = {"pr_raised", "po_approval", "po_decided", "po_acknowledged", "po_delivery_changed", "delivery_due", "goods_rejected",
                       "bill_on_hold", "bill_due", "vendor_invoice"}
