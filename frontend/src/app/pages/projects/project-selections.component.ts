@@ -37,7 +37,8 @@ const NEXT: Record<string, string> = { chosen: 'confirmed', confirmed: 'ordered'
               <div class="small">Allowance {{ fmt(s.allowance) }}
                 @if (s.chosen) { · chosen {{ s.chosen.name }} {{ fmt(s.chosen.price) }} · <span [class.c-bad]="s.difference > 0" [class.c-good]="s.difference < 0">{{ s.difference > 0 ? '+' : '' }}{{ fmt(s.difference) }}</span> }
                 @if (s.due_date && !s.chosen) { · choose by <span [class.c-bad]="s.overdue">{{ s.due_date | date: 'd MMM y' }}</span> }
-                @if (s.co_number) { · change order {{ s.co_number }} }</div>
+                @if (s.co_number) { · change order {{ s.co_number }} }
+                @if (s.deposit) { · deposit {{ s.deposit.number || 'draft' }} <span [class.c-good]="s.deposit.status === 'paid'" [class.c-warn]="s.deposit.status !== 'paid'">{{ s.deposit.status }}</span> }</div>
               @if (s.choice) { <div class="small muted">Chosen by {{ s.choice.name }} ({{ s.choice.method }}) {{ s.choice.date | date: 'd MMM' }}</div> }</div>
             <span class="row gap"><p-tag [value]="d.statuses[s.status]" [severity]="sev[s.status]" />
               @if (d.can_write) {
@@ -46,6 +47,7 @@ const NEXT: Record<string, string> = { chosen: 'confirmed', confirmed: 'ordered'
                   @if (s.options.length) { <p-button [label]="s.status === 'open' ? 'Send options' : 'Send again'" size="small" [text]="true" (onClick)="send(s)" /> }
                 }
                 @if ((s.status === 'chosen' || s.status === 'confirmed') && s.difference > 0 && !s.co_id) { <p-button label="Change order" size="small" [text]="true" (onClick)="toCo(s)" /> }
+                @if ((s.status === 'chosen' || s.status === 'confirmed') && d.can_order_cost && !s.deposit && s.chosen?.price) { <p-button label="Ask for deposit" size="small" [text]="true" (onClick)="askDeposit(s)" /> }
                 @if (NEXT[s.status]) { <p-button [label]="'Mark ' + d.statuses[NEXT[s.status]].toLowerCase()" size="small" (onClick)="advance(s)" /> }
                 @if (s.status === 'chosen' || s.status === 'confirmed') { <p-button label="Reopen" size="small" [text]="true" severity="secondary" (onClick)="askReopen(s)" /> }
               }</span>
@@ -205,8 +207,18 @@ export class ProjectSelectionsComponent implements OnInit {
     const next = NEXT[s.status];
     const go = async () => { await this.api.post(`/selections/${s.id}/status`, { status: next }, 'Updated'); await this.load(); };
     if (next === 'ordered') {
-      this.confirm.confirm({ header: `Order ${s.item}?`, icon: 'pi pi-shopping-cart', message: 'Its cost is recorded in Finance against the stage.', accept: go });
+      const noDeposit = s.deposit?.status !== 'paid';
+      this.confirm.confirm({ header: `Order ${s.item}?`, icon: 'pi pi-shopping-cart', accept: go,
+        message: "It goes on the supplier's draft purchase order (or a purchase request when it has no supplier)."
+          + (noDeposit ? " The client's deposit for it is not paid yet." : '') });
     } else go();
+  }
+
+  async askDeposit(s: any) {
+    const inv = await this.api.post(`/selections/${s.id}/deposit`, {}, 'Deposit invoice drafted');
+    this.confirm.confirm({ header: 'Deposit invoice drafted', icon: 'pi pi-check', acceptLabel: 'OK', rejectVisible: false,
+      message: `${this.fmt(inv.total)} — send it to the client from the Money tab.` });
+    await this.load();
   }
 
   async toCo(s: any) {

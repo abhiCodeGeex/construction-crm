@@ -361,11 +361,26 @@ def check_client_reminders(now):
         db.reminders.insert_one({"company_id": g.cid, "key": key, "contact_id": contact_id, "project_id": project_id,
                                  "email": mail, "whatsapp": whats, "at": now})
 
-    for inv in db.invoices.find({"company_id": g.cid, "status": {"$in": ["sent", "part_paid"]}, "kind": {"$ne": "credit_note"}, "due_date": yday}):
+    # Phase I: a series of client reminders around the due date (days before = negative), firmer as it gets later
+    from .routes.finance import settings as fin_settings
+    offsets = sorted(set(int(x) for x in fin_settings(g.company).get("client_reminder_days") or [1]))
+    dates = {(today - timedelta(days=o)).isoformat(): o for o in offsets}
+    for inv in db.invoices.find({"company_id": g.cid, "status": {"$in": ["sent", "part_paid"]}, "kind": {"$ne": "credit_note"},
+                                 "due_date": {"$in": list(dates)}}):
+        o = dates[inv["due_date"]]
         left = round(inv["total"] - inv.get("credited", 0) - inv.get("paid", 0), 2)
-        remind(inv.get("client_id"), f"client-inv:{inv['_id']}:{inv['due_date']}", f"Reminder: invoice {inv['number']}",
-               f"Invoice {inv['number']} ({inv.get('project_name') or ''}) was due on {inv['due_date']}; {money_text(left)} is left to pay. "
-               "You can pay it from your portal.", inv.get("project_id"))
+        what = f"Invoice {inv['number']} ({inv.get('project_name') or ''})"
+        if o < 0:
+            subject, text = f"Invoice {inv['number']} is due on {inv['due_date']}", f"{what} is due on {inv['due_date']}: {money_text(left)}."
+        elif o == 0:
+            subject, text = f"Invoice {inv['number']} is due today", f"{what} is due today: {money_text(left)}."
+        else:
+            final = o == offsets[-1] and o >= 14
+            subject = f"{'Final reminder' if final else 'Reminder'}: invoice {inv['number']}"
+            text = f"{what} was due on {inv['due_date']}; {money_text(left)} is left to pay ({o} day(s) late)." + \
+                (" Please pay now or tell us when you will." if final else "")
+        key = f"client-inv:{inv['_id']}:{inv['due_date']}" + ("" if o == 1 else f":{o}")
+        remind(inv.get("client_id"), key, subject, text + " You can pay it from your portal.", inv.get("project_id"))
     for s in db.selections.find({"company_id": g.cid, "status": {"$in": ["open", "options_sent"]}, "due_date": in3}):
         p = db.projects.find_one({"_id": oid(s["project_id"])}) or {}
         remind(p.get("client_id"), f"client-sel:{s['_id']}:{s['due_date']}", f"Please choose: {s['item']}",
@@ -428,10 +443,15 @@ def check_procurement(now):
                         project_id=b.get("project_id"), key=f"bill-late:{b['_id']}:{b['due_date']}", level="warn")
 
 
+def check_retention(now):
+    from .routes.claims import check_retention as run
+    run(now)
+
+
 CHECKS = [check_leads, check_followups, check_visits, check_proposals, check_bids, check_projects,
           check_compliance, check_meetings, check_health, check_invoices, check_change_orders,
           check_transmittals, check_selections, check_site_reports,
-          check_client_reminders, check_procurement]
+          check_client_reminders, check_procurement, check_retention]
 
 
 def run_once(now=None):

@@ -19,6 +19,7 @@ from .lead_money import a_date, money_text
 from .lead_steps import num
 from ..services.defaults import PAYMENT_MODES
 from .proposals import present_contract, branding
+from ..services import gst
 
 bp = Blueprint("invoices", __name__)
 
@@ -39,7 +40,8 @@ def totals(lines):
 
 
 def balance(inv):
-    return r2(inv["total"] - inv.get("credited", 0) - inv.get("paid", 0))
+    """What the client owes now: retention held back (Phase I) is not due until it is released."""
+    return r2(inv["total"] - inv.get("retention", 0) - inv.get("credited", 0) - inv.get("paid", 0))
 
 
 def status_for(inv):
@@ -48,8 +50,16 @@ def status_for(inv):
     return "part_paid" if inv.get("paid") else "sent"
 
 
+def gst_of(inv):
+    """Stored when the invoice is issued; worked out live for a draft (Phase I block 1)."""
+    if inv.get("gst") is not None or inv.get("number"):
+        return inv.get("gst")
+    return gst.split(inv.get("tax", 0), inv.get("client_gstin"), inv.get("client_state"))
+
+
 def present(inv):
     data = serialize(inv)
+    data["gst"] = gst_of(inv)
     data["balance"] = balance(inv) if inv["kind"] != "credit_note" else 0
     data["overdue"] = inv["status"] in ("sent", "part_paid") and inv.get("due_date") and inv["due_date"] < sales.today()
     return data
@@ -68,7 +78,7 @@ def client_of(project=None, contract=None):
     cid_ = (project or {}).get("client_id") or (contract or {}).get("client_id")
     c = db.contacts.find_one({"_id": oid(cid_), "company_id": g.cid}) if cid_ else None
     return {"client_id": cid_, "client_name": (c or {}).get("name") or (contract or {}).get("client_name"),
-            "client_email": (c or {}).get("email"), "client_gstin": (c or {}).get("gstin"),
+            "client_email": (c or {}).get("email"), "client_gstin": (c or {}).get("gstin"), "client_state": (c or {}).get("state"),
             "client_address": ", ".join(x for x in [(c or {}).get("address"), (c or {}).get("city")] if x) or None}
 
 
@@ -99,6 +109,9 @@ def invoice_row(cid_, row_id):
     row = next((r for r in view["payment_schedule"] if r["id"] == row_id), None) or abort(404, "payment not found")
     if row.get("status") in ("invoiced", "paid"):
         abort(409, f"“{row['name']}” is already invoiced")
+    from .claims import billing, retention_of
+    if billing(c)["basis"] == "progress" and not row.get("co_id"):
+        abort(409, "This contract is billed by progress claims, not by its payment schedule")
     early = None
     if row.get("state") != "due":
         reason = ((request.get_json(force=True) or {}).get("early_reason") or "").strip()
@@ -113,7 +126,7 @@ def invoice_row(cid_, row_id):
     line = {"id": t.sid(), "description": desc, "qty": 1,
             "rate": taxable, "amount": taxable, "tax_pct": r2((amount - taxable) / taxable * 100) if taxable else 0, "tax": r2(amount - taxable)}
     inv = t.insert("invoices", {**base_doc("schedule", p, c), "schedule_row_id": row_id, "schedule_row": row["name"],
-                                "early_reason": early, "lines": [line], **totals([line])})
+                                "early_reason": early, "lines": [line], **totals([line]), "retention": retention_of(c, amount)})
     rows = [{**r, "status": "invoiced", "invoice_id": str(inv["_id"])} if r["id"] == row_id else r for r in c["payment_schedule"]]
     db.contracts.update_one({"_id": c["_id"]}, {"$set": {"payment_schedule": rows}})
     if p:
@@ -122,6 +135,14 @@ def invoice_row(cid_, row_id):
 
 
 # ---------------- manual invoices ----------------
+def hsn_code(v):
+    """HSN (goods) or SAC (services) code: 4 to 8 digits, optional."""
+    v = str(v or "").strip()
+    if v and not (v.isdigit() and 4 <= len(v) <= 8):
+        abort(400, "HSN / SAC code must be 4 to 8 digits")
+    return v or None
+
+
 def clean_lines(rows):
     if not rows:
         abort(400, "Add at least one line")
@@ -136,7 +157,7 @@ def clean_lines(rows):
             abort(400, "Tax % must be at most 100")
         amount = r2(qty * rate)
         out.append({"id": r.get("id") or t.sid(), "description": desc, "qty": qty, "rate": rate, "amount": amount,
-                    "tax_pct": tax_pct, "tax": r2(amount * tax_pct / 100)})
+                    "tax_pct": tax_pct, "tax": r2(amount * tax_pct / 100), "hsn": hsn_code(r.get("hsn"))})
     return out
 
 
@@ -224,6 +245,7 @@ def send_invoice(iid):
     ch = {"number": t.next_number("INV", "INV"), "status": "sent", "sent_at": t.now(), "sent_by": g.user.get("name"),
           "date": inv["date"] if inv["date"] >= sales.today() else sales.today()}
     ch["due_date"] = max(inv["due_date"], ch["date"])
+    ch["gst"] = gst.split(inv["tax"], inv.get("client_gstin"), inv.get("client_state"))
     upd = t.update("invoices", iid, ch)
     result = None
     if d.get("email"):
@@ -284,7 +306,8 @@ def credit_note(iid):
             "amount": taxable, "tax_pct": r2((amount - taxable) / taxable * 100) if taxable else 0, "tax": r2(amount - taxable)}
     cn = t.insert("invoices", {**{k: inv.get(k) for k in ("project_id", "project_name", "project_code", "contract_id", "contract_number",
                                                            "lead_id", "client_id", "client_name", "client_email", "client_gstin",
-                                                           "client_address", "tax_label")},
+                                                           "client_state", "client_address", "tax_label")},
+                               "gst": gst.split(r2(amount - taxable), inv.get("client_gstin"), inv.get("client_state")),
                                "kind": "credit_note", "number": t.next_number("CRN", "CRN"), "status": "sent", "credit_of": iid,
                                "credit_of_number": inv["number"], "reason": reason[:300], "date": sales.today(), "due_date": None,
                                "paid": 0, "credited": 0, "notes": None, "lines": [line], **totals([line]), "sent_at": t.now(),
@@ -409,12 +432,43 @@ def add_receipt(pid):
         if part > balance(inv):
             abort(400, f"{inv['number']} has {money_text(balance(inv))} left to pay")
         allocs.append((inv, part))
-    if not allocs:
-        abort(400, "Say which invoice(s) this payment settles")
-    if abs(sum(x for _, x in allocs) - amount) > 0.01:
-        abort(400, f"Allocate the whole {money_text(amount)} to invoices")
+    spread = r2(sum(x for _, x in allocs))
+    if spread > amount + 0.01:
+        abort(400, f"The allocations ({money_text(spread)}) are more than the {money_text(amount)} received")
+    if not allocs and not d.get("on_account"):
+        abort(400, "Say which invoice(s) this payment settles, or keep it on account")
+    if spread < amount - 0.01 and not d.get("on_account"):
+        abort(400, f"Allocate the whole {money_text(amount)} to invoices, or keep the rest on account")
     rc = record_receipt(p, amount, day, d["mode"], (d.get("reference") or "").strip() or None, (d.get("note") or "").strip()[:300] or None, allocs)
     return jsonify(serialize(rc)), 201
+
+
+@bp.post("/receipts/<rid>/apply")
+@api("finance")
+def apply_on_account(rid):
+    """Money held on account (Phase I block 1) settles an invoice later, in part or in full."""
+    rc = t.get("receipts", rid)
+    p = finance_project(rc["project_id"])
+    if not can("finance", True):
+        abort(403, "Your role cannot allocate receipts")
+    if rc["status"] != "received" or rc.get("unallocated", 0) <= 0:
+        abort(409, "Nothing of this receipt is held on account")
+    d = request.get_json(force=True) or {}
+    inv = open_invoice(d.get("invoice_id"), rc["project_id"])
+    part = r2(num(d.get("amount"), "Amount", positive=True) or min(rc["unallocated"], balance(inv)))
+    if part > rc["unallocated"] + 0.01:
+        abort(400, f"Only {money_text(rc['unallocated'])} of {rc['number']} is on account")
+    if part > balance(inv) + 0.01:
+        abort(400, f"{inv['number']} has {money_text(balance(inv))} left to pay")
+    allocs = [a for a in rc["allocations"] if a["invoice_id"] != str(inv["_id"])]
+    before = next((a["amount"] for a in rc["allocations"] if a["invoice_id"] == str(inv["_id"])), 0)
+    allocs.append({"invoice_id": str(inv["_id"]), "invoice_number": inv["number"], "amount": r2(before + part)})
+    apply_payment(inv, part, {"id": f"{rid}:{len(rc['allocations'])}", "kind": "receipt", "number": rc["number"], "amount": part, "date": sales.today()})
+    upd = t.update("receipts", rid, {"allocations": allocs, "unallocated": r2(rc["unallocated"] - part)})
+    text = f"{money_text(part)} of receipt {rc['number']} (on account) applied to {inv['number']}"
+    ev.log(rc["project_id"], "cost", text)
+    tell(p, text)
+    return jsonify(serialize(upd))
 
 
 def record_receipt(p, amount, day, mode, reference, note, allocs, extra=None):
@@ -424,11 +478,13 @@ def record_receipt(p, amount, day, mode, reference, note, allocs, extra=None):
                                "project_code": p.get("code"), "client_id": p.get("client_id"), "amount": amount, "date": day,
                                "mode": mode, "reference": reference, "note": note, "status": "received",
                                "allocations": [{"invoice_id": str(i["_id"]), "invoice_number": i["number"], "amount": x} for i, x in allocs],
+                               "unallocated": r2(amount - sum(x for _, x in allocs)),
                                "created_by_name": g.user.get("name"), **(extra or {})})
     for inv, part in allocs:
         apply_payment(inv, part, {"id": str(rc["_id"]), "kind": "receipt", "number": rc["number"], "amount": part, "date": day})
     text = f"{money_text(amount)} received on {p['name']} ({mode}), receipt {rc['number']} for " + \
-        ", ".join(i["number"] for i, _ in allocs)
+        (", ".join(i["number"] for i, _ in allocs) or "no invoice yet") + \
+        (f" — {money_text(rc['unallocated'])} held on account" if rc["unallocated"] > 0 else "")
     ev.log(pid, "cost", text)
     tell(p, text)
     return rc
@@ -447,8 +503,14 @@ def void_receipt(rid):
     for a in rc["allocations"]:
         inv = db.invoices.find_one({"_id": oid(a["invoice_id"])})
         if inv:
-            apply_payment(inv, -a["amount"], {"id": rid})
-    upd = t.update("receipts", rid, {"status": "void", "void_reason": reason[:300], "voided_at": t.now(), "voided_by": g.user.get("name")})
+            # the receipt may have reached this invoice in several parts (on account, Phase I): take all of them back
+            parts = [x for x in inv.get("payments") or [] if x["id"] == rid or x["id"].startswith(rid + ":")]
+            paid = r2(inv.get("paid", 0) - (sum(x["amount"] for x in parts) if parts else a["amount"]))
+            pays = [x for x in inv.get("payments") or [] if x not in parts]
+            upd_inv = t.update("invoices", str(inv["_id"]), {"paid": paid, "payments": pays, "status": status_for({**inv, "paid": paid})})
+            if upd_inv.get("schedule_row_id") and upd_inv.get("contract_id") and inv["status"] == "paid" and upd_inv["status"] != "paid":
+                _row_status(upd_inv, "invoiced")
+    upd = t.update("receipts", rid, {"status": "void", "unallocated": 0, "void_reason": reason[:300], "voided_at": t.now(), "voided_by": g.user.get("name")})
     ev.log(rc["project_id"], "cost", f"Receipt {rc['number']} ({money_text(rc['amount'])}) voided: {reason}")
     return jsonify(serialize(upd))
 
@@ -503,3 +565,36 @@ def receivables():
         rows.append({**present(inv), "days_late": max(late, 0), "bucket": b})
     return jsonify({"rows": rows, "buckets": [{"key": k, "label": label, "total": sums[k]} for k, label in BUCKETS],
                     "total": r2(sum(sums.values())), "by_client": sorted(by_client.values(), key=lambda x: -x["balance"])})
+
+
+# ---------------- GST summary for filing (Phase I block 1) ----------------
+@bp.get("/finance/gst")
+@api("finance", write=False)
+def gst_summary():
+    """Output tax of issued invoices in a month (credit notes taken off): totals and per HSN / SAC code."""
+    if g.role not in ("owner", "accounts"):
+        abort(403, "Only an Owner or Accounts can see the GST summary")
+    month = request.args.get("month") or sales.today()[:7]
+    if len(month) != 7 or month[4] != "-" or not (month[:4] + month[5:]).isdigit():
+        abort(400, "Month must be YYYY-MM")
+    tot = {"taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "invoices": 0, "credit_notes": 0}
+    by_hsn, rows = {}, []
+    zero = {"cgst": 0, "sgst": 0, "igst": 0, "mode": None, "place_of_supply": None}
+    # a retention release carries no tax of its own: its tax was on the invoices it was held from
+    for inv in t.find("invoices", {"status": {"$ne": "void"}, "number": {"$ne": None}, "date": {"$regex": f"^{month}"},
+                                   "kind": {"$ne": "retention"}}, sort=[("date", 1)]):
+        sign = -1 if inv["kind"] == "credit_note" else 1
+        split = inv.get("gst") or gst.split(inv["tax"], inv.get("client_gstin"), inv.get("client_state")) or zero
+        tot["credit_notes" if sign < 0 else "invoices"] += 1
+        tot["taxable"] = r2(tot["taxable"] + sign * inv["subtotal"])
+        for k in ("cgst", "sgst", "igst"):
+            tot[k] = r2(tot[k] + sign * split[k])
+        for ln in inv["lines"]:
+            h = by_hsn.setdefault(ln.get("hsn") or "—", {"hsn": ln.get("hsn") or "—", "taxable": 0.0, "tax": 0.0})
+            h["taxable"] = r2(h["taxable"] + sign * ln["amount"])
+            h["tax"] = r2(h["tax"] + sign * ln["tax"])
+        rows.append({"id": str(inv["_id"]), "number": inv["number"], "kind": inv["kind"], "date": inv["date"],
+                     "client": inv.get("client_name"), "client_gstin": inv.get("client_gstin"), "place_of_supply": split.get("place_of_supply"),
+                     "taxable": sign * inv["subtotal"], **{k: sign * split[k] for k in ("cgst", "sgst", "igst")}})
+    return jsonify({"month": month, "enabled": gst.enabled(), "totals": tot, "by_hsn": sorted(by_hsn.values(), key=lambda x: x["hsn"]),
+                    "rows": rows})

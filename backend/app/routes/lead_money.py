@@ -146,7 +146,9 @@ def clean_lines(rows, lead):
               "qty": num(r.get("qty"), f"Quantity of {desc}", required=src == "manual") or 0,
               "material_rate": num(r.get("material_rate"), f"Material rate of {desc}") or 0,
               "labour_rate": num(r.get("labour_rate"), f"Labour rate of {desc}") or 0,
-              "material_rate_id": r.get("material_rate_id"), "labour_rate_id": r.get("labour_rate_id")}
+              "material_rate_id": r.get("material_rate_id"), "labour_rate_id": r.get("labour_rate_id"),
+              # Phase I: the project stage this work belongs to, so the won project's stage budgets come from the estimate
+              "stage": (str(r.get("stage") or "")).strip()[:80] or None}
         for k in ("material_rate_id", "labour_rate_id"):
             if ln[k] and not db.rate_library.find_one({"_id": oid(ln[k]), "company_id": g.cid}):
                 abort(400, "Rate not found in the rate library")
@@ -174,7 +176,14 @@ def list_estimates(_id):
     return jsonify({"estimates": [t.out(e) for e in t.find("estimates", {"lead_id": _id}, sort=[("version", 1)])],
                     "rooms": [{**r, **room_calc(r, m["unit"])} for r in m["rooms"]], "measure_sources": MEASURE_SOURCES,
                     "work_types": WORK_TYPES, "limits": {k: sales.settings()[k] for k in ("max_discount_pct", "min_margin_pct")},
-                    "tax_pct": g.company.get("tax_rate", 0)})
+                    "tax_pct": g.company.get("tax_rate", 0), "stages": service_stages(lead["service"])})
+
+
+def service_stages(service):
+    """Stage names of the service's default template: an estimate line names the stage its cost belongs to (Phase I)."""
+    tpl = db.stage_templates.find_one({"company_id": g.cid, "service": service, "is_default": True}) or \
+        db.stage_templates.find_one({"company_id": g.cid, "service": service}) or {}
+    return [s["name"] for s in tpl.get("stages", [])]
 
 
 @bp.post("/leads/<_id>/estimates")
@@ -481,6 +490,11 @@ def hand_over_to_project(lead, project, pm_id, advance=None):
     db.projects.update_one({"_id": project["_id"]}, {"$set": {"lead_handover": handover, "team": team}})
     db.lead_files.update_many({"company_id": g.cid, "lead_id": _id}, {"$set": {"project_id": pid}})
     db.lead_receipts.update_many({"company_id": g.cid, "lead_id": _id}, {"$set": {"project_id": pid}})
+    from .finance import budget_plan, apply_budget_plan  # Phase I: stage budgets come from the accepted estimate
+    fresh = db.projects.find_one({"_id": project["_id"]})
+    plan = budget_plan(fresh)
+    if plan:
+        apply_budget_plan(fresh, plan, only_empty=True)
     pm = db.users.find_one({"_id": oid(pm_id)}, {"name": 1})
     due = date.fromordinal(date.today().toordinal() + 2).isoformat()
     t.insert("followups", {"title": f"Hand-off meeting: sales → PM for {project['code']} {project['name']}", "due": due,

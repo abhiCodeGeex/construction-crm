@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ConfirmationService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
+import { CheckboxModule } from 'primeng/checkbox';
 import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
@@ -24,7 +25,7 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
  *  actual, submitted ones are committed. A Site Supervisor sees and logs only their own site expenses. */
 @Component({
   selector: 'app-project-money',
-  imports: [FormsModule, DatePipe, ButtonModule, DialogModule, InputNumberModule, InputTextModule, ProgressBarModule,
+  imports: [FormsModule, DatePipe, ButtonModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule, ProgressBarModule,
     SelectModule, TableModule, TagModule, TooltipModule, ProjectInvoicesComponent],
   template: `
     @if (data(); as d) {
@@ -36,6 +37,7 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
           <div><small>Received</small><strong>{{ fmt(s.received) }}</strong></div>
           <div><small>Owed by the client</small><strong [class.c-warn]="s.receivable > 0">{{ fmt(s.receivable) }}</strong></div>
           <div><small>Still to invoice</small><strong>{{ fmt(s.to_invoice) }}</strong></div>
+          @if (s.retention_held) { <div><small>Retention held</small><strong>{{ fmt(s.retention_held) }}</strong></div> }
           @if (s.margin !== undefined) { <div><small>Margin so far</small><strong [class.c-bad]="s.margin < 0">{{ fmt(s.margin) }}@if (s.margin_pct !== null) { <span class="small muted"> {{ s.margin_pct }}%</span> }</strong></div> }
         </div>
       }
@@ -52,7 +54,10 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
             <div><small>Remaining</small><strong [class.c-bad]="b.budget - b.spent < 0">{{ fmt(b.budget - b.spent) }}</strong></div></div>
         </div>
 
-        <h3 class="mt0">Budget vs actual by stage</h3>
+        <div class="row-between">
+          <h3 class="mt0">Budget vs actual by stage</h3>
+          @if (d.perms.can_set_budget) { <p-button label="Budgets from estimate" icon="pi pi-calculator" size="small" [text]="true" (onClick)="openPlan()" /> }
+        </div>
         <p-table [value]="b.stages" styleClass="p-datatable-sm mb">
           <ng-template #header><tr><th>Stage</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Committed</th><th class="num" title="On open purchase orders, not billed yet">Ordered</th><th style="width: 30%">Used</th></tr></ng-template>
           <ng-template #body let-s>
@@ -85,7 +90,7 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
         <ng-template #body let-c>
           <tr>
             <td>{{ c.date | date: 'd MMM' }}</td>
-            <td>{{ c.description }}
+            <td>{{ c.description }}@if (c.paid_from_float) { <p-tag value="petty cash" severity="secondary" styleClass="ml-xs" /> }
               <div class="small muted">@if (c.vendor_name) { {{ c.vendor_name }} · } @if (c.bill_no) { bill {{ c.bill_no }} · } {{ c.created_by_name }}
                 @for (f of c.files; track f.key) { · <a [href]="'/api/files/' + f.key" target="_blank" rel="noopener">{{ f.name }}</a> }</div>
               @if (c.reject_reason) { <div class="small c-bad">Rejected: {{ c.reject_reason }}</div> }
@@ -147,11 +152,30 @@ const VENDOR_TYPES = ['supplier', 'subcontractor', 'contractor', 'consultant'];
           <label class="field"><span>Bill photo or PDF</span><input type="file" (change)="attach($event)" accept="image/*,application/pdf" /></label>
         </div>
         @if (f.files?.length) { <div class="small muted">{{ f.files.length }} file(s) attached</div> }
+        @if (float(); as fl) {
+          <label class="check"><p-checkbox name="pf" [(ngModel)]="f.paid_from_float" [binary]="true" ariaLabel="Paid from my petty cash" />
+            Paid from my petty cash <span class="small muted">({{ fmt(fl.balance) }} left)</span></label>
+        }
         <div class="row gap right">
           @if (data()?.perms?.can_add) { <p-button type="submit" label="Save draft" severity="secondary" [disabled]="!valid()" /> }
           <p-button label="Submit" icon="pi pi-send" (onClick)="save(true)" [disabled]="!valid()" />
         </div>
       </form>
+    </p-dialog>
+
+    <p-dialog header="Stage budgets from the estimate" [modal]="true" [(visible)]="planDlg" [style]="{ width: '40rem' }" [breakpoints]="{ '640px': '96vw' }">
+      @if (plan(); as pl) {
+        <div class="stack">
+          <p class="small muted m0">From estimate {{ pl.estimate_number }}: each stage gets the cost (with overheads) of the estimate lines tagged to it{{ pl.tagged ? '; untagged lines are spread over those stages' : '; no line is tagged, so the cost is spread evenly' }}.</p>
+          <p-table [value]="pl.rows" size="small">
+            <ng-template #header><tr><th></th><th>Stage</th><th class="num">Now</th><th class="num">From the estimate</th></tr></ng-template>
+            <ng-template #body let-r><tr>
+              <td><p-checkbox [(ngModel)]="picked[r.stage_id]" [binary]="true" [ariaLabel]="r.stage" [disabled]="!r.proposed" /></td>
+              <td>{{ r.stage }}</td><td class="num">{{ r.current ? fmt(r.current) : '—' }}</td><td class="num">{{ r.proposed ? fmt(r.proposed) : '—' }}</td></tr></ng-template>
+          </p-table>
+          <div class="row right"><p-button label="Apply to the ticked stages" [disabled]="!pickedIds().length" (onClick)="applyPlan()" /></div>
+        </div>
+      } @else { <p class="muted">This project has no approved estimate to take budgets from.</p> }
     </p-dialog>
 
     <p-dialog [header]="reasonFor === 'void' ? 'Void this cost' : 'Reject this cost'" [modal]="true" [(visible)]="reasonDlg" [style]="{ width: '28rem' }">
@@ -230,14 +254,42 @@ export class ProjectMoneyComponent implements OnInit {
 
   openNew() {
     this.f = { stage_id: null, category: 'Material', description: '', date: this.today, amount: null, tax: null,
-      vendor_id: null, qty: null, unit: '', bill_no: '', files: [] };
+      vendor_id: null, qty: null, unit: '', bill_no: '', files: [], paid_from_float: false };
+    this.loadFloat();
     this.dlg = true;
   }
 
   openEdit(c: any) {
     this.f = { id: c.id, stage_id: c.stage_id, category: c.category, description: c.description, date: c.date, amount: c.amount,
-      tax: c.tax, vendor_id: c.vendor_id, qty: c.qty, unit: c.unit ?? '', bill_no: c.bill_no ?? '', files: (c.files ?? []).map((x: any) => x.key) };
+      tax: c.tax, vendor_id: c.vendor_id, qty: c.qty, unit: c.unit ?? '', bill_no: c.bill_no ?? '', files: (c.files ?? []).map((x: any) => x.key),
+      paid_from_float: !!c.paid_from_float };
+    this.loadFloat();
     this.dlg = true;
+  }
+
+  // ---- Phase I: petty cash and budgets from the estimate ----
+  float = signal<any>(null);
+  plan = signal<any>(null);
+  planDlg = false;
+  picked: Record<string, boolean> = {};
+  pickedIds = () => Object.keys(this.picked).filter((k) => this.picked[k]);
+
+  async loadFloat() {
+    this.float.set((await this.api.get('/finance/petty-cash')).mine);
+  }
+
+  async openPlan() {
+    const pl = await this.api.get(`/projects/${this.project().id}/budget-from-estimate`);
+    this.plan.set(pl);
+    this.picked = {};
+    for (const r of pl?.rows ?? []) this.picked[r.stage_id] = !!r.proposed && !r.current;
+    this.planDlg = true;
+  }
+
+  async applyPlan() {
+    await this.api.post(`/projects/${this.project().id}/budget-from-estimate`, { stage_ids: this.pickedIds() }, 'Budgets set');
+    this.planDlg = false;
+    await this.refresh();
   }
 
   async attach(ev: Event) {

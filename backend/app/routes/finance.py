@@ -122,7 +122,15 @@ def clean(d, p, cost=None):
             f = db.files.find_one({"company_id": g.cid, "key": key}) or abort(400, "Upload the bill first")
             files.append({"key": f["key"], "name": f["name"], "size": f["size"]})
         out["files"] = files[:10]
+    if "paid_from_float" in d:  # Phase I: paid from the recorder's petty cash float
+        out["paid_from_float"] = bool(d["paid_from_float"])
     out["total"] = round(out.get("amount", cur.get("amount", 0)) + out.get("tax", cur.get("tax", 0) or 0), 2)
+    if out.get("paid_from_float", cur.get("paid_from_float")):
+        holder = cur.get("created_by") or g.uid
+        mine_now = cur.get("total", 0) if cur.get("paid_from_float") and cur.get("status") not in ("rejected", "void") else 0
+        left = petty_balance(holder)["balance"] + mine_now
+        if out["total"] > left + 0.01:
+            abort(400, f"The petty cash float has only {money_text(left)} left; ask Accounts for more or pay it another way")
     if site_only() and out.get("amount", cur.get("amount", 0)) > settings()["site_expense_limit"]:
         abort(403, f"A site expense is at most {money_text(settings()['site_expense_limit'])}; ask the PM or Accounts to record it")
     return out
@@ -149,6 +157,7 @@ def learn(c, add=True):
 def perms(p):
     return {"can_add": can("finance", True), "can_add_site_expense": site_only() and member(p) is not None,
             "can_approve": is_approver(p), "can_void": g.role in ("owner", "accounts"),
+            "can_set_budget": not g.hide_costs and (is_approver(p) or g.role == "accounts"),
             "site_expense_limit": settings()["site_expense_limit"]}
 
 
@@ -352,6 +361,18 @@ def put_settings():
             if cap is not None and v > cap:
                 abort(400, f"{label} must be at most {cap}")
             s[k] = v
+    if "client_reminder_days" in d:  # Phase I
+        days = d["client_reminder_days"]
+        if not isinstance(days, list) or len(days) > 8 or any(not isinstance(x, int) or isinstance(x, bool) or not -30 <= x <= 90 for x in days):
+            abort(400, "Client reminders are up to 8 whole days between -30 (before the due date) and 90 (after it)")
+        s["client_reminder_days"] = sorted(set(days))
+    if "selection_deposit_pct" in d:
+        v = num(d["selection_deposit_pct"], "Selection deposit %", required=True)
+        if not 0 < v <= 100:
+            abort(400, "Selection deposit % is 1 to 100")
+        s["selection_deposit_pct"] = v
+    if "require_selection_deposit" in d:
+        s["require_selection_deposit"] = bool(d["require_selection_deposit"])
     db.companies.update_one({"_id": g.company["_id"]}, {"$set": {"finance": s}})
     return jsonify(s)
 
@@ -363,3 +384,169 @@ def use_suggested(rid):
     if not r.get("suggested_rate"):
         abort(409, "No suggestion yet: it needs at least 3 approved costs with this item and a quantity")
     return jsonify(serialize(t.update("rate_library", rid, {"rate": r["suggested_rate"]})))
+
+
+# ---------------- Phase I block 1: stage budgets from the accepted estimate (§12) ----------------
+def estimate_for(p):
+    """The estimate behind the accepted proposal of the project's lead, else the lead's latest approved estimate."""
+    if not p.get("lead_id"):
+        return None
+    prop = db.proposals.find_one({"company_id": g.cid, "lead_id": p["lead_id"], "status": "accepted", "estimate_id": {"$ne": None}})
+    if prop:
+        e = db.estimates.find_one({"_id": oid(prop["estimate_id"]), "company_id": g.cid})
+        if e:
+            return e
+    return db.estimates.find_one({"company_id": g.cid, "lead_id": p["lead_id"], "status": "approved"}, sort=[("created_at", -1)])
+
+
+def budget_plan(p, est=None):
+    """Budget per stage = the estimate's cost (direct + overheads, never the client price) of the lines tagged to that
+    stage; untagged lines are spread over the tagged stages pro rata, or evenly over the estimate's service when none
+    is tagged. Returns None when there is no estimate."""
+    est = est or estimate_for(p)
+    if not est:
+        return None
+    oh = 1 + float(est.get("overhead_pct") or 0) / 100
+    by_name = {}
+    for s in p.get("stages", []):
+        by_name.setdefault(s["name"].strip().lower(), s)
+    tagged, loose = {}, 0.0
+    for ln in est.get("lines", []):
+        cost = float(ln.get("line_cost") or 0) * oh
+        s = by_name.get((ln.get("stage") or "").strip().lower())
+        if s:
+            tagged[s["id"]] = tagged.get(s["id"], 0) + cost
+        else:
+            loose += cost
+    if tagged:
+        base = sum(tagged.values())
+        plan = {sid: v + loose * v / base for sid, v in tagged.items()} if base else tagged
+    else:
+        lead = db.leads.find_one({"_id": oid(p["lead_id"])}, {"service": 1}) or {}
+        pool = [s for s in p.get("stages", []) if s.get("service") == lead.get("service")] or p.get("stages", [])
+        plan = {s["id"]: loose / len(pool) for s in pool} if pool else {}
+    rows = [{"stage_id": s["id"], "stage": s["name"], "current": s.get("budget", 0) or 0, "proposed": round(plan.get(s["id"], 0), 2)}
+            for s in p.get("stages", [])]
+    return {"estimate_id": str(est["_id"]), "estimate_number": est.get("number"), "tagged": bool(tagged),
+            "total": round(sum(r["proposed"] for r in rows), 2), "rows": rows}
+
+
+def apply_budget_plan(p, plan, only_empty=True, stage_ids=None):
+    """Write the proposed budgets; on the win only stages still at 0 are filled."""
+    want = {r["stage_id"]: r["proposed"] for r in plan["rows"]
+            if (stage_ids is None or r["stage_id"] in stage_ids) and (not only_empty or not r["current"]) and r["proposed"]}
+    if not want:
+        return 0
+    stages = [{**s, "budget": want[s["id"]]} if s["id"] in want else s for s in p["stages"]]
+    db.projects.update_one({"_id": p["_id"]}, {"$set": {"stages": stages}})
+    ev.log(str(p["_id"]), "cost", f"Stage budgets set from estimate {plan['estimate_number']}: "
+           + ", ".join(f"{s['name']} {money_text(want[s['id']])}" for s in stages if s["id"] in want))
+    return len(want)
+
+
+def budget_editor(p):
+    if g.hide_costs or not (is_approver(p) or g.role == "accounts"):
+        abort(403, "Only an Owner, Accounts or a Project Manager on this project sets budgets")
+
+
+@bp.get("/projects/<pid>/budget-from-estimate")
+@api("finance", write=False)
+def get_budget_plan(pid):
+    p = finance_project(pid)
+    budget_editor(p)
+    return jsonify(budget_plan(p))
+
+
+@bp.post("/projects/<pid>/budget-from-estimate")
+@api("finance")
+def post_budget_plan(pid):
+    p = finance_project(pid)
+    budget_editor(p)
+    plan = budget_plan(p) or abort(409, "This project has no approved estimate to take budgets from")
+    d = request.get_json(force=True) or {}
+    ids = d.get("stage_ids")
+    n = apply_budget_plan(p, plan, only_empty=False, stage_ids=set(ids) if isinstance(ids, list) else None)
+    for s in t.get("projects", pid)["stages"]:
+        budget.recalc_stage(t.get("projects", pid), s["id"])
+    return jsonify({"updated": n, "plan": budget_plan(t.get("projects", pid))})
+
+
+# ---------------- Phase I block 1: petty cash floats (§12 "site expenses and petty cash") ----------------
+PETTY_KINDS = {"advance": "Cash given", "return": "Cash returned"}
+
+
+def petty_spent(holder_id):
+    """Costs the holder paid from the float; drafts count (the cash is gone), rejected and void ones do not."""
+    return round(sum(c["amount"] + (c.get("tax") or 0) for c in db.costs.find(
+        {"company_id": g.cid, "created_by": holder_id, "paid_from_float": True, "status": {"$nin": ["rejected", "void"]}},
+        {"amount": 1, "tax": 1})), 2)
+
+
+def petty_balance(holder_id):
+    given = returned = 0.0
+    for e in db.petty_cash.find({"company_id": g.cid, "holder_id": holder_id, "status": {"$ne": "void"}}):
+        if e["kind"] == "advance":
+            given += e["amount"]
+        else:
+            returned += e["amount"]
+    spent = petty_spent(holder_id)
+    return {"given": round(given, 2), "returned": round(returned, 2), "spent": spent, "balance": round(given - returned - spent, 2)}
+
+
+@bp.get("/finance/petty-cash")
+@api(None)
+def petty_cash():
+    """Owner and Accounts see every float; anyone else only their own."""
+    everyone = g.role in ("owner", "accounts")
+    holders = {e["holder_id"]: e["holder_name"] for e in db.petty_cash.find({"company_id": g.cid}, {"holder_id": 1, "holder_name": 1})}
+    if not everyone:
+        holders = {g.uid: g.user.get("name")} if g.uid in holders else {}
+    rows = [{"holder_id": h, "holder_name": n, **petty_balance(h)} for h, n in holders.items()]
+    q = {} if everyone else {"holder_id": g.uid}
+    entries = serialize(t.find("petty_cash", q, sort=[("date", -1), ("created_at", -1)], limit=300))
+    spends = serialize(t.find("costs", {**({} if everyone else {"created_by": g.uid}), "paid_from_float": True},
+                              sort=[("date", -1)], limit=300))
+    staff = [{"id": str(u["_id"]), "name": u["name"]} for u in db.users.find(
+        {"company_id": g.cid, "kind": {"$ne": "external"}, "active": {"$ne": False}}, {"name": 1}).sort("name", 1)] if everyone else []
+    return jsonify({"holders": sorted(rows, key=lambda r: r["holder_name"] or ""), "entries": entries, "spends": spends,
+                    "can_write": everyone, "kinds": PETTY_KINDS, "staff": staff,
+                    "mine": petty_balance(g.uid) if g.uid in holders else None})
+
+
+@bp.post("/finance/petty-cash")
+@api(None)
+def add_petty_cash():
+    if g.role not in ("owner", "accounts"):
+        abort(403, "Only an Owner or Accounts gives or takes back petty cash")
+    d = request.get_json(force=True) or {}
+    if d.get("kind") not in PETTY_KINDS:
+        abort(400, "Say whether cash is given or returned")
+    u = db.users.find_one({"_id": oid(d.get("holder_id")), "company_id": g.cid, "kind": {"$ne": "external"}, "active": {"$ne": False}}) \
+        or abort(400, "Choose a staff member")
+    amount = round(num(d.get("amount"), "Amount", required=True, positive=True), 2)
+    day = a_date(d.get("date") or sales.today(), "Date")
+    if day > sales.today():
+        abort(400, "Petty cash cannot be dated in the future")
+    hid = str(u["_id"])
+    if d["kind"] == "return" and amount > petty_balance(hid)["balance"] + 0.01:
+        abort(400, f"{u['name']} holds only {money_text(petty_balance(hid)['balance'])}")
+    e = t.insert("petty_cash", {"holder_id": hid, "holder_name": u["name"], "kind": d["kind"], "amount": amount, "date": day,
+                                "mode": d.get("mode") or "Cash", "note": (d.get("note") or "").strip()[:300] or None,
+                                "status": "active", "by_name": g.user.get("name")})
+    notify.send("receipt_recorded", [hid], f"Petty cash {PETTY_KINDS[d['kind']].lower()}: {money_text(amount)} "
+                f"(balance {money_text(petty_balance(hid)['balance'])})", "/app/finance?tab=petty")
+    return jsonify(serialize(e)), 201
+
+
+@bp.post("/petty-cash/<eid>/void")
+@api(None)
+def void_petty_cash(eid):
+    if g.role not in ("owner", "accounts"):
+        abort(403, "Only an Owner or Accounts can void a petty cash entry")
+    e = t.get("petty_cash", eid)
+    if e["status"] == "void":
+        abort(409, "Already void")
+    reason = ((request.get_json(force=True) or {}).get("reason") or "").strip() or abort(400, "Say why the entry is void")
+    if e["kind"] == "advance" and petty_balance(e["holder_id"])["balance"] - e["amount"] < -0.01:
+        abort(409, "Part of this cash is already spent; record a return instead")
+    return jsonify(serialize(t.update("petty_cash", eid, {"status": "void", "void_reason": reason[:300], "voided_by": g.user.get("name")})))

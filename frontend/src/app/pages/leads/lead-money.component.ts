@@ -94,7 +94,8 @@ const EST_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'sec
             <ng-template #header><tr><th>Description</th><th>Room / quantity from</th><th class="right">Qty</th><th>Unit</th><th class="right">Material rate</th><th class="right">Labour rate</th><th class="right">Line cost</th><th></th></tr></ng-template>
             <ng-template #body let-ln let-i="rowIndex"><tr>
               <td><input placeholder="Description" pInputText [(ngModel)]="ln.description" [disabled]="!estEditable()" style="width: 13rem" />
-                <br /><p-select [options]="workTypes()" [(ngModel)]="ln.work_type" placeholder="Work type" [showClear]="true" [disabled]="!estEditable()" appendTo="body" styleClass="mt-xs" /></td>
+                <br /><p-select [options]="workTypes()" [(ngModel)]="ln.work_type" placeholder="Work type" [showClear]="true" [disabled]="!estEditable()" appendTo="body" styleClass="mt-xs" />
+                <br /><p-select [options]="stageNames()" [(ngModel)]="ln.stage" placeholder="Stage (for the budget)" [showClear]="true" [disabled]="!estEditable()" appendTo="body" styleClass="mt-xs" pTooltip="The won project's stage budget takes this line's cost" /></td>
               <td><p-select [options]="rooms()" [(ngModel)]="ln.room_id" optionLabel="name" optionValue="id" placeholder="Room" [showClear]="true" [disabled]="!estEditable()" appendTo="body" />
                 <br /><p-select placeholder="Quantity from" [options]="sources()" [(ngModel)]="ln.qty_source" optionLabel="label" optionValue="value" [disabled]="!estEditable()" appendTo="body" styleClass="mt-xs" /></td>
               <td class="right">@if (ln.qty_source === 'manual') { <p-inputnumber placeholder="Qty" [(ngModel)]="ln.qty" [min]="0" [maxFractionDigits]="2" [disabled]="!estEditable()" [inputStyle]="{ width: '5rem' }" /> }
@@ -198,6 +199,7 @@ export class LeadMoneyComponent implements OnInit {
   isApprover = computed(() => this.auth.user()?.role === 'owner' || this.auth.user()?.id === this.meta()?.manager_id);
   rooms = computed(() => this.meta()?.rooms ?? []);
   workTypes = computed(() => this.meta()?.work_types ?? []);
+  stageNames = computed(() => this.meta()?.stages ?? []);
   limits = computed(() => this.meta()?.limits ?? { min_margin_pct: 0, max_discount_pct: 100 });
   sources = computed(() => [{ value: 'manual', label: 'Typed quantity' }, ...Object.entries(this.meta()?.measure_sources ?? {}).map(([value, label]) => ({ value, label }))]);
   matRates = computed(() => this.rates().filter((r) => r.kind !== 'labour').map((r) => ({ ...r, label: `${r.name} · ${r.rate}/${r.unit}` })));
@@ -249,7 +251,7 @@ export class LeadMoneyComponent implements OnInit {
   }
 
   blankLine() {
-    return { description: '', room_id: null, qty_source: 'manual', qty: null, unit: '', material_rate: 0, labour_rate: 0, work_type: null };
+    return { description: '', room_id: null, qty_source: 'manual', qty: null, unit: '', material_rate: 0, labour_rate: 0, work_type: null, stage: null };
   }
 
   measuredQty(ln: any) {

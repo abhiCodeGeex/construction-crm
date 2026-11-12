@@ -14,23 +14,26 @@ import { TagModule } from 'primeng/tag';
 import { TextareaModule } from 'primeng/textarea';
 import { TooltipModule } from 'primeng/tooltip';
 import { Api, money } from '../../core/api.service';
+import { ProjectBillingComponent } from './project-billing.component';
 import { AuthService } from '../../core/auth.service';
 
 export const INVOICE_SEV: Record<string, 'secondary' | 'info' | 'success' | 'danger' | 'warn'> = {
   draft: 'secondary', sent: 'info', part_paid: 'warn', paid: 'success', void: 'secondary',
 };
-export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract payment', manual: 'Invoice', credit_note: 'Credit note' };
+export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract payment', manual: 'Invoice', credit_note: 'Credit note',
+  progress: 'Progress claim', retention: 'Retention release', deposit: 'Deposit' };
 
 /** Invoices on the project's Money tab (Phase E block 2): the contract's payment schedule with *Raise invoice* on
  *  each due row, extra (manual) invoices, sending (which issues the number), credit notes and void. */
 @Component({
   selector: 'app-project-invoices',
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CheckboxModule, DialogModule, InputNumberModule, InputTextModule,
-    SelectModule, TableModule, TagModule, TextareaModule, TooltipModule],
+    SelectModule, TableModule, TagModule, TextareaModule, TooltipModule, ProjectBillingComponent],
   template: `
     @if (data(); as d) {
       @if (d.contract; as c) {
         <h3 class="mt">Payment schedule · contract {{ c.number }} · {{ fmt(c.value) }}</h3>
+        <app-project-billing [contractId]="c.id" (changed)="reload()" />
         <p-table [value]="c.payment_schedule" styleClass="p-datatable-sm mb">
           <ng-template #header><tr><th>Payment</th><th>When</th><th class="num">Amount</th><th>State</th><th></th></tr></ng-template>
           <ng-template #body let-r>
@@ -45,7 +48,8 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
               <td class="num">{{ fmt(r.amount) }}</td>
               <td>@if (r.status) { <p-tag [value]="r.status" severity="success" /> } @else { <p-tag [value]="r.state" [severity]="r.state === 'due' ? 'warn' : 'secondary'" /> }</td>
               <td class="right">@if (!r.status && d.can_write) {
-                @if (r.state === 'due') { <p-button label="Raise invoice" size="small" (onClick)="raise(c, r)" /> }
+                @if (c.billing_basis === 'progress' && !r.co_id) { <span class="small muted">billed by progress claims</span> }
+                @else if (r.state === 'due') { <p-button label="Raise invoice" size="small" (onClick)="raise(c, r)" /> }
                 @else if (d.is_owner) { <p-button label="Invoice early" size="small" [text]="true" (onClick)="askEarly(c, r)" /> }
               }</td>
             </tr>
@@ -67,7 +71,8 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
             <td>{{ i.date | date: 'd MMM y' }}</td>
             <td [class.c-bad]="i.overdue">{{ i.due_date ? (i.due_date | date: 'd MMM y') : '—' }}</td>
             <td class="num">{{ i.kind === 'credit_note' ? '−' : '' }}{{ fmt(i.total) }}</td>
-            <td class="num">{{ i.kind === 'credit_note' || i.status === 'void' ? '—' : fmt(i.balance) }}</td>
+            <td class="num">{{ i.kind === 'credit_note' || i.status === 'void' ? '—' : fmt(i.balance) }}
+              @if (i.retention) { <div class="small muted">retention {{ fmt(i.retention) }}</div> }</td>
             <td><p-tag [value]="i.overdue ? 'overdue' : i.status" [severity]="i.overdue ? 'danger' : sev[i.status]" /></td>
             <td class="right nowrap">
               @if (d.can_write && i.status === 'draft') {
@@ -104,7 +109,7 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
         }
         <div class="row-between mt mb">
           <h3 class="m0">Payments received</h3>
-          @if (r.can_write && openInvoices().length) { <p-button label="Record payment" icon="pi pi-plus" size="small" (onClick)="openPay()" /> }
+          @if (r.can_write) { <p-button label="Record payment" icon="pi pi-plus" size="small" (onClick)="openPay()" /> }
         </div>
         <p-table [value]="r.receipts" styleClass="p-datatable-sm">
           <ng-template #header><tr><th>Receipt</th><th>Date</th><th>Mode</th><th>For</th><th class="num">Amount</th><th></th></tr></ng-template>
@@ -113,7 +118,9 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
               <td>{{ x.number }}@if (x.status === 'void') { <div class="small c-bad">Void: {{ x.void_reason }}</div> }</td>
               <td>{{ x.date | date: 'd MMM y' }}</td>
               <td>{{ x.mode }}@if (x.reference) { <div class="small muted">{{ x.reference }}</div> }</td>
-              <td class="small">@for (a of x.allocations; track a.invoice_id) { <div>{{ a.invoice_number }} · {{ fmt(a.amount) }}</div> }</td>
+              <td class="small">@for (a of x.allocations; track a.invoice_id) { <div>{{ a.invoice_number }} · {{ fmt(a.amount) }}</div> }
+                @if (x.unallocated > 0 && x.status !== 'void') { <div class="c-warn">{{ fmt(x.unallocated) }} on account
+                  @if (r.can_write && openInvoices().length) { <p-button label="Apply" size="small" [text]="true" (onClick)="askApplyOnAccount(x)" /> }</div> }</td>
               <td class="num">{{ fmt(x.amount) }}</td>
               <td class="right">@if (r.can_void && x.status !== 'void') { <p-button label="Void" size="small" [text]="true" severity="secondary" (onClick)="askVoidReceipt(x)" /> }</td>
             </tr>
@@ -130,14 +137,26 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
           <label class="field req"><span>Mode</span><p-select [options]="rc()?.modes ?? []" [(ngModel)]="pf.mode" fluid appendTo="body" /></label>
           <label class="field" [class.req]="pf.mode !== 'Cash'"><span>Reference</span><input pInputText [(ngModel)]="pf.reference" placeholder="UTR / cheque no." fluid /></label>
         </div>
-        <div class="small muted">How much of this payment goes to each invoice:</div>
+        <label class="field req"><span>Amount received</span><p-inputnumber [(ngModel)]="pf.received" [min]="0" fluid placeholder="The total of the allocations" /></label>
+        @if (pf.allocations.length) { <div class="small muted">How much of this payment goes to each invoice:</div> }
         @for (a of pf.allocations; track a.invoice_id) {
           <div class="alloc-row"><span>{{ a.number }} <span class="small muted">· {{ fmt(a.balance) }} left</span></span>
             <p-inputnumber [(ngModel)]="a.amount" [min]="0" [max]="a.balance" [inputStyle]="{ width: '100%' }" /></div>
         }
         <label class="field"><span>Note</span><input pInputText [(ngModel)]="pf.note" fluid /></label>
-        <div class="row-between"><strong>Total {{ fmt(payTotal()) }}</strong>
-          <p-button label="Record" icon="pi pi-check" [disabled]="!payTotal() || !pf.mode || (pf.mode !== 'Cash' && !pf.reference)" (onClick)="savePay()" /></div>
+        @if (onAccount() > 0) { <p class="small c-warn m0">{{ fmt(onAccount()) }} is kept on account and can be applied to an invoice later.</p> }
+        @if (onAccount() < 0) { <p class="small c-bad m0">The allocations are more than the amount received.</p> }
+        <div class="row-between"><strong>Allocated {{ fmt(payTotal()) }}</strong>
+          <p-button label="Record" icon="pi pi-check" [disabled]="!received() || onAccount() < 0 || !pf.mode || (pf.mode !== 'Cash' && !pf.reference)" (onClick)="savePay()" /></div>
+      </div>
+    </p-dialog>
+
+    <p-dialog header="Apply money held on account" [modal]="true" [(visible)]="oaDlg" [style]="{ width: '28rem' }">
+      <div class="stack">
+        <p class="m0">{{ pendingReceipt?.number }} · {{ fmt(pendingReceipt?.unallocated) }} on account goes to:</p>
+        <p-select [options]="openInvoices()" optionLabel="label" optionValue="id" [(ngModel)]="applyTo" fluid appendTo="body" placeholder="Choose an invoice" />
+        <label class="field"><span>Amount</span><p-inputnumber [(ngModel)]="oaAmount" [min]="0" [max]="pendingReceipt?.unallocated" fluid placeholder="As much as the invoice needs" /></label>
+        <div class="row right"><p-button label="Apply" [disabled]="!applyTo" (onClick)="applyOnAccount()" /></div>
       </div>
     </p-dialog>
 
@@ -161,6 +180,7 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
             <p-inputnumber placeholder="Qty" [(ngModel)]="ln.qty" [min]="0" [maxFractionDigits]="2" [inputStyle]="{ width: '100%' }" />
             <p-inputnumber placeholder="Rate" [(ngModel)]="ln.rate" [min]="0" [inputStyle]="{ width: '100%' }" />
             <p-inputnumber placeholder="Tax %" [(ngModel)]="ln.tax_pct" [min]="0" [max]="100" [inputStyle]="{ width: '100%' }" />
+            <input pInputText placeholder="HSN/SAC" [(ngModel)]="ln.hsn" maxlength="8" />
             <p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="f.lines.splice(i, 1)" ariaLabel="Remove line" />
           </div>
         }
@@ -198,7 +218,7 @@ export const INVOICE_KIND: Record<string, string> = { schedule: 'Contract paymen
   styles: `
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .nowrap { white-space: nowrap; }
-    .line-row { display: grid; grid-template-columns: minmax(0, 3fr) 5rem 7rem 5rem auto; gap: .4rem; align-items: center; }
+    .line-row { display: grid; grid-template-columns: minmax(0, 3fr) 5rem 7rem 5rem 6rem auto; gap: .4rem; align-items: center; }
     @media (max-width: 640px) { .line-row { grid-template-columns: 1fr 1fr; } }
     .alloc-row { display: grid; grid-template-columns: minmax(0, 1fr) 10rem; gap: .5rem; align-items: center; }
   `,
@@ -240,7 +260,7 @@ export class ProjectInvoicesComponent implements OnInit {
   }
 
   openPay() {
-    this.pf = { date: new Date().toISOString().slice(0, 10), mode: 'Bank transfer', reference: '', note: '',
+    this.pf = { date: new Date().toISOString().slice(0, 10), mode: 'Bank transfer', reference: '', note: '', received: null,
       allocations: this.openInvoices().map((i: any) => ({ invoice_id: i.id, number: i.number, balance: i.balance, amount: null })) };
     this.payDlg = true;
   }
@@ -249,10 +269,18 @@ export class ProjectInvoicesComponent implements OnInit {
     return (this.pf.allocations ?? []).reduce((a: number, x: any) => a + (x.amount || 0), 0);
   }
 
+  received() {
+    return this.pf.received || this.payTotal();
+  }
+
+  onAccount() {
+    return Math.round((this.received() - this.payTotal()) * 100) / 100;
+  }
+
   async savePay() {
     const allocations = this.pf.allocations.filter((a: any) => a.amount > 0).map((a: any) => ({ invoice_id: a.invoice_id, amount: a.amount }));
     await this.api.post(`/projects/${this.projectId()}/receipts`, { date: this.pf.date, mode: this.pf.mode, reference: this.pf.reference,
-      note: this.pf.note, amount: Math.round(this.payTotal() * 100) / 100, allocations }, 'Payment recorded');
+      note: this.pf.note, amount: Math.round(this.received() * 100) / 100, allocations, on_account: this.onAccount() > 0 }, 'Payment recorded');
     this.payDlg = false;
     await this.refresh();
   }
@@ -266,6 +294,24 @@ export class ProjectInvoicesComponent implements OnInit {
   async apply() {
     await this.api.post(`/lead_receipts/${this.pendingAdvance.id}/apply`, { invoice_id: this.applyTo }, 'Advance applied');
     this.applyDlg = false;
+    await this.refresh();
+  }
+
+  // Phase I: money held on account
+  oaDlg = false;
+  oaAmount: number | null = null;
+  pendingReceipt: any = null;
+
+  askApplyOnAccount(x: any) {
+    this.pendingReceipt = x;
+    this.applyTo = null;
+    this.oaAmount = null;
+    this.oaDlg = true;
+  }
+
+  async applyOnAccount() {
+    await this.api.post(`/receipts/${this.pendingReceipt.id}/apply`, { invoice_id: this.applyTo, ...(this.oaAmount ? { amount: this.oaAmount } : {}) }, 'Applied');
+    this.oaDlg = false;
     await this.refresh();
   }
 
@@ -301,7 +347,7 @@ export class ProjectInvoicesComponent implements OnInit {
 
   openEdit(i: any) {
     this.f = { id: i.id, date: i.date, due_date: i.due_date, notes: i.notes ?? '',
-      lines: i.lines.map((l: any) => ({ description: l.description, qty: l.qty, rate: l.rate, tax_pct: l.tax_pct })) };
+      lines: i.lines.map((l: any) => ({ description: l.description, qty: l.qty, rate: l.rate, tax_pct: l.tax_pct, hsn: l.hsn ?? '' })) };
     this.dlg = true;
   }
 
@@ -365,6 +411,10 @@ export class ProjectInvoicesComponent implements OnInit {
   remove(i: any) {
     this.confirm.confirm({ header: 'Delete this draft invoice?', icon: 'pi pi-trash', message: 'A contract payment goes back to the schedule.',
       accept: async () => { await this.api.del(`/invoices/${i.id}`, 'Deleted'); await this.refresh(); } });
+  }
+
+  async reload() {
+    await this.refresh();
   }
 
   private async refresh() {

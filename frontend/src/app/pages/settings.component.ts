@@ -21,6 +21,16 @@ import { SalesSettingsComponent } from './sales-settings.component';
 import { ProposalSettingsComponent } from './proposal-settings.component';
 import { AuthService } from '../core/auth.service';
 
+/** GST state codes (Phase I): the company's state decides CGST + SGST or IGST on invoices. */
+const STATE_NAMES: Record<string, string> = {
+  '01': 'Jammu and Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh', '05': 'Uttarakhand', '06': 'Haryana', '07': 'Delhi',
+  '08': 'Rajasthan', '09': 'Uttar Pradesh', '10': 'Bihar', '11': 'Sikkim', '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur',
+  '15': 'Mizoram', '16': 'Tripura', '17': 'Meghalaya', '18': 'Assam', '19': 'West Bengal', '20': 'Jharkhand', '21': 'Odisha',
+  '22': 'Chhattisgarh', '23': 'Madhya Pradesh', '24': 'Gujarat', '26': 'Dadra and Nagar Haveli and Daman and Diu', '27': 'Maharashtra',
+  '29': 'Karnataka', '30': 'Goa', '31': 'Lakshadweep', '32': 'Kerala', '33': 'Tamil Nadu', '34': 'Puducherry',
+  '35': 'Andaman and Nicobar Islands', '36': 'Telangana', '37': 'Andhra Pradesh', '38': 'Ladakh', '97': 'Other Territory',
+};
+
 @Component({
   selector: 'app-settings',
   imports: [TooltipModule, FormsModule, DatePipe, ButtonModule, CardModule, CheckboxModule, TextareaModule, DialogModule, InputNumberModule, InputTextModule, MessageModule, SelectButtonModule,
@@ -85,6 +95,11 @@ import { AuthService } from '../core/auth.service';
                     <label class="field"><span>Currency</span><p-select [options]="currencies" [(ngModel)]="setup.currency" [disabled]="!canEdit()" fluid /></label>
                     <label class="field"><span>Tax label</span><input pInputText [(ngModel)]="setup.tax_label" [disabled]="!canEdit()" fluid /></label>
                     <label class="field"><span>Tax rate %</span><p-inputnumber [(ngModel)]="setup.tax_rate" [min]="0" [max]="100" [maxFractionDigits]="2" [disabled]="!canEdit()" fluid /></label>
+                  </div>
+                  <div class="grid2">
+                    <label class="field"><span>Tax on invoices</span><p-select [options]="taxModes" optionLabel="label" optionValue="value" [(ngModel)]="setup.tax_mode" [disabled]="!canEdit()" fluid />
+                      <small class="muted">GST: same state as the client → CGST + SGST, another state → IGST (from the client's GSTIN or state).</small></label>
+                    <label class="field"><span>Company state</span><p-select [options]="states" [(ngModel)]="setup.state" [filter]="true" [showClear]="true" [disabled]="!canEdit()" fluid placeholder="From the GSTIN if set" /></label>
                   </div>
                   <label class="field"><span>Project number format</span>
                     <input pInputText [(ngModel)]="setup.prj" (ngModelChange)="preview()" [disabled]="!canEdit()" fluid />
@@ -187,6 +202,12 @@ import { AuthService } from '../core/auth.service';
                 <small class="muted">A supplier bill's rate may differ this much from the PO before it goes on hold.</small></label>
               <label class="field"><span>Bill amount tolerance</span><p-inputnumber [(ngModel)]="fin.match_amount_tolerance" [min]="0" [disabled]="!canEdit()" fluid />
                 <small class="muted">Rounding allowed on a bill's total against PO and receipts.</small></label>
+              <label class="field"><span>Selection deposit %</span><p-inputnumber [(ngModel)]="fin.selection_deposit_pct" [min]="1" [max]="100" [disabled]="!canEdit()" fluid />
+                <small class="muted">Asked from the client before a chosen product is ordered.</small></label>
+              <label class="check"><p-checkbox [(ngModel)]="fin.require_selection_deposit" [binary]="true" [disabled]="!canEdit()" ariaLabel="Require the deposit" />
+                Do not order a selection until its deposit is paid</label>
+              <label class="field"><span>Client invoice reminders (days)</span><input pInputText [(ngModel)]="reminderText" [disabled]="!canEdit()" fluid placeholder="-3, 1, 7, 14" />
+                <small class="muted">Days from the due date the client is reminded (minus = before it). The last one, 14+ days late, is the final reminder.</small></label>
             </div>
             @if (canEdit()) { <div class="row right"><p-button label="Save" icon="pi pi-check" size="small" (onClick)="saveFinance()" /></div> }
           </p-card>
@@ -391,13 +412,21 @@ export class SettingsComponent implements OnInit {
 
   async loadFinance() {
     this.fin = await this.api.get('/finance/settings');
+    this.reminderText = (this.fin.client_reminder_days ?? []).join(', ');
   }
 
   async saveFinance() {
     this.fin = await this.api.put('/finance/settings', { site_expense_limit: this.fin.site_expense_limit, overspend_markup_pct: this.fin.overspend_markup_pct,
       po_approval_limit: this.fin.po_approval_limit, over_receipt_pct: this.fin.over_receipt_pct,
-      match_rate_tolerance_pct: this.fin.match_rate_tolerance_pct, match_amount_tolerance: this.fin.match_amount_tolerance }, 'Saved');
+      match_rate_tolerance_pct: this.fin.match_rate_tolerance_pct, match_amount_tolerance: this.fin.match_amount_tolerance,
+      selection_deposit_pct: this.fin.selection_deposit_pct, require_selection_deposit: !!this.fin.require_selection_deposit,
+      client_reminder_days: this.reminderText.split(/[,\s]+/).filter(Boolean).map((x) => parseInt(x, 10)).filter((x) => !isNaN(x)) }, 'Saved');
+    this.reminderText = (this.fin.client_reminder_days ?? []).join(', ');
   }
+
+  reminderText = '';
+  taxModes = [{ label: 'One tax rate', value: 'single' }, { label: 'GST (CGST + SGST / IGST)', value: 'gst' }];
+  states = Object.values(STATE_NAMES).sort();
 
   async saveCalendar() {
     await this.api.put('/settings/calendar', { working_days: this.cal.working_days, holidays: this.cal.holidays.filter((h: any) => h.date || h.name) },
@@ -413,7 +442,7 @@ export class SettingsComponent implements OnInit {
     const c = await this.api.get('/company');
     this.c.set(c);
     this.setup = { branches: (c.branches ?? []).map((b: any) => ({ ...b })), currency: c.currency ?? 'INR', tax_label: c.tax_label ?? 'GST',
-      tax_rate: c.tax_rate ?? 18, prj: c.numbering?.PRJ ?? 'PRJ-{n:04d}',
+      tax_rate: c.tax_rate ?? 18, prj: c.numbering?.PRJ ?? 'PRJ-{n:04d}', tax_mode: c.tax_mode ?? 'single', state: c.state ? STATE_NAMES[c.state] : null,
       inv: c.numbering?.INV ?? 'INV-{n:04d}', crn: c.numbering?.CRN ?? 'CRN-{n:04d}' };
     this.preview();
   }
@@ -455,7 +484,8 @@ export class SettingsComponent implements OnInit {
 
   async saveSetup() {
     await this.api.put('/company/setup', { branches: this.setup.branches, currency: this.setup.currency, tax_label: this.setup.tax_label,
-      tax_rate: this.setup.tax_rate, numbering: { PRJ: this.setup.prj, INV: this.setup.inv, CRN: this.setup.crn } }, 'Setup saved');
+      tax_rate: this.setup.tax_rate, tax_mode: this.setup.tax_mode, state: this.setup.state,
+      numbering: { PRJ: this.setup.prj, INV: this.setup.inv, CRN: this.setup.crn } }, 'Setup saved');
     await this.auth.refresh();
     await Promise.all([this.loadCompany(), this.loadAudit()]);
   }

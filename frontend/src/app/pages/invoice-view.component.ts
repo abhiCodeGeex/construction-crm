@@ -39,21 +39,27 @@ import { INVOICE_KIND, INVOICE_SEV } from './projects/project-invoices.component
           <div><div class="small muted">Bill to</div><strong>{{ i.client_name || '—' }}</strong>
             <div class="small">@if (i.client_address) { {{ i.client_address }}<br /> } @if (i.client_gstin) { GSTIN {{ i.client_gstin }} }</div></div>
           <div class="right"><div class="small muted">Project</div>{{ i.project_code }} {{ i.project_name }}
-            @if (i.contract_number) { <div class="small">Contract {{ i.contract_number }}</div> }</div>
+            @if (i.contract_number) { <div class="small">Contract {{ i.contract_number }}</div> }
+            @if (i.gst?.place_of_supply) { <div class="small">Place of supply: {{ i.gst.place_of_supply }}</div> }</div>
         </section>
         <table class="lines">
-          <thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Amount</th><th class="num">{{ i.tax_label }}</th></tr></thead>
+          <thead><tr><th>Description</th>@if (hasHsn(i)) { <th>HSN/SAC</th> }<th class="num">Qty</th><th class="num">Rate</th><th class="num">Amount</th><th class="num">{{ i.tax_label }}</th></tr></thead>
           <tbody>
             @for (l of i.lines; track l.id) {
-              <tr><td>{{ l.description }}</td><td class="num">{{ l.qty }}</td><td class="num">{{ fmt(l.rate) }}</td><td class="num">{{ fmt(l.amount) }}</td>
+              <tr><td>{{ l.description }}</td>@if (hasHsn(i)) { <td>{{ l.hsn || '—' }}</td> }<td class="num">{{ l.qty }}</td><td class="num">{{ fmt(l.rate) }}</td><td class="num">{{ fmt(l.amount) }}</td>
                 <td class="num">{{ fmt(l.tax) }} <span class="small muted">{{ l.tax_pct }}%</span></td></tr>
             }
           </tbody>
         </table>
         <div class="totals">
           <div><span>Subtotal</span><span>{{ fmt(i.subtotal) }}</span></div>
-          <div><span>{{ i.tax_label }}</span><span>{{ fmt(i.tax) }}</span></div>
+          @if (i.gst; as g) {
+            @if (g.mode === 'inter') { <div><span>IGST</span><span>{{ fmt(g.igst) }}</span></div> }
+            @else { <div><span>CGST</span><span>{{ fmt(g.cgst) }}</span></div><div><span>SGST</span><span>{{ fmt(g.sgst) }}</span></div> }
+          } @else { <div><span>{{ i.tax_label }}</span><span>{{ fmt(i.tax) }}</span></div> }
           <div class="grand"><span>Total</span><span>{{ fmt(i.total) }}</span></div>
+          @if (i.retention) { <div><span>Retention held</span><span>− {{ fmt(i.retention) }}</span></div>
+            <div><span>Due now</span><span>{{ fmt(i.total - i.retention) }}</span></div> }
           @if (i.kind !== 'credit_note' && (i.credited || i.paid)) {
             @if (i.credited) { <div><span>Credited</span><span>− {{ fmt(i.credited) }}</span></div> }
             @if (i.paid) { <div><span>Received</span><span>− {{ fmt(i.paid) }}</span></div> }
@@ -100,6 +106,10 @@ export class InvoiceViewComponent implements OnInit {
 
   async ngOnInit() {
     this.inv.set(await this.api.get(`/invoices/${this.id()}`));
+  }
+
+  hasHsn(i: any) {
+    return (i.lines ?? []).some((l: any) => l.hsn);
   }
 
   fmt(v: number) {

@@ -30,9 +30,11 @@ def summary(p):
     for r in db.costs.aggregate([{"$match": {"company_id": g.cid, "project_id": pid, "status": {"$in": ["approved", "submitted"]}}},
                                  {"$group": {"_id": "$status", "total": {"$sum": "$amount"}}}]):
         costs[r["_id"]] = r["total"]
-    invoiced = paid = credited = 0.0
+    invoiced = paid = credited = held = 0.0
     for inv in db.invoices.find({"company_id": g.cid, "project_id": pid, "status": {"$nin": ["draft", "void"]}, "kind": {"$ne": "credit_note"}}):
-        invoiced += inv["total"]
+        # retention held (Phase I) is not billed until its release invoice
+        invoiced += inv["total"] - inv.get("retention", 0)
+        held += inv.get("retention", 0) - (inv["total"] if inv["kind"] == "retention" else 0)
         paid += inv.get("paid", 0)
         credited += inv.get("credited", 0)
     cos = {}
@@ -42,7 +44,8 @@ def summary(p):
         row["total"] = r2(row["total"] + (co.get("totals") or {}).get("total", 0))
     out = {"project_id": pid, "code": p.get("code"), "name": p["name"], "status": p.get("status"),
            "contract_value": contract_value, "revised_value": r2(revised), "invoiced": r2(invoiced - credited), "received": r2(paid),
-           "receivable": r2(invoiced - credited - paid), "to_invoice": r2(revised - (invoiced - credited)), "change_orders": cos}
+           "receivable": r2(invoiced - credited - paid), "to_invoice": r2(revised - (invoiced - credited)),
+           "retention_held": r2(held), "change_orders": cos}
     if money_view():
         actual = r2(costs.get("approved"))
         out.update(budget=r2(sum(s.get("budget") or 0 for s in p.get("stages", []))), actual=actual, committed=r2(costs.get("submitted")),

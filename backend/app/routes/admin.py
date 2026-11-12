@@ -163,6 +163,26 @@ def company_setup():
         changes["tax_rate"] = float(dat["tax_rate"])
     if "tax_label" in dat:
         changes["tax_label"] = (dat["tax_label"] or "Tax")[:20]
+    if "tax_mode" in dat:  # Phase I: GST split by place of supply
+        if dat["tax_mode"] not in ("single", "gst"):
+            abort(400, "Tax mode must be single or gst")
+        changes["tax_mode"] = dat["tax_mode"]
+    if "state" in dat:
+        from ..services.gst import state_code
+        code = state_code(None, dat["state"]) if dat["state"] else None
+        if dat["state"] and not code:
+            abort(400, "Unknown state")
+        changes["state"] = code
+    if "gstin" in dat:
+        from .contacts import GSTIN_RE
+        v = (dat["gstin"] or "").strip().upper()
+        if v and not GSTIN_RE.match(v):
+            abort(400, "GSTIN must be 15 characters, e.g. 29ABCDE1234F1Z5")
+        changes["gstin"] = v or None
+    if changes.get("tax_mode", g.company.get("tax_mode")) == "gst" and "tax_mode" in dat:
+        from ..services.gst import company_state
+        if not company_state({**g.company, **changes}):
+            abort(400, "Set the company's GSTIN or state before switching to GST")
     if "branches" in dat:
         names = []
         clean = []

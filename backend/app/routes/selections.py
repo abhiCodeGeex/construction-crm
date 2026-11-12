@@ -59,6 +59,10 @@ def present(s):
     data["chosen"] = ch and t.out(serialize(ch))
     data["difference"] = r2(ch["price"] - (s.get("allowance") or 0)) if ch else None
     data["overdue"] = s["status"] in ("open", "options_sent") and bool(s.get("due_date")) and s["due_date"] < sales.today()
+    if s.get("deposit_invoice_id"):  # Phase I: the client's deposit before ordering
+        inv = db.invoices.find_one({"_id": oid(s["deposit_invoice_id"])}, {"number": 1, "status": 1, "total": 1})
+        data["deposit"] = inv and inv["status"] != "void" and {"invoice_id": s["deposit_invoice_id"], "number": inv.get("number"),
+                                                               "status": inv["status"], "total": inv["total"], "pct": s.get("deposit_pct")}
     return data
 
 
@@ -237,6 +241,13 @@ def move_status(sid):
         abort(409, f"From {LABELS[s['status']]} the next step is {LABELS.get(order[order.index(s['status']) + 1], '—') if s['status'] in order[:-1] else 'none'}")
     ch = {"status": st, f"{st}_at": t.now(), "history": s.get("history", []) + [{"status": st, "by": g.user.get("name"), "at": t.now()}]}
     if st == "ordered":  # Phase H: ordered through procurement — a line on the supplier's draft PO, or a purchase request
+        from .claims import deposit_state
+        from .finance import settings as fin_settings
+        dep = deposit_state(s)
+        if dep != "paid" and fin_settings()["require_selection_deposit"]:
+            abort(409, "The client's deposit for this item is not paid yet" if dep else "Ask the client for the deposit before ordering")
+        if dep != "paid":
+            ch["ordered_without_deposit"] = True
         from .procurement import order_selection
         ch.update(order_selection(s, p, chosen(s)))
     upd = t.update("selections", sid, ch)

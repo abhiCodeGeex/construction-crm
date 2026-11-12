@@ -301,7 +301,11 @@ COST_STATUSES = ["draft", "submitted", "approved", "rejected", "void"]
 OVERSPEND_REASONS = {"client_change": "Client changed something", "our_mistake": "Our mistake", "price_rise": "Price rise"}
 FINANCE_DEFAULTS = {"site_expense_limit": 5000, "overspend_markup_pct": 10, "invoice_due_days": 7,
                     # Phase H (procurement)
-                    "po_approval_limit": 50000, "match_rate_tolerance_pct": 1, "match_amount_tolerance": 100, "over_receipt_pct": 5}
+                    "po_approval_limit": 50000, "match_rate_tolerance_pct": 1, "match_amount_tolerance": 100, "over_receipt_pct": 5,
+                    # Phase I: client reminders, days from the due date (negative = before it)
+                    "client_reminder_days": [-3, 1, 7, 14],
+                    # Phase I: deposit asked before a client's selection is ordered
+                    "selection_deposit_pct": 50, "require_selection_deposit": False}
 INVOICE_STATUSES = ["draft", "sent", "part_paid", "paid", "void"]
 
 NOTIFY_EVENTS.update({

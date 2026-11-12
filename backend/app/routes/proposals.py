@@ -792,6 +792,7 @@ def present_contract(c):
             r["state"] = "due" if m and m.get("status") == "achieved" else ("upcoming" if m else "waiting for the project")
             r["milestone"] = m and {"name": m["name"], "due": m.get("due"), "status": m.get("status")}
     data["project_code"] = project and project.get("code")
+    data["billing_basis"] = (c.get("billing") or {}).get("basis", "schedule")  # Phase I: schedule or progress claims
     data["acceptance"] = {k: v for k, v in (c.get("acceptance") or {}).items() if k not in ("ip", "user_agent")} | (
         {"ip": c["acceptance"].get("ip")} if can("proposals", True) and c.get("acceptance") else {})
     return data

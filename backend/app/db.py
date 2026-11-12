@@ -59,6 +59,7 @@ TENANT_COLLECTIONS = [
     "rate_library", "documents", "design_options", "products", "selections", "purchase_requests",
     "purchase_orders", "change_orders", "costs", "invoices", "site_reports", "snags", "followups",
     "message_templates", "messages", "notifications", "timesheets", "support_tickets", "project_issues",
+    "petty_cash",
 ]
 
 
