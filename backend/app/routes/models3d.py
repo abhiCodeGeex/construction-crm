@@ -32,6 +32,8 @@ def out(m, client=False):
     d["comments"] = [{**c, "at": c["at"].isoformat() if hasattr(c.get("at"), "isoformat") else c.get("at")} for c in m.get("comments", [])
                      if not client or c.get("side") == "client" or c.get("shared")]
     d["open"] = sum(1 for c in m.get("comments", []) if c["status"] == "open")
+    d["links"] = m.get("links", [])
+    d["ar_url"] = f"/ar/{m['ar_token']}" if m.get("ar_token") and not client else None
     return d
 
 
@@ -192,3 +194,127 @@ def portal_comment(mid):
     notify.send("model_comment", ev.managers(p), f"{g.user['name']} commented on the 3D model {m['title']} ({p['name']}): {c['text'][:140]}",
                 f"/app/projects/{p['_id']}?tab=documents", project_id=str(p["_id"]), skip_self=False)
     return jsonify(c), 201
+
+
+# ---------------- Phase L block 5: the model linked to site progress, and AR on the phone ----------------
+def element_status(p, link, today):
+    """Status of a linked element from its task (or stage): done, in_progress, late, blocked or not_started."""
+    st = next((s for s in p.get("stages", []) if s["id"] == link["stage_id"]), None)
+    if not st:
+        return "unlinked", 0
+    if link.get("task_id"):
+        tk = next((x for x in st.get("tasks", []) if x["id"] == link["task_id"]), None)
+        if not tk:
+            return "unlinked", 0
+        prog, status, end = tk.get("progress") or (100 if tk.get("status") == "done" else 0), tk.get("status"), tk.get("end")
+    else:
+        prog = st.get("progress") or 0
+        status, end = ("done" if prog >= 100 else "in_progress" if prog > 0 else "todo"), st.get("end")
+    if status == "done" or prog >= 100:
+        return "done", 100
+    if status == "blocked":
+        return "blocked", prog
+    if end and end < today:
+        return "late", prog
+    return ("in_progress" if status == "in_progress" or prog > 0 else "not_started"), prog
+
+
+def progress_of(m, p):
+    today = sales.today()
+    rows = []
+    for ln in m.get("links", []):
+        status, prog = element_status(p, ln, today)
+        rows.append({**ln, "status": status, "progress": prog})
+    counts = {}
+    for r in rows:
+        counts[r["status"]] = counts.get(r["status"], 0) + 1
+    return {"elements": rows, "counts": counts, "linked": len(rows),
+            "done_pct": round(100 * sum(r["progress"] for r in rows) / (100 * len(rows))) if rows else None}
+
+
+@bp.get("/models/<mid>/progress")
+@api(None)
+def model_progress(mid):
+    m, p = load_model(mid)
+    return jsonify({**progress_of(m, p), "stages": [{"id": s["id"], "name": s["name"], "tasks": [{"id": x["id"], "title": x["title"]} for x in s.get("tasks", [])]}
+                                                   for s in p.get("stages", [])]})
+
+
+@bp.put("/models/<mid>/links")
+@api(None)
+def put_links(mid):
+    """Which part of the model is which work: [{element, label, stage_id, task_id?}]. `element` is the node name in a
+    GLB / OBJ, or "ifc:<express id>" in an IFC, as the viewer reports it when the part is clicked."""
+    m, p = load_model(mid, True)
+    stages = {s["id"]: s for s in p.get("stages", [])}
+    out_, seen = [], set()
+    for ln in ((request.get_json(force=True) or {}).get("links") or [])[:2000]:
+        el = (str(ln.get("element") or "")).strip()[:200] or abort(400, "Each link names a part of the model")
+        if el in seen:
+            abort(400, f"{el} is linked twice")
+        seen.add(el)
+        st = stages.get(ln.get("stage_id")) or abort(400, f"{el}: choose a stage of this project")
+        tk = None
+        if ln.get("task_id"):
+            tk = next((x for x in st.get("tasks", []) if x["id"] == ln["task_id"]), None) or abort(400, f"{el}: task not found in {st['name']}")
+        out_.append({"element": el, "label": (ln.get("label") or "").strip()[:120] or None, "stage_id": st["id"], "stage_name": st["name"],
+                     "task_id": tk and tk["id"], "task_title": tk and tk["title"]})
+    upd = t.update("models3d", mid, {"links": out_})
+    return jsonify({**out(upd), **progress_of(upd, p)})
+
+
+@bp.get("/portal/models/<mid>/progress")
+@portal
+def portal_model_progress(mid):
+    from .site_reports import portal_project
+    m = db.models3d.find_one({"_id": oid(mid), "company_id": g.cid, "shared": True}) or abort(404, "model not found")
+    p = portal_project(m["project_id"])
+    pr = progress_of(m, p)
+    return jsonify({**pr, "elements": [{k: r[k] for k in ("element", "label", "stage_name", "status", "progress")} for r in pr["elements"]]})
+
+
+AR_FORMATS = ("glb", "gltf")
+
+
+@bp.post("/models/<mid>/ar")
+@api(None)
+def ar_link(mid):
+    """A link that opens the model in AR on a phone (Android Scene Viewer / WebXR, iPhone Quick Look). The phone's AR app
+    fetches the model itself, so the link carries a token; {"off": true} withdraws it."""
+    import secrets
+    m, p = load_model(mid, True)
+    if m["format"] not in AR_FORMATS:
+        abort(400, "AR needs a GLB or glTF model (export one from SketchUp, Revit or Blender)")
+    d = request.get_json(force=True) or {}
+    if d.get("off"):
+        return jsonify(out(t.update("models3d", mid, {"ar_token": None})))
+    scale = d.get("scale", "fixed")
+    if scale not in ("fixed", "auto"):
+        abort(400, "Scale: fixed (real size) or auto")
+    upd = t.update("models3d", mid, {"ar_token": m.get("ar_token") or secrets.token_urlsafe(18), "ar_scale": scale})
+    return jsonify(out(upd))
+
+
+def ar_model(token):
+    return db.models3d.find_one({"ar_token": token}) if token and len(token) > 16 else None
+
+
+@bp.get("/public/ar/<token>")
+def public_ar(token):
+    m = ar_model(token) or abort(404, "This AR link was withdrawn")
+    c = db.companies.find_one({"_id": oid(m["company_id"])}) or {}
+    return jsonify({"title": m["title"], "room": m.get("room"), "project": m["project_name"], "company": c.get("name"),
+                    "src": f"/api/public/ar/{token}/model.{m['format']}", "scale": m.get("ar_scale", "fixed")})
+
+
+@bp.get("/public/ar/<token>/model.<ext>")
+def public_ar_file(token, ext):
+    import os
+    from flask import send_from_directory
+    from ..config import Config
+    m = ar_model(token) or abort(404)
+    if ext != m["format"] or not os.path.exists(os.path.join(Config.UPLOAD_DIR, m["file_key"])):
+        abort(404)
+    resp = send_from_directory(Config.UPLOAD_DIR, m["file_key"], mimetype="model/gltf-binary" if ext == "glb" else "model/gltf+json")
+    resp.headers["Access-Control-Allow-Origin"] = "*"  # Scene Viewer fetches it from Google's app
+    return resp

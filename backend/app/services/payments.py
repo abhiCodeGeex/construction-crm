@@ -70,7 +70,7 @@ def create_link(company, invoice, amount, customer, base_url):
     expires = int(time.time()) + LINK_DAYS * 86400
     if s["provider"] == "razorpay":
         r = _razorpay(s, "POST", "/payment_links", {
-            "amount": int(round(amount * 100)), "currency": company.get("currency", "INR"), "accept_partial": False,
+            "amount": int(round(amount * 100)), "currency": invoice.get("currency") or company.get("currency", "INR"), "accept_partial": False,
             "description": f"Invoice {invoice['number']} — {invoice.get('project_name') or ''}"[:200],
             "reference_id": f"{invoice['number']}-{uuid.uuid4().hex[:6]}", "expire_by": expires,
             "customer": {k: v for k, v in {"name": customer.get("name"), "email": customer.get("email"),

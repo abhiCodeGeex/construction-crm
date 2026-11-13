@@ -1,0 +1,11 @@
+{
+  "appId": "app.buildsuite.field",
+  "appName": "BuildSuite Field",
+  "webDir": "dist/frontend/browser",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 800, "backgroundColor": "#1e293b" }
+  }
+}

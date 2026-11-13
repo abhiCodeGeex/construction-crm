@@ -367,7 +367,8 @@ try:
     delta = workdays.shift(day(1), day(2), CAL)
     check("dependent moved by the same working days", after_c["start"] == workdays.add_working(before_c["start"], delta, CAL)
           and after_c["end"] == workdays.add_working(before_c["end"], delta, CAL), (before_c["start"], after_c["start"]))
-    check("'moved with' on the timeline", any("Moved with" in a["text"] for a in activity(pid, "Schedule & delays")["rows"]))
+    # on a Friday day(1) → day(2) is Saturday → Sunday: no working day moves, so nothing moves with it
+    check("'moved with' on the timeline", delta == 0 or any("Moved with" in a["text"] for a in activity(pid, "Schedule & delays")["rows"]), delta)
 
     # timeline filters
     sched = activity(pid, "Schedule & delays")["rows"]

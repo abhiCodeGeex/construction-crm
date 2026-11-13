@@ -169,8 +169,8 @@ def worker_contact(w):
 
 
 def buttons_for(lang):
-    names = HI_KINDS if lang == "hi" else KINDS
-    return [(k, names[k]) for k in ("material", "done", "help")]
+    from ..services.languages import worker_text  # Phase L: every worker language
+    return [(k, worker_text(lang, k)) for k in ("material", "done", "help")]
 
 
 def say(w, en, hi, kind, ref=None, buttons=False, extra=None):
@@ -439,20 +439,20 @@ def todays_work(day, company=None):
 
 def morning_text(w, jobs):
     base = base_url()
-    hi = (w.get("language") or "en") == "hi"
-    lines = [f"सुप्रभात {w['name']}। आज का काम:" if hi else f"Good morning {w['name']}. Today's work:"]
+    from ..services.languages import worker_text
+    lang = w.get("language") or "en"
+    lines = [worker_text(lang, "morning", name=w["name"])]
     seen_sup = []
     for j in jobs:
         p, c, tk = j["project"], j["card"], j["task"]
         addr = p.get("site_address") or p.get("address")
         lines.append(f"• {p['name']}{' — ' + addr if addr else ''}")
         lines.append(f"  {c.get('room') + ': ' if c.get('room') else ''}{tk['title']}{' (' + c['trade'] + ')' if c.get('trade') else ''}")
-        lines.append(f"  {'जॉब कार्ड / ड्रॉइंग' if hi else 'Job card / drawing'}: {base}/j/{c['token']}")
+        lines.append(f"  {worker_text(lang, 'card')}: {base}/j/{c['token']}")
         if j["sup"].get("name") and j["sup"]["name"] not in seen_sup:
             seen_sup.append(j["sup"]["name"])
-            lines.append(f"  {'सुपरवाइज़र' if hi else 'Supervisor'}: {j['sup']['name']}{' ' + j['sup']['phone'] if j['sup'].get('phone') else ''}")
-    lines.append("सामग्री चाहिए, काम पूरा या मदद — नीचे बटन दबाएँ या आवाज़ संदेश भेजें।" if hi else
-                 "Tap a button below (or send a voice note) when you need material, finish, or need help.")
+            lines.append(f"  {worker_text(lang, 'sup')}:{j['sup']['name']}{' ' + j['sup']['phone'] if j['sup'].get('phone') else ''}")
+    lines.append(worker_text(lang, "tap"))
     return "\n".join(lines)
 
 

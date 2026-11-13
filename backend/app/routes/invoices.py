@@ -95,7 +95,9 @@ def base_doc(kind, p, contract=None):
             "contract_number": contract and contract["number"], "lead_id": (contract or {}).get("lead_id") or (p or {}).get("lead_id"),
             "date": sales.today(), "due_date": add_days(sales.today(), int(settings()["invoice_due_days"])),
             "tax_label": g.company.get("tax_label") or "Tax", "paid": 0, "credited": 0, "notes": None,
-            "created_by_name": g.user.get("name"), **client_of(p, contract)}
+            "created_by_name": g.user.get("name"), **client_of(p, contract),
+            # Phase L: an invoice is in its project's currency (else the company's)
+            "currency": (p or {}).get("currency") or g.company.get("currency") or "INR"}
 
 
 # ---------------- from the contract's payment schedule ----------------

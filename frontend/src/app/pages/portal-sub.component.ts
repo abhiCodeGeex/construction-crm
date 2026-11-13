@@ -90,8 +90,11 @@ export class PortalSubcontractsComponent {
   template: `
     @if (models().length) {
       <h4>3D models</h4>
-      <div class="row gap wrap mb">@for (m of models(); track m.id) { <button type="button" class="p-button p-button-sm" [class.p-button-outlined]="cur()?.id !== m.id" (click)="cur.set(m)">{{ m.title }}</button> }</div>
-      @if (cur(); as m) { <app-model-viewer [model]="m" [canComment]="true" (spot)="at = $event; text = ''; cDlg = true" />
+      <div class="row gap wrap mb">@for (m of models(); track m.id) { <button type="button" class="p-button p-button-sm" [class.p-button-outlined]="cur()?.id !== m.id" (click)="cur.set(m); loadProg()">{{ m.title }}</button> }</div>
+      @if (cur(); as m) {
+        @if (m.links?.length) { <label class="small"><input type="checkbox" [(ngModel)]="showProg" (ngModelChange)="loadProg()" /> Colour by progress on site
+          @if (showProg && prog()) { — {{ prog().done_pct }}% built (green done, blue in progress, grey not started) }</label> }
+        <app-model-viewer [model]="m" [canComment]="true" [progress]="showProg ? prog()?.elements ?? [] : null" (spot)="at = $event; text = ''; cDlg = true" />
         @for (c of m.comments; track c.id; let i = $index) { <div class="small"><strong>{{ i + 1 }}. {{ c.author }}:</strong> {{ c.text }}</div> } }
     }
     @if (isTrade) {
@@ -142,6 +145,13 @@ export class PortalProjectExtrasComponent {
   text = '';
   rf: any = {};
   sf: any = { files: [] };
+
+  showProg = false;
+  prog = signal<any>(null);
+
+  async loadProg() {
+    if (this.showProg && this.cur()) this.prog.set(await this.api.get(`/portal/models/${this.cur().id}/progress`).catch(() => null));
+  }
 
   async ngOnInit() {
     await this.load();

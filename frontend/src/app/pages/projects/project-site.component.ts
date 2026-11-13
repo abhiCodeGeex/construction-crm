@@ -1,5 +1,5 @@
 import { ProjectFieldComponent } from './project-field.component';
-import { I18n, TPipe } from '../../core/i18n';
+import { I18n, LANGUAGES, TPipe } from '../../core/i18n';
 import { Component, inject, input, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -56,7 +56,7 @@ import { ProjectSiteReportsComponent } from './project-site-reports.component';
           <label class="field"><span>Trade</span><input pInputText [(ngModel)]="wf.trade" placeholder="Mason, carpenter…" fluid /></label>
           <label class="field"><span>Phone</span><input pInputText [(ngModel)]="wf.phone" fluid /></label>
           <label class="field"><span>Language of work messages</span>
-            <select class="p-inputtext" [(ngModel)]="wf.language"><option value="en">English</option><option value="hi">हिन्दी (Hindi)</option></select></label>
+            <select class="p-inputtext" [(ngModel)]="wf.language">@for (l of langs; track l.code) { <option [value]="l.code">{{ l.name }}</option> }</select></label>
           <label class="check small"><input type="checkbox" [(ngModel)]="wf.whatsapp" [disabled]="!wf.phone" /> Agreed to get work messages on WhatsApp</label>
         </div>
         @if (seesCost) { <label class="field"><span>Daily rate</span><p-inputnumber [(ngModel)]="wf.daily_rate" [min]="0" fluid /></label> }
@@ -68,6 +68,7 @@ import { ProjectSiteReportsComponent } from './project-site-reports.component';
 })
 export class ProjectAttendanceComponent {
   projectId = input.required<string>();
+  langs = LANGUAGES;
   private api = inject(Api);
   private auth = inject(AuthService);
   d = signal<any>(null);

@@ -301,7 +301,8 @@ def clean_worker(d, w=None):
     if "active" in d:
         ch["active"] = bool(d["active"])
     if "language" in d:  # Phase J: the morning message goes in the worker's language
-        ch["language"] = d["language"] if d["language"] in ("en", "hi") else abort(400, "Language: en or hi")
+        from ..services.languages import LANGUAGES  # Phase L: more languages
+        ch["language"] = d["language"] if d["language"] in LANGUAGES else abort(400, f"Language: {', '.join(LANGUAGES)}")
     if "whatsapp" in d:  # Phase J: workers agree to get WhatsApp work messages (asked on site)
         if d["whatsapp"]:
             from ..services.messaging import phone_e164

@@ -21,7 +21,12 @@ export class ModelViewerComponent implements OnDestroy {
   model = input.required<any>();
   canComment = input(false);
   link = input<{ cam?: any; listeners: Set<() => void> } | null>(null);
+  /** Phase L block 5: parts coloured by the status of their linked work ({element, status}). */
+  progress = input<{ element: string; status: string }[] | null>(null);
+  /** Phase L block 5: 'pick' — a click reports which part of the model it hit (to link it to a stage or task). */
+  mode = input<'comment' | 'pick'>('comment');
   spot = output<{ point: number[]; camera: number[] }>();
+  picked = output<{ element: string; point: number[] }>();
   private box = viewChild<ElementRef<HTMLDivElement>>('box');
   status = 'Loading the 3D viewer…';
   pins: { x: number; y: number; text: string }[] = [];
@@ -44,6 +49,31 @@ export class ModelViewerComponent implements OnDestroy {
         else this.build(m, el);
         this.builtFor = m.id + m.comments?.length;
       }
+    });
+    effect(() => {
+      const pr = this.progress();
+      if (this.root) this.paint(pr);
+    });
+  }
+
+  static COLORS: Record<string, number> = { done: 0x16a34a, in_progress: 0x2563eb, late: 0xdc2626, blocked: 0xf97316, not_started: 0x9ca3af };
+
+  /** The part a mesh belongs to: its own name or the nearest named parent (a GLB node, an OBJ group, "ifc:<id>"). */
+  private elementOf(o: any): string | null {
+    for (let x = o; x && x !== this.root; x = x.parent) if (x.name) return x.name;
+    return null;
+  }
+
+  private paint(pr: { element: string; status: string }[] | null) {
+    const T = this.T;
+    const by = new Map((pr ?? []).map((x) => [x.element, x.status]));
+    this.root.traverse((o: any) => {
+      if (!o.isMesh) return;
+      o.userData.orig ??= o.material;
+      const st = by.get(this.elementOf(o) ?? '');
+      if (st && ModelViewerComponent.COLORS[st] !== undefined) {
+        o.material = new T.MeshStandardMaterial({ color: ModelViewerComponent.COLORS[st], transparent: st === 'not_started', opacity: st === 'not_started' ? 0.45 : 1 });
+      } else o.material = o.userData.orig;
     });
   }
 
@@ -70,6 +100,7 @@ export class ModelViewerComponent implements OnDestroy {
       this.root = await this.loadModel(T, m);
       this.scene.add(this.root);
       this.fit();
+      if (this.progress()) this.paint(this.progress());
       this.status = '';
       this.hookLink();
       const el2 = this.renderer.domElement as HTMLCanvasElement;
@@ -126,6 +157,7 @@ export class ModelViewerComponent implements OnDestroy {
         const c = pg.color;
         const mat = new T.MeshStandardMaterial({ color: new T.Color(c.x, c.y, c.z), transparent: c.w < 1, opacity: c.w, side: T.DoubleSide });
         const me = new T.Mesh(bg, mat);
+        me.name = `ifc:${mesh.expressID}`;  // Phase L: an IFC element is linked to work by its express id
         me.matrix.fromArray(pg.flatTransformation);
         me.matrixAutoUpdate = false;
         group.add(me);
@@ -166,7 +198,7 @@ export class ModelViewerComponent implements OnDestroy {
   }
 
   private click(e: PointerEvent) {
-    if (!this.canComment() || !this.down || Math.hypot(e.clientX - this.down[0], e.clientY - this.down[1]) > 4) return;
+    if (!(this.canComment() || this.mode() === 'pick') || !this.down || Math.hypot(e.clientX - this.down[0], e.clientY - this.down[1]) > 4) return;
     const T = this.T;
     const r = this.renderer.domElement.getBoundingClientRect();
     const ray = new T.Raycaster();
@@ -174,6 +206,12 @@ export class ModelViewerComponent implements OnDestroy {
     const hit = ray.intersectObject(this.root, true)[0];
     if (!hit) return;
     const round = (a: number[]) => a.map((x) => Math.round(x * 1000) / 1000);
+    if (this.mode() === 'pick') {
+      const el = this.elementOf(hit.object);
+      if (el) this.picked.emit({ element: el, point: round(hit.point.toArray()) });
+      else this.status = 'This part has no name in the model file — name it in the 3D program to link it.';
+      return;
+    }
     this.spot.emit({ point: round(hit.point.toArray()), camera: round(this.camera.position.toArray()) });
   }
 

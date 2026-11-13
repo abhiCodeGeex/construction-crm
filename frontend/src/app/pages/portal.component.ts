@@ -31,7 +31,8 @@ import { PortalMessagesComponent } from './portal-messages.component';
       <p-button label="Sign out" icon="pi pi-sign-out" [text]="true" severity="secondary" (onClick)="auth.logout()" />
     </header>
     <app-change-password #pwd />
-        <button type="button" class="p-button p-button-text p-button-sm" (click)="i18n.set(i18n.lang() === 'hi' ? 'en' : 'hi')">{{ i18n.lang() === 'hi' ? 'English' : 'हिन्दी' }}</button>
+        <select class="p-inputtext p-inputtext-sm" aria-label="Language" [value]="i18n.lang()" (change)="i18n.set($any($event.target).value)">
+          @for (l of i18n.languages; track l.code) { <option [value]="l.code" [selected]="l.code === i18n.lang()">{{ l.name }}</option> }</select>
     <main class="portal-body">
       <div class="portal-hero">
         <p-avatar icon="pi pi-user" size="xlarge" shape="circle" styleClass="avatar ext" />

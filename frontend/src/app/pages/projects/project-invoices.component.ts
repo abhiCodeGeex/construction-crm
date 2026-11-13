@@ -321,7 +321,8 @@ export class ProjectInvoicesComponent implements OnInit {
   }
 
   fmt(v: number) {
-    return money(v, (this.auth.company() as any)?.currency ?? 'INR');
+    const inv = this.data()?.invoices ?? (Array.isArray(this.data()) ? this.data() : []);
+    return money(v, inv[0]?.currency ?? (this.auth.company() as any)?.currency ?? 'INR');  // Phase L: the project's currency
   }
 
   draftTotal() {

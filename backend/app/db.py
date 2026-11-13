@@ -67,6 +67,10 @@ def ensure_indexes():
     for name in TENANT_COLLECTIONS:
         db[name].create_index([("company_id", ASCENDING)])
     db.users.create_index("email", unique=True)
+    # Phase L: an offline queue sent twice is applied once; the marketplace is searched across companies
+    db.sync_ops.create_index([("company_id", ASCENDING), ("user_id", ASCENDING), ("op_id", ASCENDING)], unique=True)
+    db.market_items.create_index([("published", ASCENDING), ("category", ASCENDING), ("name", ASCENDING)])
+    db.market_items.create_index([("seller_key", ASCENDING)])
     db.superadmin_users.create_index("email", unique=True)
     db.audit_logs.create_index([("company_id", ASCENDING), ("at", ASCENDING)])
     db.projects.create_index([("company_id", ASCENDING), ("client_id", ASCENDING)])

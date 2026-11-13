@@ -18,7 +18,7 @@ from ..security import api, auth_required, superadmin
 from ..services import sms as sms_gw
 
 bp = Blueprint("extras", __name__)
-LANGUAGES = {"en": "English", "hi": "हिन्दी"}
+from ..services.languages import LANGUAGES  # noqa: E402 — Phase L: English, Hindi and six more Indian languages
 
 
 # ============================== calendar feed ==============================

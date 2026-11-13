@@ -50,7 +50,7 @@ import { AuthService } from '../../core/auth.service';
             <td><div class="prog"><p-progressbar [value]="p.progress" [showValue]="false" styleClass="thin grow" /><span>{{ p.progress }}%</span></div></td>
             <td>@if (p.health) { <span class="nowrap" [title]="p.health.late_days ? 'Forecast ' + p.health.late_days + ' working days late' : ''"><i class="health-dot" [class]="p.health.grade"></i>{{ p.health.score }} · {{ p.health.label }}</span> } @else { <span class="muted">—</span> }</td>
             <td>{{ p.planned_end ? (p.planned_end | date: 'd MMM y') : '—' }}</td>
-            @if (showMoney()) { <td class="right">{{ fmt(p.value) }}</td> }
+            @if (showMoney()) { <td class="right">{{ fmt(p.value, p.currency) }}</td> }
           </tr>
         </ng-template>
         <ng-template #emptymessage><tr><td colspan="8" class="center muted">No projects yet</td></tr></ng-template>
@@ -74,6 +74,7 @@ import { AuthService } from '../../core/auth.service';
         </div>
         <div class="grid3">
           <label class="field"><span>Project value</span><p-inputnumber placeholder="Value" name="value" [(ngModel)]="f.value" mode="decimal" [min]="0" fluid /></label>
+          <label class="field"><span>Currency (an overseas client)</span><p-select name="currency" [options]="currencies" [(ngModel)]="f.currency" fluid appendTo="body" /></label>
           <label class="field"><span>Area</span><p-inputnumber name="area" [(ngModel)]="f.area" [min]="0" fluid /></label>
           <label class="field"><span>Unit</span><p-selectbutton [allowEmpty]="false" name="unit" [options]="units" [(ngModel)]="f.area_unit" optionLabel="label" optionValue="value" /></label>
         </div>
@@ -100,6 +101,7 @@ export class ProjectsComponent implements OnInit {
   svc = SERVICE_LABEL;
   color = SERVICE_COLOR;
   units = [{ label: 'sq ft', value: 'sqft' }, { label: 'm²', value: 'sqm' }];
+  currencies = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'AUD'];
   label = label;
   q = '';
   status: string | null = null;
@@ -114,8 +116,8 @@ export class ProjectsComponent implements OnInit {
     await this.load();
   }
 
-  fmt(v: number) {
-    return money(v, (this.auth.company() as any)?.currency ?? 'INR');
+  fmt(v: number, cur?: string) {
+    return money(v, cur || ((this.auth.company() as any)?.currency ?? 'INR'));
   }
 
   async load() {
@@ -129,7 +131,8 @@ export class ProjectsComponent implements OnInit {
   async openNew() {
     if (this.auth.can('contacts')) this.clients.set(await this.api.get('/contacts'));
     this.f = { name: '', services: this.meta().services.slice(0, 1), client_id: null, project_type: null,
-      start: new Date().toISOString().slice(0, 10), branch: this.meta().branches[0] ?? null, status: 'active', value: null, area: null, area_unit: 'sqft' };
+      start: new Date().toISOString().slice(0, 10), branch: this.meta().branches[0] ?? null, status: 'active', value: null, area: null, area_unit: 'sqft',
+      currency: (this.auth.company() as any)?.currency ?? 'INR' };
     this.dialog = true;
   }
 

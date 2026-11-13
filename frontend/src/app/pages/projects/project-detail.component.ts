@@ -31,6 +31,7 @@ import { ProjectMeetingsComponent } from './project-meetings.component';
 import { ProjectMoneyComponent } from './project-money.component';
 import { ProjectChangeOrdersComponent } from './project-change-orders.component';
 import { ProjectRfisComponent } from './project-rfis.component';
+import { ProjectSafetyComponent } from './project-safety.component';
 import { ProjectDesignComponent } from './project-design.component';
 import { ProjectSelectionsComponent } from './project-selections.component';
 import { ProjectSiteComponent } from './project-site.component';
@@ -44,7 +45,7 @@ const DESIGN = ['architecture', 'interior'];
   imports: [FormsModule, DatePipe, RouterLink, ButtonModule, CardModule, DialogModule, InputNumberModule, InputTextModule, KnobModule,
     MessageModule, MultiSelectModule, ProgressBarModule, SelectButtonModule, SelectModule, SliderModule, TableModule, TabsModule,
     TagModule, TextareaModule, TooltipModule, GanttComponent, MapPickerComponent, FollowupDialogComponent, CheckboxModule,
-    TaskPanelComponent, ProjectMeetingsComponent, ProjectActivityComponent, ProjectHealthComponent, ProjectMoneyComponent, ProjectChangeOrdersComponent, ProjectDesignComponent, ProjectSelectionsComponent, ProjectSiteComponent, ProjectMessagesComponent, ProjectRfisComponent],
+    TaskPanelComponent, ProjectMeetingsComponent, ProjectActivityComponent, ProjectHealthComponent, ProjectMoneyComponent, ProjectChangeOrdersComponent, ProjectDesignComponent, ProjectSelectionsComponent, ProjectSiteComponent, ProjectMessagesComponent, ProjectRfisComponent, ProjectSafetyComponent],
   template: `
     @if (p(); as p) {
       <div class="page-head">
@@ -75,6 +76,7 @@ const DESIGN = ['architecture', 'interior'];
           <p-tab value="details"><i class="pi pi-map-marker mr"></i>Details & site</p-tab>
           @if (auth.can('documents')) { <p-tab value="documents"><i class="pi pi-folder-open mr"></i>Documents</p-tab> }
           @if (auth.can('site')) { <p-tab value="site"><i class="pi pi-camera mr"></i>Site</p-tab> }
+          @if (auth.can('site')) { <p-tab value="safety"><i class="pi pi-shield mr"></i>Safety</p-tab> }
           @if (auth.can('selections')) { <p-tab value="selections"><i class="pi pi-palette mr"></i>Selections</p-tab> }
           @if (auth.can('finance') || auth.user()?.role === 'site') { <p-tab value="money"><i class="pi pi-wallet mr"></i>Money</p-tab> }
           @if (auth.can('change_orders') || auth.can('finance')) { <p-tab value="changes"><i class="pi pi-sync mr"></i>Change orders</p-tab> }
@@ -369,6 +371,7 @@ const DESIGN = ['architecture', 'interior'];
           <p-tabpanel value="selections">@if (tab === 'selections') { <app-project-selections [projectId]="p.id" /> }</p-tabpanel>
           <p-tabpanel value="changes">@if (tab === 'changes') { <app-project-change-orders [projectId]="p.id" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="rfis">@if (tab === 'rfis') { <app-project-rfis [projectId]="p.id" /> }</p-tabpanel>
+          <p-tabpanel value="safety">@if (tab === 'safety') { <app-project-safety [projectId]="p.id" /> }</p-tabpanel>
           <p-tabpanel value="messages">@if (tab === 'messages') { <app-project-messages [projectId]="p.id" /> }</p-tabpanel>
           <p-tabpanel value="meetings">@if (tab === 'meetings') { <app-project-meetings [project]="p" [contacts]="contacts()" (changed)="reload()" /> }</p-tabpanel>
           <p-tabpanel value="activity">@if (tab === 'activity') { <app-project-activity [projectId]="p.id" /> }</p-tabpanel>
@@ -720,7 +723,7 @@ export class ProjectDetailComponent implements OnInit {
   }
 
   fmt(v: number) {
-    return money(v, (this.auth.company() as any)?.currency ?? 'INR');
+    return money(v, this.p()?.currency ?? (this.auth.company() as any)?.currency ?? 'INR');  // Phase L: the project's own currency
   }
 
   canEditStage(s: any) {

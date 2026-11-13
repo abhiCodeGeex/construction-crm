@@ -32,8 +32,17 @@ import { Api } from '../../core/api.service';
             @if (d.can_write && r.editable) { <span class="row gap">
               <p-button icon="pi pi-pencil" [text]="true" size="small" (onClick)="openEdit(r)" ariaLabel="Edit" />
               <p-button label="Issue" icon="pi pi-exclamation-circle" size="small" [text]="true" (onClick)="openIssue(r)" />
-              <p-button label="Delay" icon="pi pi-clock" size="small" [text]="true" (onClick)="openDelay(r)" /></span> }
+              <p-button label="Delay" icon="pi pi-clock" size="small" [text]="true" (onClick)="openDelay(r)" />
+              <p-button label="AI summary" icon="pi pi-sparkles" size="small" [text]="true" [loading]="aiBusy === r.id" (onClick)="summarise(r)" /></span> }
           </div>
+          @if (r.ai_summary; as s) {
+            <div class="ai small"><strong>AI summary</strong> <span class="muted">({{ s.source }}, {{ s.photos }} photo(s) — check before sharing)</span>
+              <div>{{ s.summary }}</div>
+              @for (o of s.safety_concerns; track $index) { <div class="c-bad">⚠ {{ o }}</div> }
+              @if (s.client_update) { <div><span class="muted">For the client:</span> {{ s.client_update }} <a href="" (click)="$event.preventDefault(); copy(s.client_update)">copy</a></div> }
+              @for (x of s.stages; track x.stage_id) { <div class="muted">{{ x.stage_name }}: now {{ x.now }}%, looks like {{ x.suggested }}% — {{ x.why }}</div> }
+            </div>
+          }
           @for (w of r.work; track $index) { <div class="small"><strong>{{ w.stage_name }}</strong>@if (w.task_title) { · {{ w.task_title }} }: {{ w.note }}</div> }
           @if (r.materials) { <div class="small"><span class="muted">Materials:</span> {{ r.materials }}</div> }
           @if (r.equipment) { <div class="small"><span class="muted">Equipment:</span> {{ r.equipment }}</div> }
@@ -121,7 +130,8 @@ import { Api } from '../../core/api.service';
       </div>
     </p-dialog>
   `,
-  styles: `
+  styles: `.ai { background: var(--surface-ground, #f1f5f9); border-radius: 8px; padding: .5rem .7rem; margin-top: .3rem; display: grid; gap: .2rem; }
+
     .rep { border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem 1rem; margin-bottom: .75rem; background: var(--surface); display: grid; gap: .25rem; }
     .photos { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .3rem; }
     .photos a { position: relative; }
@@ -202,6 +212,22 @@ export class ProjectSiteReportsComponent implements OnInit {
 
   photoTitle(ph: any) {
     return [ph.caption, ph.taken_at ? 'taken ' + new Date(ph.taken_at).toLocaleString() : ''].filter(Boolean).join(' · ');
+  }
+
+  // Phase L block 3 — Claude reads the report's photos and notes; the PM decides what to share or change
+  aiBusy: string | null = null;
+
+  async summarise(r: any) {
+    this.aiBusy = r.id;
+    try {
+      r.ai_summary = await this.api.post(`/site-reports/${r.id}/ai/summary`, {});
+    } finally {
+      this.aiBusy = null;
+    }
+  }
+
+  copy(text: string) {
+    navigator.clipboard?.writeText(text);
   }
 
   async save() {

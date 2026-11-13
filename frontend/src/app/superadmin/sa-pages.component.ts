@@ -26,6 +26,7 @@ const SA_NAV = [
   { path: '/sa/billing', label: 'Billing', icon: 'pi pi-receipt', area: 'billing' },
   { path: '/sa/support', label: 'Support and news', icon: 'pi pi-comments', area: 'dashboard' },
   { path: '/sa/reports', label: 'Reports and usage', icon: 'pi pi-chart-bar', area: 'dashboard' },
+  { path: '/sa/marketplace', label: 'Marketplace', icon: 'pi pi-shop', area: 'companies' },
   { path: '/sa/settings', label: 'Platform settings', icon: 'pi pi-cog', area: 'dashboard' },
   { path: '/sa/team', label: 'Super Admin team', icon: 'pi pi-users', area: 'settings' },
   { path: '/sa/access', label: 'My access', icon: 'pi pi-shield', area: 'dashboard' },
@@ -343,6 +344,79 @@ export class SaAuditComponent implements OnInit {
   rows = signal<any[]>([]);
   async ngOnInit() {
     this.rows.set(await firstValueFrom(this.http.get<any[]>('/api/sa/audit')));
+  }
+}
+
+/** Phase L block 4 — the marketplace from the platform's side: every listing (hide one that breaks the rules) and
+ *  suppliers that are not on the platform, with their price list pasted as CSV (name, unit, price, brand, category). */
+@Component({
+  selector: 'app-sa-marketplace',
+  imports: [FormsModule, ButtonModule, CardModule, DialogModule, InputTextModule, TableModule, TagModule],
+  template: `
+    <div class="page-head"><h2>Marketplace</h2>
+      <span class="row gap"><input pInputText [(ngModel)]="q" placeholder="Search" (keyup.enter)="load()" aria-label="Search" />
+        <p-button label="Add a supplier" icon="pi pi-plus" size="small" (onClick)="dlg = true" /></span></div>
+    <p class="small muted">{{ sellers() }} supplier(s) · {{ enquiries() }} quote request(s) so far</p>
+    <p-card>
+      <p-table [value]="rows()" size="small" [paginator]="true" [rows]="20">
+        <ng-template #header><tr><th>Product</th><th>Supplier</th><th>Price</th><th>Added by buyers</th><th>State</th><th></th></tr></ng-template>
+        <ng-template #body let-x><tr><td>{{ x.name }} <small class="muted">{{ x.brand || '' }}</small></td><td>{{ x.seller_name }} <small class="muted">{{ x.seller_kind === 'listed' ? '(listed by us)' : '' }}</small></td>
+          <td>{{ x.price }} {{ x.currency }} / {{ x.unit }}</td><td>{{ x.adds }}</td>
+          <td>@if (x.hidden) { <p-tag value="hidden" severity="danger" /> } @else if (!x.published) { <p-tag value="off" severity="secondary" /> } @else { <p-tag value="live" severity="success" /> }</td>
+          <td><p-button [label]="x.hidden ? 'Show' : 'Hide'" size="small" [text]="true" (onClick)="hide(x)" /></td></tr></ng-template>
+        <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No listings yet.</td></tr></ng-template>
+      </p-table>
+    </p-card>
+    <p-dialog header="Supplier not on the platform" [modal]="true" [(visible)]="dlg" [style]="{ width: '36rem' }">
+      <div class="stack"><input pInputText [(ngModel)]="s.name" placeholder="Supplier name" aria-label="Supplier name" />
+        <div class="row gap"><input pInputText [(ngModel)]="s.city" placeholder="City" aria-label="City" /><input pInputText [(ngModel)]="s.email" placeholder="Email for quote requests" aria-label="Email" />
+          <input pInputText [(ngModel)]="s.phone" placeholder="Phone" aria-label="Phone" /></div>
+        <textarea class="p-inputtext" rows="8" [(ngModel)]="csv" placeholder="name,unit,price,brand,category&#10;Teak veneer 4mm,sheet,3100,Greenply,Furniture" aria-label="Price list CSV"></textarea>
+        <span class="small muted">Sending the same supplier again replaces its list; items no longer in it are taken off.</span>
+        <div class="row right"><p-button label="Save" [disabled]="!s.name?.trim() || !csv.trim()" (onClick)="save()" /></div></div>
+    </p-dialog>
+  `,
+})
+export class SaMarketplaceComponent implements OnInit {
+  private http = inject(HttpClient);
+  private toast = inject(MessageService);
+  rows = signal<any[]>([]);
+  sellers = signal(0);
+  enquiries = signal(0);
+  q = '';
+  dlg = false;
+  s: any = {};
+  csv = '';
+
+  async ngOnInit() {
+    await this.load();
+  }
+
+  async load() {
+    const r = await firstValueFrom(this.http.get<any>('/api/sa/marketplace' + (this.q ? `?q=${encodeURIComponent(this.q)}` : '')));
+    this.rows.set(r.items);
+    this.sellers.set(r.sellers);
+    this.enquiries.set(r.enquiries);
+  }
+
+  async hide(x: any) {
+    await firstValueFrom(this.http.post(`/api/sa/marketplace/${x.id}/hide`, { hidden: !x.hidden }));
+    await this.load();
+  }
+
+  async save() {
+    const lines = this.csv.trim().split(/\r?\n/).map((l) => l.split(',').map((c) => c.trim()));
+    const head = /name/i.test(lines[0]?.[0] ?? '') ? lines.shift()!.map((h) => h.toLowerCase()) : ['name', 'unit', 'price', 'brand', 'category'];
+    const items = lines.filter((l) => l[0]).map((l) => Object.fromEntries(head.map((h, i) => [h, l[i] ?? ''])));
+    try {
+      const r: any = await firstValueFrom(this.http.post('/api/sa/marketplace/suppliers', { ...this.s, items }));
+      this.toast.add({ severity: 'success', summary: `${r.items} item(s) listed` });
+      this.dlg = false;
+      this.csv = '';
+      await this.load();
+    } catch (e) {
+      this.toast.add({ severity: 'error', summary: 'Not saved', detail: errorText(e) });
+    }
   }
 }
 

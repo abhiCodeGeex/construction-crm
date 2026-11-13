@@ -367,6 +367,11 @@ NOTIFY_EVENTS.update({
     "call_in": ("Incoming call", False),
     "assistant_handoff": ("WhatsApp assistant passed a question to the team", True),
     "model_comment": ("Comment on a 3D model", False),
+    # Phase L
+    "safety_incident": ("Serious safety incident", True),
+    "safety_action": ("Safety corrective action for you", False),
+    "inspection_failed": ("Critical item failed in an inspection", True),
+    "market_enquiry": ("Marketplace quote request or quote", False),
     # Phase H (procurement)
     "pr_raised": ("Purchase request raised", False),
     "po_approval": ("Purchase order needs your approval", True),

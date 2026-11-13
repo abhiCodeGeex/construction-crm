@@ -101,8 +101,9 @@ export class ShellComponent implements OnInit {
       { label: t('My access'), icon: 'pi pi-shield', routerLink: '/app/access' },
       { label: t('Change password'), icon: 'pi pi-key', command: () => this.pwd().open() },
       { label: t('Calendar feed'), icon: 'pi pi-calendar', command: () => this.openCal() },
-      { label: `${t('Language')}: ${this.i18n.lang() === 'hi' ? 'हिन्दी → English' : 'English → हिन्दी'}`, icon: 'pi pi-language',
-        command: () => this.i18n.set(this.i18n.lang() === 'hi' ? 'en' : 'hi') },
+      { separator: true },
+      ...this.i18n.languages.map((l) => ({ label: (l.code === this.i18n.lang() ? '✓ ' : ' ') + l.name, icon: l.code === 'en' ? 'pi pi-language' : undefined,
+        command: () => this.i18n.set(l.code) })),
       { separator: true },
       { label: t('Sign out'), icon: 'pi pi-sign-out', command: () => this.auth.logout() },
     ];

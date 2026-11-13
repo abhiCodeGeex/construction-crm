@@ -237,7 +237,7 @@ export class ProjectMoneyComponent implements OnInit {
   }
 
   fmt(v: number) {
-    return money(v, (this.auth.company() as any)?.currency ?? 'INR');
+    return money(v, this.project()?.currency ?? (this.auth.company() as any)?.currency ?? 'INR');
   }
 
   pct(a: number, b: number) {

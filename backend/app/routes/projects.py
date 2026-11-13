@@ -330,6 +330,15 @@ def clean_project(dat, existing=None):
         out["services"] = list(dict.fromkeys(services))
         if existing and set(existing.get("services", [])) - set(out["services"]):
             abort(409, "Services cannot be removed from a project once added; delete their stages instead")
+    if "currency" in dat or not existing:  # Phase L: a project's own currency (an overseas client), for its invoices
+        from .admin import CURRENCIES
+        cur = dat.get("currency") or (existing or {}).get("currency") or g.company.get("currency") or "INR"
+        if cur not in CURRENCIES:
+            abort(400, f"Currency: {', '.join(CURRENCIES)}")
+        if existing and cur != (existing.get("currency") or g.company.get("currency") or "INR") and \
+                db.invoices.find_one({"company_id": g.cid, "project_id": str(existing["_id"]), "status": {"$ne": "void"}}, {"_id": 1}):
+            abort(409, "This project already has invoices; its currency cannot change")
+        out["currency"] = cur
     if "status" in dat:
         if dat["status"] not in PROJECT_STATUSES:
             abort(400, "Project status must be planning, active, on hold, completed or cancelled")

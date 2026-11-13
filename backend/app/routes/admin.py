@@ -157,6 +157,15 @@ def company_setup():
         if dat["currency"] not in CURRENCIES:
             abort(400, "Unsupported currency")
         changes["currency"] = dat["currency"]
+    if "fx_rates" in dat:  # Phase L: what one unit of a project's currency is worth in the company's, for reports
+        rates = {}
+        for k, v in (dat["fx_rates"] or {}).items():
+            if k not in CURRENCIES:
+                abort(400, f"Unsupported currency {k}")
+            if not isinstance(v, (int, float)) or isinstance(v, bool) or not 0 < v < 1e6:
+                abort(400, f"Exchange rate for {k} must be a positive number")
+            rates[k] = float(v)
+        changes["fx_rates"] = rates
     if "tax_rate" in dat:
         if not isinstance(dat["tax_rate"], (int, float)) or not 0 <= dat["tax_rate"] <= 100:
             abort(400, "Tax rate must be 0-100%")

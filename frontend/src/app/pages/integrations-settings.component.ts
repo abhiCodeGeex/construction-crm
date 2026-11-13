@@ -74,6 +74,38 @@ import { AuthService } from '../core/auth.service';
           @if (p.webhook_incoming) { <p class="small m0">Incoming-call webhook: <code>{{ origin }}{{ p.webhook_incoming }}</code><br />Exotel connect applet URL: <code>{{ origin }}{{ p.exotel_dial_url }}</code></p> }
           <p class="small muted m0">Calls are put through to the person in that role on the caller's own project, and logged; staff need a mobile number on their profile.</p>
         } }
+        @case ('ai') { @if (ai(); as s) {
+          <label class="field"><span>AI helpers (follow-up drafts, BOQ from drawings, progress summaries from photos)</span>
+            <p-select [options]="[{ l: 'Off — template drafts only', v: 'off' }, { l: 'Claude — uses your Anthropic API key', v: 'claude' }, { l: 'Sandbox — sample answers for training', v: 'sandbox' }]"
+              optionLabel="l" optionValue="v" [(ngModel)]="s.mode" appendTo="body" /></label>
+          @if (s.mode === 'claude') { <div class="grid2"><label class="field"><span>Anthropic API key {{ s.api_key_set ? (s.key_from === 'assistant' ? '(the assistant\\'s key is used)' : '(saved)') : '' }}</span>
+              <input pInputText type="password" [(ngModel)]="aiKey" /></label>
+            <label class="field"><span>Model</span><input pInputText [(ngModel)]="s.model" /></label></div>
+            <p class="small muted m0">What is sent to Anthropic: the lead's facts for a follow-up draft; the drawings you choose for a BOQ; a report's photos and notes for a summary. Nothing is sent or saved without a person reading it first.</p> }
+          <div class="row right"><p-button label="Save" (onClick)="saveAi()" /></div>
+          @if (s.usage.features.length) { <p class="small m0">This month: @for (u of s.usage.features; track u.feature) { {{ u.feature.replace('_', ' ') }} {{ u.calls }}× ({{ u.input_tokens + u.output_tokens }} tokens) · } </p> }
+        } }
+        @case ('safety') { @if (sf(); as s) {
+          <p class="small muted m0">Inspection checklists used on site and in the field app. A failed item becomes a snag; a failed <strong>critical</strong> item also tells the PM.</p>
+          @for (tp of s.templates; track $index; let ti = $index) {
+            <details [open]="ti === s.templates.length - 1 && !tp.items[0]?.text"><summary><strong>{{ tp.name || 'New checklist' }}</strong> <span class="small muted">· {{ tp.items.length }} items · {{ tp.kind }}</span></summary>
+              <div class="stack"><div class="row gap"><input pInputText class="grow" [(ngModel)]="tp.name" aria-label="Checklist name" />
+                <select class="p-inputtext" [(ngModel)]="tp.kind" aria-label="Kind"><option value="safety">safety</option><option value="quality">quality</option><option value="handover">handover</option></select>
+                <p-button icon="pi pi-trash" [text]="true" severity="secondary" (onClick)="s.templates.splice(ti, 1)" ariaLabel="Delete checklist" /></div>
+                @for (it of tp.items; track $index; let ii = $index) { <div class="row gap"><input pInputText class="grow" [(ngModel)]="it.text" aria-label="Item" />
+                  <label class="check small"><input type="checkbox" [(ngModel)]="it.critical" /> critical</label>
+                  <p-button icon="pi pi-times" [text]="true" severity="secondary" (onClick)="tp.items.splice(ii, 1)" ariaLabel="Remove item" /></div> }
+                <p-button label="Add an item" icon="pi pi-plus" size="small" [text]="true" (onClick)="tp.items.push({ text: '', critical: false })" /></div>
+            </details>
+          }
+          <p-button label="Add a checklist" icon="pi pi-plus" size="small" [text]="true" (onClick)="s.templates.push({ name: '', kind: 'safety', items: [{ text: '', critical: false }] })" />
+          <div class="row right"><p-button label="Save" (onClick)="saveSafety()" /></div>
+        } }
+        @case ('fx') { @if (fx(); as f) {
+          <p class="small muted m0">A project can have its own currency (an overseas client) — its invoices and payment links use it. Reports add it up in {{ f.base }} at these rates.</p>
+          @for (c of f.list; track c.code) { <div class="row gap"><span style="width: 4rem">1 {{ c.code }}</span> = <p-inputnumber [(ngModel)]="c.rate" [min]="0" [maxFractionDigits]="4" [ariaLabel]="c.code + ' rate'" /> {{ f.base }}</div> }
+          <div class="row right"><p-button label="Save" (onClick)="saveFx()" /></div>
+        } }
       }
     </div>
   `,
@@ -84,7 +116,33 @@ export class IntegrationsSettingsComponent {
   private api = inject(Api);
   private auth = inject(AuthService);
   role = this.auth.user()?.role;
-  parts = [{ label: 'Hourly rates', value: 'rates' }, { label: 'Accounting', value: 'books' }, { label: 'WhatsApp assistant', value: 'assistant' }, { label: 'Phone', value: 'phone' }];
+  parts = [{ label: 'Hourly rates', value: 'rates' }, { label: 'Accounting', value: 'books' }, { label: 'WhatsApp assistant', value: 'assistant' }, { label: 'Phone', value: 'phone' },
+    { label: 'AI', value: 'ai' }, { label: 'Safety checklists', value: 'safety' }, { label: 'Currencies', value: 'fx' }];
+  ai = signal<any>(null); sf = signal<any>(null); fx = signal<any>(null);
+  aiKey = '';
+
+  async saveAi() {
+    const s = this.ai();
+    this.ai.set(await this.api.put('/settings/ai', { mode: s.mode, model: s.model, api_key: this.aiKey || undefined }, 'Saved'));
+    this.aiKey = '';
+  }
+
+  async saveSafety() {
+    const s = this.sf();
+    this.sf.set(await this.api.put('/settings/safety', { templates: s.templates.map((tp: any) => ({ ...tp, items: tp.items.filter((i: any) => i.text?.trim()) })) }, 'Saved'));
+  }
+
+  async loadFx() {
+    const c = await this.api.get('/company');
+    const base = c.currency || 'INR';
+    const rates = c.fx_rates || {};
+    this.fx.set({ base, list: ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'AUD'].filter((c) => c !== base).map((code) => ({ code, rate: rates[code] ?? null })) });
+  }
+
+  async saveFx() {
+    const rates = Object.fromEntries(this.fx().list.filter((c: any) => c.rate > 0).map((c: any) => [c.code, c.rate]));
+    await this.api.put('/company/setup', { fx_rates: rates }, 'Saved');
+  }
   part = 'rates';
   roles = ['owner', 'pm', 'sales', 'accounts', 'designer', 'site', 'procurement'];
   ts = signal<any>(null); acc = signal<any>(null); ast = signal<any>(null); ph = signal<any>(null);
@@ -113,6 +171,9 @@ export class IntegrationsSettingsComponent {
       this.clients.set((Array.isArray(c) ? c : c.items ?? []).filter((x: any) => (x.types ?? []).includes('client')));
     }
     if (this.part === 'phone') this.ph.set(await this.api.get('/settings/phone'));
+    if (this.part === 'ai') this.ai.set(await this.api.get('/settings/ai'));
+    if (this.part === 'safety') this.sf.set(await this.api.get('/settings/safety'));
+    if (this.part === 'fx') await this.loadFx();
   }
 
   async saveRates() {

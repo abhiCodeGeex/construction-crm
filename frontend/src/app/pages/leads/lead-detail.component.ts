@@ -154,7 +154,24 @@ const EVENT_ICON: Record<string, string> = {
 
                 <p-card>
                   <ng-template #title><div class="row-between"><span>Follow-ups</span>
-                    @if (l.status === 'open' && auth.can('followups', 'rw')) { <p-button label="Add" icon="pi pi-plus" size="small" [text]="true" (onClick)="fd().open({ type: 'lead', id: l.id, label: l.title })" /> }</div></ng-template>
+                    @if (l.status === 'open' && auth.can('followups', 'rw')) { <span class="row gap"><p-button label="Draft a message" icon="pi pi-sparkles" size="small" [text]="true" (onClick)="draftDlg = true; draft = null" />
+                      <p-button label="Add" icon="pi pi-plus" size="small" [text]="true" (onClick)="fd().open({ type: 'lead', id: l.id, label: l.title })" /></span> }</div></ng-template>
+                  @if (draftDlg) {
+                    <div class="stack draft">
+                      <div class="row gap wrap">
+                        <select class="p-inputtext" [(ngModel)]="dr.purpose" aria-label="Purpose"><option value="check_in">Check in</option><option value="proposal">About the proposal</option>
+                          <option value="visit">Fix a site visit</option><option value="revive">Revive a quiet lead</option><option value="thanks">Thank you</option></select>
+                        <select class="p-inputtext" [(ngModel)]="dr.channel" aria-label="Channel"><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select>
+                        <input pInputText class="grow" [(ngModel)]="dr.instruction" placeholder="Anything to add (e.g. in Hindi, mention the kitchen)" aria-label="Instruction" />
+                        <p-button label="Draft" size="small" [loading]="drafting" (onClick)="makeDraft(l)" /><p-button label="Close" size="small" [text]="true" (onClick)="draftDlg = false" /></div>
+                      @if (draft) {
+                        @if (dr.channel === 'email') { <input pInputText [(ngModel)]="draft.subject" aria-label="Subject" /> }
+                        <textarea class="p-inputtext" rows="5" [(ngModel)]="draft.body" aria-label="Message"></textarea>
+                        <div class="row gap"><span class="small muted grow">{{ draft.source === 'template' ? 'Template (AI is off in Settings → AI)' : draft.source === 'sandbox' ? 'Sandbox draft' : 'Drafted by Claude' }} — read and change it before you send it.</span>
+                          <p-button label="Copy" size="small" [outlined]="true" (onClick)="copyDraft()" /></div>
+                      }
+                    </div>
+                  }
                   @if (!l.next_followup && l.status === 'open') { <p-message severity="warn" icon="pi pi-bell-slash" text="No follow-up scheduled for this lead." styleClass="mb" /> }
                   @for (f of followups(); track f.id) {
                     <div class="ms-row">
@@ -305,6 +322,24 @@ export class LeadDetailComponent implements OnInit {
   meta = signal<any>(null);
   form = signal<any>(null);
   followups = signal<any[]>([]);
+  // Phase L block 3: a follow-up message drafted from the lead's facts (Claude, or a template when AI is off)
+  draftDlg = false;
+  drafting = false;
+  draft: any = null;
+  dr: any = { purpose: 'check_in', channel: 'whatsapp', instruction: '' };
+
+  async makeDraft(l: any) {
+    this.drafting = true;
+    try {
+      this.draft = await this.api.post(`/leads/${l.id}/ai/followup`, this.dr);
+    } finally {
+      this.drafting = false;
+    }
+  }
+
+  copyDraft() {
+    navigator.clipboard?.writeText((this.dr.channel === 'email' ? this.draft.subject + '\n\n' : '') + this.draft.body);
+  }
   contacts = signal<any[]>([]);
   templates = signal<any[]>([]);
   rendered = signal<any>(null);

@@ -109,7 +109,25 @@ const EST_SEVERITY: Record<string, 'info' | 'success' | 'warn' | 'danger' | 'sec
               <td>@if (estEditable()) { <p-button icon="pi pi-trash" [text]="true" severity="danger" (onClick)="ef.lines.splice(i, 1)" ariaLabel="Delete" pTooltip="Delete"/> }</td></tr></ng-template>
             <ng-template #emptymessage><tr><td colspan="20" class="muted center small">No lines yet — add the first line of the estimate.</td></tr></ng-template>
       </p-table>
-          @if (estEditable()) { <p-button label="Add line" icon="pi pi-plus" size="small" [text]="true" (onClick)="ef.lines.push(blankLine())" /> }
+          @if (estEditable()) { <span class="row gap"><p-button label="Add line" icon="pi pi-plus" size="small" [text]="true" (onClick)="ef.lines.push(blankLine())" />
+            <p-button label="Read drawings (AI)" icon="pi pi-sparkles" size="small" [text]="true" (onClick)="openBoq()" pTooltip="Draft the BOQ lines from plan drawings — you check every quantity" /></span> }
+          @if (boqOpen) {
+            <div class="stack" style="border: 1px dashed var(--border); border-radius: 8px; padding: .6rem">
+              <div class="row gap wrap"><input type="file" accept="image/*,.pdf" multiple (change)="boqFiles($event)" aria-label="Drawings" />
+                <input pInputText class="grow" [(ngModel)]="boq.notes" placeholder="Scope notes (e.g. living and kitchen only)" aria-label="Scope notes" />
+                <p-button label="Read" [loading]="boq.busy" [disabled]="!boq.files.length" (onClick)="runBoq()" /><p-button label="Close" [text]="true" (onClick)="boqOpen = false" /></div>
+              @if (boq.res; as r) {
+                <div class="small c-bad">{{ r.warning }} @if (r.source === 'sandbox') { (sandbox answer) }</div>
+                @if (r.notes) { <div class="small muted">{{ r.notes }}</div> }
+                @for (ln of r.lines; track ln.id) {
+                  <div class="row gap small"><input type="checkbox" [(ngModel)]="ln.pick" [attr.aria-label]="'Add ' + ln.description" />
+                    <span class="grow">{{ ln.description }} <span class="muted">· {{ ln.room || '' }} · {{ ln.basis || '' }}</span>@if (ln.material_rate_name) { <span class="muted"> · rate: {{ ln.material_rate_name }}</span> }</span>
+                    <p-inputnumber [(ngModel)]="ln.qty" [min]="0" [maxFractionDigits]="2" [inputStyle]="{ width: '5rem' }" ariaLabel="Quantity" /> {{ ln.unit }}</div>
+                }
+                <div class="row right"><p-button label="Add the ticked lines" [disabled]="!boqPicked()" (onClick)="applyBoq()" /></div>
+              }
+            </div>
+          }
           <div class="grid2 top">
             <div class="grid2">
               <label class="field"><span>Overheads %</span><p-inputnumber [(ngModel)]="ef.overhead_pct" [min]="0" [max]="100" [maxFractionDigits]="2" [disabled]="!estEditable()" fluid /></label>
@@ -289,6 +307,46 @@ export class LeadMoneyComponent implements OnInit {
       e = await this.api.post(`/estimates/${this.ef.id}/submit`, {});
       this.estDlg = false;
     } else this.ef = JSON.parse(JSON.stringify(e));
+    await this.done();
+  }
+
+  // Phase L block 3 — a BOQ drafted by AI from drawings; the estimator ticks, corrects and adds the lines
+  boqOpen = false;
+  boq: any = { files: [], notes: '', res: null, busy: false };
+
+  openBoq() {
+    this.boq = { files: [], notes: '', res: null, busy: false };
+    this.boqOpen = true;
+  }
+
+  async boqFiles(ev: Event) {
+    for (const f of Array.from((ev.target as HTMLInputElement).files ?? [])) this.boq.files.push((await this.api.upload(f)).key);
+  }
+
+  async runBoq() {
+    this.boq.busy = true;
+    try {
+      const r = await this.api.post(`/estimates/${this.ef.id}/ai/boq`, { files: this.boq.files, notes: this.boq.notes });
+      r.lines.forEach((l: any) => (l.pick = true));
+      this.boq.res = r;
+    } finally {
+      this.boq.busy = false;
+    }
+  }
+
+  boqPicked() {
+    return (this.boq.res?.lines ?? []).some((l: any) => l.pick);
+  }
+
+  async applyBoq() {
+    // keep what was typed in the dialog first, then add the ticked lines on the server
+    const lines = this.ef.lines.filter((l: any) => l.description?.trim());
+    await this.api.put(`/estimates/${this.ef.id}`, { title: this.ef.title, lines, overhead_pct: this.ef.overhead_pct, markup_pct: this.ef.markup_pct,
+      discount_pct: this.ef.discount_pct, tax_pct: this.ef.tax_pct });
+    const e = await this.api.post(`/estimates/${this.ef.id}/ai/boq/apply`, { draft_id: this.boq.res.draft_id,
+      lines: this.boq.res.lines.filter((l: any) => l.pick).map((l: any) => ({ id: l.id, qty: l.qty })) }, 'Lines added — check them');
+    this.ef = JSON.parse(JSON.stringify(e));
+    this.boqOpen = false;
     await this.done();
   }
 

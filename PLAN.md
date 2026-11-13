@@ -885,7 +885,7 @@ Not verified: live WhatsApp Cloud, Razorpay and Stripe calls (built to their doc
 
 Not verified: live Zoho, QuickBooks, Xero, Anthropic API, Twilio and Exotel calls. They are built to the providers' documented APIs and tested only in sandbox or fallback mode; the Claude path was exercised with an invalid key, which falls back to the FAQ answers. IFC rendering depends on web-ifc's API (checked against its documented calls, not with a real IFC file).
 
-## Phase L — v4 "Phase 3"
+## Phase L — v4 "Phase 3" — **Done**
 | Block | Scope (v4 §) |
 |---|---|
 | 1 | **Offline mobile app** (§10, §15): site report, attendance, snags and photos captured offline and synced; Android / iOS packaging |
@@ -895,3 +895,42 @@ Not verified: live Zoho, QuickBooks, Xero, Anthropic API, Twilio and Exotel call
 | 5 | **AR on the phone** and the **3D model linked to site progress** (§19 Phase 3) |
 | 6 | **Advanced reports and dashboards** (v4 Phase 3) |
 | 7 | **More languages** beyond English and Hindi; per-project currency (§15) |
+
+**Phase L — Done.** Tests: `backend/tests/test_phase_l.py`, 194 checks.
+- **1** `routes/mobile.py`, the field app at `/field` (Delivery → Field app), `core/offline-store.ts`, `public/sw.js`.
+  - **On the phone:** `GET /mobile/bootstrap` gives the person's live projects (stages and tasks, the attendance list, open snags, today's report and sheet) and the inspection checklists. It is kept in IndexedDB; a service worker keeps the app shell, so the page opens with no signal.
+  - **Offline:** the daily report, attendance, new snags, snag fixes, safety incidents and inspections are queued. Photos are shrunk to 1600 px and kept as blobs with GPS and time.
+  - **Sync:** when the signal is back, photos are uploaded first, then the queue goes to `POST /mobile/sync`. Each operation has an id made on the phone, so a queue sent twice is applied once (`sync_ops`, unique index). Each operation runs through the web app's own endpoint, so rules and permissions are the same.
+  - **Merging:** the day's report on the server gets the phone's work lines, photos and notes, and its manpower per trade; attendance merges per person. A refused operation (locked report, no permission) stays on the phone with the reason, to fix or discard; the rest of the queue goes on.
+  - **Who:** roles with site access (Owner, PM, Site Supervisor).
+  - **Android / iOS:** `frontend/capacitor.config.json` packages the same build with Capacitor (`npx cap add android|ios`). The app must load the hosted site: set `server.url` to the deployment's https address before building, because the API is same-origin. The web app also installs to the home screen (manifest).
+- **2** `routes/safety.py`, project → Safety, Delivery → Safety (report).
+  - **Incidents:** near miss, first aid, injury, lost time, property damage, environmental, fire. People involved, what was done at once, witnesses and photos. A serious one (injury, lost time, fire, or high / critical) alerts the project's managers and the Owners at once.
+  - **Investigation and close:** a manager records the root cause (from a list) and findings, and adds corrective actions with an owner and a due date. The owner marks an action done; the worker reminds daily once it is overdue. A serious incident is investigated before it is closed, and every action must be done first. A closed incident can be reopened with a reason.
+  - **Inspections:** checklists from Settings → Integrations → Safety checklists (three ready-made: weekly site safety, working at height, electrical). Each item passes, fails or does not apply, and a fail needs a note. The score is passed / (passed + failed). A failed item becomes a snag (high and due tomorrow if critical, else 3 days); a failed critical item alerts the PM.
+  - **Toolbox talks:** topic and attendees from the attendance list.
+  - **Report:** incidents by kind and month, days lost, days without a lost-time injury per project, open and overdue actions, average inspection score, the items that fail most, and talks.
+- **3** `routes/ai.py`, Settings → Integrations → AI.
+  - **Modes:** off, Claude (the company's key; the assistant's key is used if none is set), or sandbox (fixed sample answers). Model `claude-opus-5-5`, structured JSON output, the server-side refusal fallback, adaptive thinking for drawings and photos. Every call is logged with its tokens, and the month's use is shown.
+  - **Follow-up draft** on a lead: a WhatsApp or email message for one of five purposes from the lead's facts; with AI off, a plain template. Shown to copy and edit, never sent by itself.
+  - **BOQ from drawings** on a draft estimate: up to 5 drawings (image or PDF) give lines with qty, unit, room, work type and how the quantity was read. Each line is matched to the rate library by name; the estimator ticks, corrects and adds them. The screen says to check every quantity.
+  - **Progress summary** of a site report (its photos and notes) or of a project's last N days: a summary, what the photos show, safety concerns, a client update, and suggested stage progress. It never moves the plan.
+- **4** `routes/marketplace.py`, Money → Marketplace, Super Admin → Marketplace.
+  - **Sellers:** a company turns on selling and lists products from its catalogue at a list price. The Super Admin can list a supplier that is not on the platform from a pasted price list, and hide any listing.
+  - **Buyers:** search and filter by category, supplier, city and price. *Add to my catalogue* copies the item at the list price as our cost and adds the supplier to contacts (matched by email). It stays linked: a price change shows, and *update* takes it.
+  - **Quotes:** *Ask for a quote* (qty, needed by, city) reaches the seller (notification for a company on the platform, email for a listed supplier); the seller's price and lead time come back to the buyer.
+  - **Privacy:** a listing never shows the seller's cost, internal ids or email. Photos are served only while the listing is published, and turning selling off unlists everything.
+- **5** `routes/models3d.py` (added), project → Documents → 3D models, `/ar/:token`.
+  - **Model linked to progress:** *Link parts to work*: click a part (a GLB / OBJ node name, or an IFC element as `ifc:<express id>`) and choose its stage or task. *Colour by site progress* paints each linked part done, in progress, late, blocked or not started, from the plan, with the % built. The client sees the same colours in the portal (no task ids).
+  - **AR:** a GLB / glTF model gets a tokened link that opens Google's `<model-viewer>` (3.5.0, from the CDN). It shows the model at real size in the room through WebXR / Scene Viewer (Android) or Quick Look (iPhone). The file is served to the phone's AR app with CORS; withdrawing the link stops it.
+- **6** `routes/report_builder.py`, Money → Report builder and Dashboards.
+  - **Builder:** 9 datasets (leads, projects, invoices, payments, costs, follow-ups, site reports, safety incidents, timesheet hours), up to two group-bys, up to four measures, value filters, a period, a chart (table, bar, line, pie, number) and CSV export. Each dataset needs its guarding area; costs need a cost-seeing role. Rows are the ones the person sees elsewhere.
+  - **Saved reports:** private or shared (Owner / PM). Weekly or monthly email with the CSV attached, run as the report's owner so it never shows more than they see.
+  - **Dashboards:** per person (an Owner can share one); widgets from saved reports or nine quick reports. A widget a viewer's role cannot see says so instead of showing data. Charts are plain SVG.
+- **7** `services/languages.py`, `core/i18n.ts`, project currency.
+  - **Languages:** Marathi, Gujarati, Tamil, Telugu, Kannada and Bengali added to English and Hindi, for the menus, the portal, the site and field screens. The most-used phrases are translated; the rest stay in English. Site workers' morning WhatsApp message and its buttons go in all eight.
+  - **Per-project currency:** a project has its own currency (INR, USD, EUR, GBP, AED, SGD, AUD; default the company's), locked once it has an invoice. Its invoices and payment links use it.
+  - **Reports:** the report builder adds money up in the company's currency at the rates in Settings → Integrations → Currencies, with a currency group-by.
+- **Security fix:** `GET /company` no longer returns saved keys or passwords (the AI and assistant API keys, accounting, phone and SMTP credentials); they show as •••.
+
+Not verified live: the Anthropic API (sandbox and an invalid key only), the Android / iOS builds (configured, not built here: no Android SDK or Xcode), AR on real phones, and the offline flow on a real phone with no signal.

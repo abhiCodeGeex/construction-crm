@@ -113,7 +113,7 @@ export class InvoiceViewComponent implements OnInit {
   }
 
   fmt(v: number) {
-    return money(v, this.inv()?.company?.currency ?? 'INR');
+    return money(v, this.inv()?.currency ?? this.inv()?.company?.currency ?? 'INR');  // Phase L: the invoice's own currency
   }
 
   print() {

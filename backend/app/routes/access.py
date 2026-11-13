@@ -45,7 +45,20 @@ for _area in AREAS:
 def get_company():
     c = serialize(g.company)
     c.pop("counters", None)
-    return jsonify(c)
+    return jsonify(no_secrets(c))
+
+
+SECRET_HINTS = ("api_key", "secret", "token", "password", "refresh")
+
+
+def no_secrets(x):
+    """Saved keys (the AI / assistant API key, accounting and phone credentials, SMTP password) never leave the
+    server; each settings screen says only whether one is saved."""
+    if isinstance(x, dict):
+        return {k: ("•••" if v and any(h in k.lower() for h in SECRET_HINTS) and isinstance(v, str) else no_secrets(v)) for k, v in x.items()}
+    if isinstance(x, list):
+        return [no_secrets(v) for v in x]
+    return x
 
 
 @bp.put("/company")
